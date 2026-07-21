@@ -1097,7 +1097,7 @@
   .wiki-series-list {
     padding: 0 10px 16px;
     overscroll-behavior: contain;
-    touch-action: pan-y;
+    touch-action: pan-y pinch-zoom;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -1117,7 +1117,7 @@
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: auto;
-    touch-action: pan-y;
+    touch-action: pan-y pinch-zoom;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -1190,7 +1190,7 @@
     flex-wrap: nowrap;
     overflow-x: auto;
     overscroll-behavior-inline: contain;
-    touch-action: pan-x;
+    touch-action: pan-x pinch-zoom;
     scrollbar-width: none;
   }
 

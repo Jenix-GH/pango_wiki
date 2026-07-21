@@ -1,0 +1,14 @@
+{
+  "name": "miniprogram-ts-quickstart",
+  "version": "1.0.0",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "main": "index.js",
+  "description": "",
+  "dependencies": {
+    "@babel/runtime": "^7.22.6",
+    "mp-html": "^2.5.1"
+  }
+}

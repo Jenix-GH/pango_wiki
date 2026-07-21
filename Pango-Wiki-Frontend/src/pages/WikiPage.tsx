@@ -210,10 +210,14 @@ export default function WikiPage() {
 
   const openDocument = useCallback((document: WikiDocument) => {
     setActionError('')
+    if (miniProgramClient) {
+      navigate(`/wiki/reader?url=${encodeURIComponent(document.viewer_url)}`)
+      return
+    }
     if (!openReferenceUrl(document.viewer_url)) {
       setActionError('文档阅读链接无效，请稍后重试。')
     }
-  }, [])
+  }, [miniProgramClient, navigate])
 
   const toggleHistory = useCallback((groupId: string) => {
     setHistoryGroups((current) => {

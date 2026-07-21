@@ -53,7 +53,7 @@ export default function ChatInput({ onSend, onStop, isStreaming, uploadImages, o
 
   const handleVoiceResult = (transcribed: string) => {
     if (transcribed.trim()) {
-      onSend(transcribed.trim())
+      setText(transcribed.trim())
     }
     setMode('text')
   }
@@ -89,6 +89,18 @@ export default function ChatInput({ onSend, onStop, isStreaming, uploadImages, o
             disabled={isStreaming}
           />
           <div className="chat-input-actions">
+            <button
+              className="input-action-btn"
+              onClick={() => setMode('voice')}
+              disabled={isStreaming}
+              title="语音输入"
+              aria-label="切换到语音输入"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="9" y="2" width="6" height="12" rx="3" />
+                <path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8" />
+              </svg>
+            </button>
             <button
               className="input-action-btn"
               onClick={onImageUpload}

@@ -1,0 +1,14 @@
+<!--顶部菜单组件-->
+<view class="panel">
+    <view class="panel-actions">
+        <view class="panel-left-icon" bind:tap="goto_left_menu">
+            <iconfont name="{{iconName}}" size="25" color="white" />
+        </view>
+        <view class="panel-left-icon" bind:tap="reloadSession">
+            <view class="new-session"></view>
+        </view>
+        <view class="panel-wiki" bind:tap="openWiki">Wiki</view>
+    </view>
+    <view class="panel-text">{{ title }}</view>
+</view>
+

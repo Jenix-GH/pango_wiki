@@ -4,15 +4,21 @@
     position: relative;
     padding-top: 85rpx;
     display: flex;
-    justify-content: left;
     align-items: center;
     color: white;
     background-color: var(--bg-primary);
 }
 
+.panel-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+}
+
 .panel-wiki {
     flex-shrink: 0;
     margin-left: 4rpx;
+    margin-right: 4rpx;
     padding: 8rpx 16rpx;
     border: 1rpx solid rgba(255, 255, 255, 0.7);
     border-radius: 24rpx;
@@ -21,13 +27,17 @@
 }
 
 .panel-left-icon {
-    padding: 20rpx;
+    padding: 20rpx 14rpx;
 }
 
 .panel-text {
-    width: 100vh;
+    flex: 1;
+    min-width: 0;
     text-align: center;
-    padding: 20rpx 170rpx 20rpx 20rpx;
+    padding: 20rpx 190rpx 20rpx 12rpx;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .new-session {

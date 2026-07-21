@@ -5,6 +5,7 @@ import { AuthProvider } from './contexts/AuthContext'
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const ChatPage = lazy(() => import('./pages/ChatPage'))
 const WikiPage = lazy(() => import('./pages/WikiPage'))
+const WikiReaderPage = lazy(() => import('./pages/WikiReaderPage'))
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<ChatPage />} />
             <Route path="/wiki" element={<WikiPage />} />
+            <Route path="/wiki/reader" element={<WikiReaderPage />} />
             <Route path="/wiki/preview" element={<Navigate to="/wiki" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

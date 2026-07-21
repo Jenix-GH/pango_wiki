@@ -5,6 +5,11 @@
   justify-content: center;
 }
 
+.voice-main {
+  flex: 1;
+  min-width: 0;
+}
+
 .voice-processing {
   padding: 14px;
   text-align: center;
@@ -16,6 +21,7 @@
   font-size: 13px;
   color: #e74c3c;
   margin-bottom: 4px;
+  text-align: center;
 }
 
 .voice-btn {

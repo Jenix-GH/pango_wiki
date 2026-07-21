@@ -22,7 +22,7 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const {
     user, isLoggedIn, isGuest, loading,
-    flagCompanyInfo, answerCount, guestCount,
+    flagCompanyInfo, answerCount,
     incrementAnswerCount, login,
   } = useAuth()
   const { start, abort } = useSSE()
@@ -39,8 +39,7 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [progressText, setProgressText] = useState('')
   const [progressEmoji, setProgressEmoji] = useState('')
-  const [isTestVersion, setIsTestVersion] = useState(true)
-  const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false)
+  const isTestVersion = true
   const [sessionId, setSessionId] = useState('')
   const [showLeft, setShowLeft] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -61,8 +60,8 @@ export default function ChatPage() {
   const activeRunRef = useRef(0)
   const streamingRef = useRef(false)
 
-  const effectiveCount = isLoggedIn ? answerCount : (isGuest ? guestCount : 0)
-  const isLimitReached = (!isLoggedIn || !flagCompanyInfo) && effectiveCount >= ANSWER_LIMIT
+  // Guest usage is temporarily unlimited.
+  const isLimitReached = isLoggedIn && !flagCompanyInfo && answerCount >= ANSWER_LIMIT
 
   useEffect(() => {
     if (loading) return
@@ -266,12 +265,6 @@ export default function ChatPage() {
           }
           clearLiveStreamUi()
 
-          if (completedContent.trim() && !user && guestCount + 1 >= ANSWER_LIMIT) {
-            setTimeout(() => {
-              showToast('体验次数已用完，请登录以继续使用', 4000)
-              setShowLoginPrompt(true)
-            }, 500)
-          }
         })
       },
       (err) => {
@@ -344,20 +337,6 @@ export default function ChatPage() {
     const id = api.createSession(user?.id || 'guest', true)
     setSessionId(id)
     showToast('已切换新对话')
-  }
-
-  const toggleTestVersion = async () => {
-    const next = !isTestVersion
-    setIsTestVersion(next)
-    const id = api.createSession(user?.id || 'guest', true)
-    setSessionId(id)
-  }
-
-  const toggleWebSearch = async () => {
-    const next = !isWebSearchEnabled
-    setIsWebSearchEnabled(next)
-    const id = api.createSession(user?.id || 'guest', true)
-    setSessionId(id)
   }
 
   const handleRefresh = () => {
@@ -482,7 +461,7 @@ export default function ChatPage() {
           <div className="chat-messages" ref={scrollRef} onScroll={handleScroll}>
             {isGuest && (
               <div className="guest-banner">
-                访客模式 · 剩余 {ANSWER_LIMIT - guestCount} 次体验
+                访客模式
                 <button onClick={() => navigate('/login')}>登录</button>
               </div>
             )}
@@ -550,21 +529,6 @@ export default function ChatPage() {
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="chat-modes">
-            <button
-              className={`mode-btn ${isTestVersion ? 'active' : ''}`}
-              onClick={toggleTestVersion}
-            >
-              测试版
-            </button>
-            <button
-              className={`mode-btn ${isWebSearchEnabled ? 'active' : ''}`}
-              onClick={toggleWebSearch}
-            >
-              联网搜索
-            </button>
           </div>
 
           <ChatInput

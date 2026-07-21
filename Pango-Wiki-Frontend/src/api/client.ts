@@ -50,7 +50,8 @@ export const api = {
 
   transcribe: async (audioBlob: Blob): Promise<{ text: string } | null> => {
     const formData = new FormData()
-    formData.append('audio', audioBlob, 'recording.wav')
+    const extension = audioBlob.type.includes('mp4') ? 'm4a' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm'
+    formData.append('audio', audioBlob, `recording.${extension}`)
     const res = await fetch(ENDPOINTS.transcribe, {
       method: 'POST',
       headers: { Authorization: API_CONFIG.authToken },
