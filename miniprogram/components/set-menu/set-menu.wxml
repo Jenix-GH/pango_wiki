@@ -1,0 +1,28 @@
+<!-- 底部弹窗主体 -->
+<view class="modal-container {{showPopup ? 'show' : ''}}" catchtouchmove="true">
+    <view>
+        <view class="modal-header">
+            <iconfont wx:if="{{flagShowBackBtn}}" class="back" name="fanhui" size="25" bind:tap="gotoSetList" />
+            <iconfont wx:else="{{flagShowBackBtn}}" color="rgb(247, 247, 247)" class="back" name="fanhui" size="25" bind:tap="gotoSetList" />
+            <text class="title">{{title}}</text>
+            <iconfont class="close" name="x" size="25" bind:tap="hideSetPanel" />
+        </view>
+    </view>
+    <view class="subpage {{showSubPage=='set' ? 'subpage-active' : 'subpage-inactive'}}">
+        <set-list wx:if="{{showSubPage === 'set'}}" bind:gotoUserinfo="gotoUserinfo" bind:gotoDataManager="gotoDataManager" bind:gotoCompany="gotoCompany" bind:gotoContactUs="gotoContactUs"></set-list>
+    </view>
+    <view class="subpage {{showSubPage=='userinfo' ? 'subpage-active' : 'subpage-inactive'}}">
+        <set-userinfo wx:if="{{showSubPage === 'userinfo'}}"></set-userinfo>
+    </view>
+    <view class="subpage {{showSubPage=='dataManager' ? 'subpage-active' : 'subpage-inactive'}}">
+        <set-data-manager wx:if="{{showSubPage === 'dataManager'}}" bind:changeDataUseFlag="changeDataUseFlag" bind:delHisData="delHisData" bind:delHisData="delHisData"></set-data-manager>
+    </view>
+    <view class="subpage {{showSubPage=='company' ? 'subpage-active' : 'subpage-inactive'}}">
+        <set-company wx:if="{{showSubPage === 'company'}}"></set-company>
+    </view>
+    <view class="subpage {{showSubPage=='contactUs' ? 'subpage-active' : 'subpage-inactive'}}">
+        <set-contact-us wx:if="{{showSubPage === 'contactUs'}}"></set-contact-us>
+    </view>
+</view>
+<!-- 底部弹窗遮罩层 -->
+<view wx:if="{{showPopup}}" class="modal-mask" bind:tap="hideSetPanel"></view>

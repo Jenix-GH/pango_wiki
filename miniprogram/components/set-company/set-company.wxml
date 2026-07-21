@@ -1,0 +1,11 @@
+<scroll-view class="company" scroll-y>
+    <view class="company-container">
+        <view class="icontent">
+            深圳市紫光同创电子股份有限公司，专业从事可编程系统平台芯片及其配套EDA开发工具的研发与销售，致力于为客户提供完善的、具有自主知识产权的可编程逻辑器件平台和系统解决方案。公司是国家高新技术企业，拥有高中低端全系列产品，产品覆盖通信、工业控制、图像视频、消费电子等应用领域。
+        </view>
+        <view class="icontent" style="margin-top: 50rpx;">
+            紫光同创秉承“客户至上、奋斗为本、集成创新、至臻致远”核心价值观，立足中国大陆本土， 以全球化思维布局，总部设在深圳，拥有上海、北京、成都等研发中心。
+        </view>
+        <view class="icontent last-bottom">- 已到底部 -</view>
+    </view>
+</scroll-view>

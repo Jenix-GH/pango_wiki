@@ -1,0 +1,168 @@
+<!--自定义菜单-->
+<top-menu title="{{ pageTitle }}" iconName="{{pageLeftIconName}}" bind:openLeftPanel="showLeftPanel" bind:reloadSession="reloadSession" bind:openWiki="openWiki" />
+<!--左侧抽屉页面 -->
+<left-menu id="leftPanel" dataDayTitle="{{dataDayTitle}}" dataHisTitle="{{dataHisTitle}}" userInfo="{{userInfo}}" bind:openSetPanel="showSetPanel" bind:doSearchHisItem="doSearchHisItem" bind:refresh="handleRefresh" />
+<!--底部设置页面-->
+<set-menu id="setPanel" bind:delHisData="delHisData"></set-menu>
+<!--主页-->
+<view class="main-container" style="padding-bottom:{{keyboardPadding}}px">
+    <!-- <scroll-view class="scrollarea" scroll-y scroll-with-animation scroll-into-view="{{scrollToId}}"> -->
+    <scroll-view class="scrollarea" scroll-y scroll-into-view="{{scrollToId}}" scroll-top="{{scrollTop}}" bindscroll="onScroll">
+        <!--顶部的提示问题列表-->
+        <view wx:if="{{flagShowTip}}" class="tip-panel">
+            <view class="tip-title">很高兴遇见你，你可以这样问</view>
+            <view wx:for="{{tipData}}" wx:key="index">
+                <view class="tip-item" bind:tap="fastSearch" data-content="{{item.content}}">{{item.content}}</view>
+            </view>
+        </view>
+        <view wx:for="{{sessionList}}" wx:key="index">
+            <!--左侧内容-->
+            <view wx:if="{{item.flagAi === 1}}" class="main-session main-session-left">
+                <view class="main-session-icon">
+                    <view class="main-session-bg">
+                        <view class="logo"></view>
+                    </view>
+                    <view class="username">{{aiName}}</view>
+                </view>
+                <view class="show-answer">
+                    <view class="show-content">
+                        <mp-html content="{{item.content}}"  markdown latex highlight tag-style="{{tagStyle}}" />
+                        <view wx:if="{{item.reference && item.reference.total > 0}}" class="reference-panel">
+                            <view class="reference-title">参考资料 · {{item.reference.total}}篇</view>
+                            <block wx:for="{{item.reference.chunks}}" wx:for-item="ref" wx:key="reference_key">
+                                <view class="reference-card">
+                                    <view class="reference-card-header">
+                                        <view class="reference-name">{{ref.citation_label}} {{ref.display_name}}</view>
+                                    </view>
+                                    <view wx:if="{{ref.page_links && ref.page_links.length > 0}}" class="reference-pages">
+                                        <text class="reference-pages-label">引用页：</text>
+                                        <block wx:for="{{ref.page_links}}" wx:for-item="pl" wx:key="page_key">
+                                            <view
+                                                class="reference-page-link"
+                                                hover-class="reference-action-active"
+                                                catch:tap="openPageReference"
+                                                data-url="{{pl.document_page_url}}"
+                                                aria-role="button"
+                                                aria-label="查看第{{pl.page}}页"
+                                            >第{{pl.page}}页</view>
+                                        </block>
+                                    </view>
+                                    <view wx:elif="{{ref.pages && ref.pages.length > 0}}" class="reference-pages">
+                                        <text class="reference-pages-label">引用页：</text>
+                                        <block wx:for="{{ref.pages}}" wx:for-item="pg" wx:key="*this">
+                                            <text class="reference-page-num">第{{pg}}页</text>
+                                        </block>
+                                    </view>
+                                    <view wx:elif="{{ref.page}}" class="reference-pages">
+                                        <text class="reference-pages-label">引用页：</text>
+                                        <text class="reference-page-num">第{{ref.page}}页</text>
+                                    </view>
+                                </view>
+                            </block>
+                        </view>
+                    </view>
+                </view>
+                <view class="session-icon-time bottom-menu">
+                    <view style="padding-right: 20rpx;">{{item.time}}</view>
+                    <view class="bottom-menu-item" bind:tap="doCopy" data-contentData="{{item.contentData}}">
+                        <view class="fuzhi"></view>
+                    </view>
+                    <view class="bottom-menu-item" bind:tap="doEvaluate" data-evaluate="1" data-index="{{index}}" data-dotime="{{item.time}}">
+                        <view class="{{item.flagEvaluate==='1' ? 'zan1' : 'zan'}}"></view>
+                    </view>
+                    <view class="bottom-menu-item" bind:tap="doEvaluate" data-evaluate="-1" data-index="{{index}}" data-dotime="{{item.time}}">
+                        <view class="{{item.flagEvaluate==='-1'? 'cai1' : 'cai'}}"></view>
+                    </view>
+                </view>
+            </view>
+            <!--右侧内容-->
+            <view wx:if="{{item.flagAi === 0}}" class="main-session main-session-right">
+                <view class="main-session-content" bind:longpress="doCopyQuestion" data-content="{{item.content}}">
+                    <view wx:if="{{item.images && item.images.length > 0}}" class="chat-image-list">
+                        <image wx:for="{{item.images}}" wx:for-item="img" wx:for-index="imgIdx" wx:key="index" class="chat-image-thumb" src="data:{{img.mime_type}};base64,{{img.data_base64}}" mode="aspectFill" style="border-radius:16rpx;overflow:hidden" bind:tap="previewChatImage" data-images="{{item.images}}" data-index="{{imgIdx}}" />
+                    </view>
+                    <text wx:if="{{item.content}}">{{item.content}}</text>
+                </view>
+                <view class="session-icon-time">{{item.time}}</view>
+            </view>
+        </view>
+        <!--实时回答内容-->
+        <view wx:if="{{flagStart}}" class="main-session main-session-left">
+            <view class="main-session-icon">
+                <view class="main-session-bg">
+                    <view class="logo"></view>
+                </view>
+                <view class="username">{{aiName}}</view>
+            </view>
+            <view wx:if="{{flagShowWait}}" class="loading-container">
+                <block wx:for="{{dots}}" wx:key="index">
+                    <view class="dot" style="opacity: {{item.opacity}}; transform: scale({{item.scale}});">.</view>
+                </block>
+            </view>
+            <view wx:if="{{flagStart && currentStatusText}}" class="progress-panel">
+                <view class="progress-current">
+                    <text class="progress-emoji">{{currentStatusEmoji}}</text>
+                    <text class="progress-text">{{currentStatusText}}</text>
+                    <text class="progress-dots"><text class="dot1">.</text><text class="dot2">.</text><text class="dot3">.</text></text>
+                </view>
+                <view class="progress-shimmer"></view>
+            </view>
+            <view class="show-answer">
+                <view class="show-content">
+                    <mp-html content="{{streamContent}}" markdown latex highlight class="mp-html contenttow" id="markdownContent" tagStyle="{{tagStyle}}" />
+                </view>
+            </view>
+        </view>
+        <view id="bottomAnchor"></view> <!-- 底部锚点元素 -->
+    </scroll-view>
+
+    <!-- 底部输入组件 -->
+    <view class="input-wrapper">
+        <view hidden="{{!userScrolledUp}}" class="main-to-bottom" bind:tap="toBottom">
+            <iconfont name="xiala" size="25" />
+        </view>
+        <!-- 音波效果 -->
+        <view hidden="{{!flagLuyuning}}" class="yinbo">
+            <view class="shuohua_big"></view>
+            <!-- 波纹层 -->
+            <view class="ripple ripple-1"></view>
+            <view class="ripple ripple-2"></view>
+            <view class="ripple ripple-3"></view>
+        </view>
+        <view>
+            <!-- 测试版按钮 -->
+            <!-- <view class="function-type-group">
+                <view class="function-type-item {{isTestVersion == true ? 'choose-type-item' : ''}}" bind:tap="chooseType">测试版</view>
+            </view> -->
+            <!-- 输入行：图片按钮 + 文本框 + 语音按钮 + 发送按钮 -->
+            <view class="input-container">
+                <view wx:if="{{uploadImages.length < 3 && !flagLuyuning && !flagVoiceMode}}" class="image-upload-btn" bind:tap="chooseImage">
+                    <view class="image-icon"></view>
+                </view>
+                <view style="flex:1; min-width:0;" class="textarea-wrap" bindtouchend="stopRecord" bindtouchmove="cancelRecord">
+                    <view wx:if="{{uploadImages.length > 0 && !flagVoiceMode}}" class="image-preview-list">
+                        <view wx:for="{{uploadImages}}" wx:key="index" class="image-preview-item">
+                            <image class="image-preview-thumb" src="data:{{item.mime_type}};base64,{{item.data_base64}}" mode="aspectFill" style="border-radius:10rpx;overflow:hidden" />
+                            <view class="image-preview-remove" bind:tap="removeImage" data-index="{{index}}">×</view>
+                        </view>
+                    </view>
+                    <textarea hidden="{{flagLuyuning || flagVoiceMode}}" auto-height placeholder="{{inputPlaceholder}}" bindinput="doReady" confirm-type="send" disable-default-padding show-confirm-bar="{{false}}" bindconfirm="doSearch" cursor-spacing="{{0}}" adjust-position="{{false}}" value="{{questionContent}}" class="textarea" id="myInput" maxlength="-1" bindlongpress="startRecord" bindfocus="onInputFocus" bindblur="onInputBlur" />
+                    <view hidden="{{!flagLuyuning && !flagVoiceMode}}" class="talkView-active" bindtouchstart="startRecord">
+                        {{luyunTipText}}
+                    </view>
+                </view>
+                <view wx:if="{{flagStart === false && !flagLuyuning}}" class="voice-btn" bind:tap="toggleVoiceMode">
+                    <view class="voice-icon {{flagVoiceMode ? 'voice-icon-active' : ''}}"></view>
+                </view>
+                <view wx:if="{{flagStart === false}}" class="send-btn {{flagDoReady?'send-btn-ready':''}}" bind:tap="doSearch">
+                    <view class="send"></view>
+                </view>
+                <view wx:if="{{flagStart === true}}" class="send-btn send-btn-stop" bind:tap="stopStreaming">
+                    <view class="stop"></view>
+                </view>
+            </view>
+        </view>
+        <!-- 提示信息 -->
+        <view class="question-bottom-text">内容由AI生成，仅供参考</view>
+    </view>
+</view>

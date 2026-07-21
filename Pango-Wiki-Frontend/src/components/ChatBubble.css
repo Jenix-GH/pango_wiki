@@ -1,0 +1,213 @@
+.bubble {
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+
+.bubble-user {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.bubble-user-content {
+  max-width: 75%;
+  background: var(--bg-primary);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 16px 16px 4px 16px;
+  cursor: context-menu;
+}
+
+.bubble-user-content p {
+  font-size: 15px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.bubble-time {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-top: 6px;
+}
+
+.bubble-ai-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.bubble-ai-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--bg-primary), #d42e6a);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.bubble-ai-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-mark);
+}
+
+.bubble-ai-content {
+  max-width: 85%;
+  background: var(--bg-white);
+  padding: 16px;
+  border-radius: 4px 16px 16px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.bubble-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  padding-left: 36px;
+}
+
+.bubble-action-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-mark);
+  transition: all 0.15s;
+}
+
+.bubble-action-btn:hover {
+  background: var(--bg-light);
+  color: var(--text-dark);
+}
+
+.bubble-action-btn.active-like {
+  color: var(--bg-primary);
+}
+
+.bubble-action-btn.active-dislike {
+  color: var(--bg-primary);
+}
+
+.bubble-images {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.bubble-image {
+  height: 72px;
+  width: auto;
+  max-width: 144px;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* Reference panel */
+.reference-panel {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f2;
+}
+
+.reference-panel .reference-title {
+  font-size: 13px;
+  color: #374151;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.reference-card {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.reference-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reference-card .reference-name {
+  font-size: 13px;
+  color: #111827;
+  line-height: 1.5;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+}
+
+.citation-label {
+  font-weight: 600;
+  color: var(--bg-primary);
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.reference-full {
+  font-size: 12px;
+  color: var(--bg-primary);
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reference-full:hover {
+  background: var(--bg-primary-light);
+}
+
+.reference-pages {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.reference-pages-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.reference-page-link {
+  font-size: 12px;
+  color: var(--bg-primary);
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+.reference-page-link:hover {
+  background: var(--bg-primary-light);
+}
+
+.reference-page-link.static {
+  color: #6b7280;
+  cursor: default;
+}
+
+.reference-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}

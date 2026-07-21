@@ -1,0 +1,17 @@
+<!--components/data-manager/data-manager.wxml-->
+<view class="dataManager">
+    <view class="sub">
+        <view class="subItem">
+            <view class="item leftItem">数据用于体验优化</view>
+            <view class="item rightItem">
+                <switch checked="{{flagDataUse}}" bindchange="changeDataUseFlag" />
+            </view>
+        </view>
+        <view class="subMark">允许我们将您的对话内容用于大模型的优化训练，我们保障您的数据隐私安全。</view>
+    </view>
+
+    <view class="sub">
+        <view class="subItem redItem" bind:tap="delHisData">删除所有历史对话</view>
+        <view class="subMark"></view>
+    </view>
+</view>

@@ -1,0 +1,25 @@
+<view class="userForm">
+    <view class="formItem">
+        <label class="ilabel">用户名</label>
+        <input type="nickname" placeholder="请输入用户名" model:value="{{nickName}}" />
+    </view>
+    <view class="formItem">
+        <label class="ilabel">手机号</label>
+        <input type="nickname" disabled model:value="{{wxCode}}" />
+    </view>
+    <view class="formItem">
+        <label class="ilabel">邮箱地址</label>
+        <input type="text" placeholder="请输入邮箱地址" model:value="{{mailAddress}}" />
+    </view>
+    <view class="formItem">
+        <label class="ilabel">公司</label>
+        <input type="text" placeholder="请输入公司名称" model:value="{{companyName}}" />
+    </view>
+    <view class="formItem">
+        <label class="ilabel">职位</label>
+        <input type="text" placeholder="请输入职位" model:value="{{jobName}}" />
+    </view>
+    <view class="formButton">
+        <button class="ibtn" bind:tap="doSave" >保存信息</button>
+    </view>
+</view>

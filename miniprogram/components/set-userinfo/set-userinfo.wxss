@@ -1,0 +1,31 @@
+/* user-info子组件样式 */
+.userForm {
+    background-color: var(--bg-white);
+    height: 100%;
+    margin-top: 20rpx;
+}
+
+.userForm .formItem {
+    display: flex;
+    padding: 30rpx;
+    border-bottom: 1px solid var(--bg-light);
+}
+
+.ilabel {
+    width: 170rpx;
+    height: 40rpx;
+}
+
+.userForm .formButton {
+    padding: 40rpx;
+}
+
+.userForm .formButton .ibtn {
+    width: 70%;
+    padding: 30rpx;
+    border-radius: 30rpx;
+    transition: opacity 0.3s ease-in-out;
+    width: 80%;
+    background-color: var(--bg-primary);
+    color: white;
+}

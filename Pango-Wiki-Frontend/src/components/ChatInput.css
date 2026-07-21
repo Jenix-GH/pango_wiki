@@ -1,0 +1,121 @@
+.chat-input-area {
+  background: var(--bg-white);
+  border-top: 1px solid var(--border-color);
+  padding: 10px 16px;
+  flex-shrink: 0;
+}
+
+.image-preview-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.image-preview-item {
+  position: relative;
+  height: 64px;
+  max-width: 120px;
+}
+
+.image-preview-open {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.image-preview-item img {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: 120px;
+  object-fit: contain;
+}
+
+.image-remove-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border-radius: 50%;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.chat-input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.chat-textarea {
+  flex: 1;
+  min-height: 42px;
+  max-height: 120px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  line-height: 1.5;
+  outline: none;
+  resize: none;
+  background: var(--bg-light);
+  transition: border-color 0.2s;
+}
+
+.chat-textarea:focus {
+  border-color: var(--bg-primary);
+}
+
+.chat-textarea:disabled {
+  opacity: 0.7;
+}
+
+.chat-input-actions {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+  padding-bottom: 2px;
+}
+
+.input-action-btn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-mark);
+  transition: all 0.15s;
+}
+
+.input-action-btn:hover:not(:disabled) {
+  background: var(--bg-light);
+  color: var(--text-dark);
+}
+
+.input-action-btn.ready {
+  color: var(--bg-primary);
+  opacity: 1;
+}
+
+.input-action-btn.stop-btn {
+  color: #e74c3c;
+}
+
+.input-action-btn.stop-btn:hover {
+  background: rgba(231, 76, 60, 0.1);
+  color: #e74c3c;
+}
+
+.input-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

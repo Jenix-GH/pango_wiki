@@ -1,0 +1,15 @@
+<web-view
+    wx:if="{{viewerUrl}}"
+    src="{{viewerUrl}}"
+    bindload="handleViewerLoad"
+    binderror="handleViewerError"
+/>
+
+<view wx:else class="viewer-error">
+    <view class="viewer-error-title">文档未能打开</view>
+    <view class="viewer-error-message">{{errorMessage}}</view>
+    <view class="viewer-error-actions">
+        <button wx:if="{{lastViewerUrl}}" class="viewer-button viewer-button-primary" bind:tap="retry">重试</button>
+        <button class="viewer-button" bind:tap="goBack">返回</button>
+    </view>
+</view>

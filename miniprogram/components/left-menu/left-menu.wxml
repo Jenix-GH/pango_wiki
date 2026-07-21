@@ -1,0 +1,69 @@
+<!--左侧抽屉面板 -->
+<view class="leftPanel" animation="{{panelAnimation}}" catch:touchmove="preventTouchMove">
+    <view hidden="{{flagLogin}}" class="left-panel-container" style="padding-top: 50%;">
+        <button wx:if="{{!flagUserInfo && !flagUserPhone}}" bind:tap="getUserInfo" class="btn-auth fade-button">
+            授权获取用户信息
+        </button>
+        <button wx:if="{{flagUserInfo && !flagUserPhone}}" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" class="btn-auth fade-button">
+            授权获取微信号
+        </button>
+
+        <!-- 自定义隐私协议弹窗 -->
+        <user-protocol id="userProtocol"></user-protocol>
+        <!-- 自定义隐私协议弹窗 -->
+        <view hidden="{{!showPrivacyDialog}}" class="privacy-mask">
+            <view class="privacy-dialog">
+                <view class="privacy-title">免责与隐私保护声明</view>
+                <view class="privacy-content">
+                    <view>
+                        AI回答内容由大模型自动生成，仅供参考。回答内容可能存在误差或不完整，请勿完全依赖，重要决策前请务必核实。 使用本服务即表示您理解并同意自行承担相关风险。
+                    </view>
+                    <view>
+                        请阅读并同意<text class="privacy-link" bind:tap="openPrivacyContract">《免责与隐私保护条款》</text>以继续 ：
+                    </view>
+
+                </view>
+                <view class="privacy-buttons">
+                    <button class="privacy-button" style="border: 1px solid var(--text-mark); color: var(--text-mark); margin-right: 30rpx;" bindtap="onPrivacyRefuse">拒绝</button>
+                    <button class="privacy-button btn-primary" bindtap="onPrivacyAgree">同意</button>
+                </view>
+            </view>
+        </view>
+    </view>
+    <view hidden="{{!flagLogin}}" class="left-panel-container">
+        <scroll-view class="left-panel-his" scroll-y="true">
+            <view class="left-panel-nohis" wx:if="{{dataHisTitle.length === 0 && dataDayTitle.length ===0}}">暂无对话</view>
+            <view wx:else>
+                <!--显示今天的-->
+                <view hidden="{{dataDayTitle.length === 0}}" class="data-group">
+                    <view class="left-panel-title">今天</view>
+                    <view wx:for="{{dataDayTitle}}" wx:key="index">
+                        <view bind:longpress="doCopy" bind:tap="doSearchHis" data-id="{{item.id}}" data-content="{{item.question}}" class="data-item {{activeId === item.id ? 'active-style' : ''}}">
+                            {{item.question}}
+                        </view>
+                    </view>
+                </view>
+                <!--显示除今天之外的历史-->
+                <view hidden="{{dataHisTitle.length === 0}}" class="data-group">
+                    <view class="left-panel-title">7天内</view>
+                    <view wx:for="{{dataHisTitle}}" wx:key="index">
+                        <view bind:longpress="doCopy" bind:tap="doSearchHis" data-id="{{item.id}}" data-content="{{item.question}}" class="data-item {{activeId === item.id ? 'active-style' : ''}}">
+                            {{item.question}}
+                        </view>
+                    </view>
+                </view>
+            </view>
+        </scroll-view>
+        <view class="left-panel-set" bind:tap="goto_set_page">
+            <view class="userImgs">
+                <image class="imgs" src="{{avatarUrl}}" />
+            </view>
+            <view class="userName">{{nickName}}</view>
+            <view class="setImgs">
+                <iconfont name="shezhi" size="20" color="gray" />
+            </view>
+        </view>
+    </view>
+</view>
+<!--左侧抽屉遮罩层 -->
+<view wx:if="{{flag_showLeftPanel}}" class="leftMask" bind:tap="hideLeftPanel" animation="{{maskAnimation}}" catch:touchmove="preventTouchMove"></view>

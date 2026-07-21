@@ -1,0 +1,5 @@
+{
+  "usingComponents": {
+    "user-protocol" : "/components/user-protocol/user-protocol"
+  }
+}

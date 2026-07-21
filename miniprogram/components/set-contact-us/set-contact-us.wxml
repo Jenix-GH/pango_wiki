@@ -1,0 +1,15 @@
+<scroll-view class="company" scroll-y>
+    <view class="company-container">
+        <view wx:for="{{companyContactList}}" wx:key="id">
+            <view class="blockClass">
+                <view class="title">{{item.title}}</view>
+                <view class="content">电话：{{item.tel}}</view>
+                <view class="content">传真：{{item.fax}}</view>
+                <view class="content">邮编：{{item.code}}</view>
+                <view class="content">邮箱：{{item.mail}}</view>
+                <view class="content">地址：{{item.address}}</view>
+            </view>
+        </view>
+        <view class="last-bottom">- 已到底部 -</view>
+    </view>
+</scroll-view>

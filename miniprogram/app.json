@@ -1,0 +1,22 @@
+{
+    "pages": [
+        "pages/index/index",
+        "pages/main/main",
+        "pages/wiki/wiki",
+        "pages/reference-viewer/reference-viewer"
+    ],
+    "window": {
+        "navigationBarTextStyle": "black",
+        "navigationBarTitleText": "PangoAI",
+        "navigationBarBackgroundColor": "#ffffff",
+        "navigationStyle": "custom"
+    },
+    "disableScroll": true,
+    "style": "v2",
+    "componentFramework": "glass-easel",
+    "lazyCodeLoading": "requiredComponents",
+    "usingComponents": {
+        "iconfont": "/iconfont/iconfont"
+    },
+    "requiredBackgroundModes": ["audio"]
+}

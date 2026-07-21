@@ -1,0 +1,71 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--bg-white);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.topbar-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-dark);
+  transition: background 0.2s;
+}
+
+.topbar-btn:hover {
+  background: var(--bg-light);
+}
+
+.topbar-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-dark);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topbar-wiki-btn {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--bg-primary);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.topbar-wiki-btn:hover {
+  background: var(--bg-primary-light);
+}
+
+@media (max-width: 620px) {
+  .topbar-wiki-btn span {
+    display: none;
+  }
+
+  .topbar-wiki-btn {
+    width: 34px;
+    justify-content: center;
+    padding: 0;
+  }
+}

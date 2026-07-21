@@ -1,0 +1,8 @@
+{
+  "usingComponents": {
+      "top-menu" : "/components/top-menu/top-menu",
+      "left-menu" : "/components/left-menu/left-menu",
+      "set-menu" : "/components/set-menu/set-menu",
+      "mp-html": "/components/mp-html/index"
+  }
+}

@@ -1,0 +1,36 @@
+<view class="setMenu">
+    <view class="setMenuBlock">
+        <view class="mark">账户</view>
+        <view class="setMenuItem">
+            <view class="item item1" bind:tap="gotoUserinfo">
+                <view>个人信息</view>
+                <view>
+                    <iconfont name="user" size="20" color="gray" />
+                </view>
+            </view>
+            <view class="item item1" bind:tap="gotoDataManager">
+                <view>数据管理</view>
+                <view>
+                    <iconfont name="shujuguanli" size="20" color="gray" />
+                </view>
+            </view>
+        </view>
+    </view>
+    <view class="setMenuBlock">
+        <view class="mark">关于</view>
+        <view class="setMenuItem">
+            <view class="item item1" bind:tap="gotoCompany">
+                <view>紫光同创</view>
+                <view>
+                    <iconfont name="file" size="20" color="gray" />
+                </view>
+            </view>
+            <view class="item item1" bind:tap="gotoContactUs">
+                <view>联系我们</view>
+                <view>
+                    <iconfont name="lianjie" size="20" color="gray" />
+                </view>
+            </view>
+        </view>
+    </view>
+</view>

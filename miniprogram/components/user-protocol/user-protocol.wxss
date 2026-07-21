@@ -1,0 +1,70 @@
+/* 底部菜单遮罩层 */
+.modal-mask {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 9998;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+/* 弹窗容器 */
+.modal-container {
+    position: fixed;
+    width: 100%;
+    height: calc(100vh - 95rpx);
+    bottom: -100vh;
+    /* 初始隐藏 */
+    transition: transform 0.4s ease;
+    background-color: var(--bg-light);
+    z-index: 9999;
+    border-radius: 20rpx;
+}
+
+/* 显示状态 */
+.modal-container.show {
+    transform: translateY(-100%);
+}
+
+.btn-primary {
+    background-color: var(--bg-primary);
+    color: white;
+}
+
+.protocol-content {
+    flex: 1;
+    width: 100%;
+    overflow-y: hidden;
+    background-color: var(--bg-light);
+    height: calc(100vh - 480rpx);
+    color: var(--text-dark);
+    margin-bottom: 30rpx;
+    line-height: 1.7;
+    font-size: 95%;
+}
+
+.protocol-text {
+    margin: 0;
+    width: 100%;
+    text-indent: 2em;
+    padding-left: 50rpx;
+    padding-right: 50rpx;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.protocol-title {
+    text-align: center;
+    font-weight: bold;
+    color: var(--text-mark);
+    padding: 30rpx;
+}
+
+.last-bottom {
+    width: 100%;
+    margin-top: 50rpx;
+    font-size: 90%;
+    color: var(--text-light);
+    text-align: center;
+}

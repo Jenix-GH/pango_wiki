@@ -1,0 +1,157 @@
+
+.leftMask {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    z-index: 98;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+}
+
+.leftPanel {
+    position: fixed;
+    width: 75%;
+    height: 100%;
+    left: -75%;
+    background: white;
+    z-index: 99;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+}
+
+.left-panel-container {
+    padding: 25rpx;
+}
+
+.left-panel-title {
+    color: var(--text-mark);
+    font-size: 80%;
+    padding-bottom: 10rpx;
+    padding-top: 30rpx;
+}
+
+.left-panel-nohis {
+    text-align: center;
+    padding: 100rpx;
+    font-weight: bold;
+}
+
+.left-panel-his {
+    height: calc(100vh - 350rpx);
+    padding-top: 20rpx 20rpx 0 20rpx;
+    overflow-y: auto;
+    /* 垂直滚动 */
+    width: 100%;
+}
+
+.data-group {
+    font-size: 90%;
+}
+
+.data-group-text {
+    font-size: 85%;
+}
+
+.data-item {
+    font-size: 95%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-dark);
+    transition: height 0.2s ease;
+    padding: 20rpx;
+    border-left: 4rpx solid white;
+}
+
+.data-item.active-style {
+    background-color: var(--bg-light);
+    border-left: 4rpx solid var(--bg-primary);
+    font-size: 95%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-dark);
+    padding: 20rpx;
+}
+
+.left-panel-set{
+    display: flex;
+    padding: 25rpx;
+}
+
+.left-panel-set .userImgs .imgs {
+    height: 70rpx;
+    width: 70rpx;
+    border-radius: 50%;
+}
+
+.left-panel-set .userName {
+    height: 70rpx;
+    line-height: 70rpx;
+    padding-left: 30rpx;
+    padding-right: 30rpx;
+    width: 70%;
+    font-size: 90%;
+    color: var(--text-dark);
+    font-weight: bold;
+}
+
+.left-panel-set .setImgs {
+    width: 60rpx;
+    height: 60rpx;
+    padding: 20rpx;
+}
+
+.btn-primary {
+    background-color: var(--bg-primary);
+    color: white;
+}
+
+.privacy-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.privacy-dialog {
+    width: 80%;
+    height: 40%;
+    background: white;
+    border-radius: 20rpx;
+    padding: 30rpx;
+    box-sizing: border-box;
+    color: var(--text-dark);
+}
+
+.privacy-content {
+    font-size: 28rpx;
+    line-height: 2;
+}
+
+.privacy-content view {
+    text-indent: 2em;
+}
+
+.privacy-link {
+    color: var(--bg-primary);
+}
+
+.privacy-buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 30rpx;
+}
+.privacy-title{
+    text-align: center; padding: 30rpx; font-weight: bold;
+}
+
+.privacy-button {
+    flex: 1;
+    margin: 0 10rpx;
+}

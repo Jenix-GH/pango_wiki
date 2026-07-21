@@ -1,0 +1,28 @@
+
+/* set子组件样式 */
+.setMenu .setMenuBlock {
+    padding: 30rpx;
+}
+
+.setMenu .mark {
+    padding: 20rpx;
+    font-size: 80%;
+    color: var(--text-light);
+}
+
+.setMenu .setMenuItem {
+    background-color: var(--bg-white);
+    border-radius: 20rpx;
+}
+
+.setMenu .item {
+    padding: 30rpx;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 95%;
+}
+
+.setMenu .item1 {
+    border: 1px solid var(--bg-light);
+}

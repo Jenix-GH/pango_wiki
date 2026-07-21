@@ -1,0 +1,76 @@
+/* 底部菜单遮罩层 */
+.modal-mask {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 998;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+/* 弹窗容器 */
+.modal-container {
+    position: fixed;
+    width: 100%;
+    height: calc(100vh - 95rpx);
+    bottom: -100vh;
+    /* 初始隐藏 */
+    transition: transform 0.4s ease;
+    background-color: var(--bg-light);
+    z-index: 999;
+    border-radius: 20rpx;
+}
+
+/* 显示状态 */
+.modal-container.show {
+    transform: translateY(-100%);
+}
+
+/* 设置子页面的标题栏样式 */
+.modal-header {
+    padding: 15rpx;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header .title {
+    font-size: 110%;
+    font-weight: bold;
+    color: var(--bg-primary);
+    width: 100%;
+    text-align: center;
+    padding: 10rpx;
+}
+
+.modal-header .backTitle {
+    font-size: 110%;
+    font-weight: bold;
+    color: var(--bg-primary);
+    width: 100%;
+    text-align: center;
+    padding: 10rpx;
+}
+
+.modal-header .close,
+.back {
+    position: relative;
+    padding: 20rpx 40rpx 20rpx 40rpx;
+}
+
+/* 子页面切换动画 */
+.subpage {
+    position: absolute;
+    width: 100%;
+    transition: all 0.35s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+.subpage-active {
+    opacity: 1;
+}
+
+/* 显示状态 */
+.subpage-inactive {
+    opacity: 0;
+}

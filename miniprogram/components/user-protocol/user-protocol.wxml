@@ -1,0 +1,16 @@
+<view class="modal-container {{showProtocol ? 'show' : ''}}" catchtouchmove="true">
+    <view class="protocol-title">免责与隐私保护条款</view>
+    <scroll-view scroll-y class="protocol-content">
+        <view class="protocol-text">
+            AI回答内容由大模型自动生成，仅供参考。回答内容可能存在误差或不完整，请勿完全依赖，重要决策前请务必核实。 使用本服务即表示您理解并同意自行承担相关风险。
+        </view>
+        <view class="last-bottom">- 已到底部 -</view>
+    </scroll-view>
+    <view>
+        <button class="btn-primary" bind:tap="hidePanel">
+            我已阅读
+        </button>
+    </view>
+</view>
+<!-- 底部弹窗遮罩层 -->
+<view wx:if="{{showProtocol}}" class="modal-mask"></view>

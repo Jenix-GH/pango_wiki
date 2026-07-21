@@ -1,0 +1,57 @@
+page {
+  min-height: 100%;
+  background: #f7f8fa;
+}
+
+.viewer-error {
+  min-height: 70vh;
+  padding: 48rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.viewer-error-title {
+  color: #111827;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.viewer-error-message {
+  margin-top: 16rpx;
+  color: #6b7280;
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+
+.viewer-error-actions {
+  margin-top: 32rpx;
+  display: flex;
+  gap: 16rpx;
+}
+
+.viewer-button {
+  min-width: 160rpx;
+  height: 72rpx;
+  margin: 0;
+  padding: 0 28rpx;
+  border: 1px solid #d1d5db;
+  border-radius: 8rpx;
+  background: #ffffff;
+  color: #374151;
+  font-size: 26rpx;
+  line-height: 70rpx;
+}
+
+.viewer-button::after {
+  border: 0;
+}
+
+.viewer-button-primary {
+  border-color: #a60b78;
+  background: #a60b78;
+  color: #ffffff;
+}

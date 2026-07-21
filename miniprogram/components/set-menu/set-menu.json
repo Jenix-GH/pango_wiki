@@ -1,0 +1,10 @@
+{
+    "component": true,
+    "usingComponents": {
+        "set-list": "/components/set-list/set-list",
+        "set-userinfo": "/components/set-userinfo/set-userinfo",
+        "set-data-manager": "/components/set-data-manager/set-data-manager",
+        "set-company": "/components/set-company/set-company",
+        "set-contact-us": "/components/set-contact-us/set-contact-us"
+    }
+}

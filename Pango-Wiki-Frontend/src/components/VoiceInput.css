@@ -1,0 +1,78 @@
+.voice-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+}
+
+.voice-processing {
+  padding: 14px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-mark);
+}
+
+.voice-error {
+  font-size: 13px;
+  color: #e74c3c;
+  margin-bottom: 4px;
+}
+
+.voice-btn {
+  position: relative;
+  flex: 1;
+  height: 44px;
+  background: var(--bg-light);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  color: var(--text-dark);
+  cursor: pointer;
+  transition: all 0.15s;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.voice-btn.recording {
+  background: var(--bg-primary);
+  color: white;
+  border-color: var(--bg-primary);
+}
+
+.voice-ripple {
+  display: none;
+  position: absolute;
+  inset: -4px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--bg-primary);
+  animation: ripple 1s ease-out infinite;
+}
+
+.voice-btn.recording .voice-ripple {
+  display: block;
+}
+
+@keyframes ripple {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.04); opacity: 0; }
+}
+
+.voice-cancel-btn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-mark);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.voice-cancel-btn:hover {
+  background: var(--bg-light);
+  color: var(--text-dark);
+}
