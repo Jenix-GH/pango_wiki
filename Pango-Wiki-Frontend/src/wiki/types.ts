@@ -20,6 +20,7 @@ export interface WikiDocument {
   source_status_code?: 'ready' | 'processing' | 'unparsed' | 'failed' | string
   viewer_url: string
   document_url: string
+  download_url?: string
   directory_keys?: string[]
   source_type?: 'ragflow' | 'synology' | string
   action_type?: 'read' | 'download'

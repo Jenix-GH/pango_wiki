@@ -223,6 +223,19 @@ export default function WikiPage() {
     }
   }, [miniProgramClient, navigate])
 
+  const downloadDocument = useCallback((document: WikiDocument) => {
+    setActionError('')
+    if (document.action_disabled) {
+      setActionError(document.source_status || '该文件当前不可用，请刷新目录后重试。')
+      return
+    }
+    const downloadUrl = document.download_url
+      || (document.action_type === 'download' ? document.viewer_url : '')
+    if (!downloadUrl || !openReferenceUrl(downloadUrl)) {
+      setActionError('文档下载链接无效，请稍后重试。')
+    }
+  }, [])
+
   const toggleHistory = useCallback((groupId: string) => {
     setHistoryGroups((current) => {
       const next = new Set(current)
@@ -447,6 +460,7 @@ export default function WikiPage() {
               totalPages={totalPages}
               totalCount={visibleGroups.length}
               onOpen={openDocument}
+              onDownload={downloadDocument}
               onToggleExpanded={toggleExpanded}
               onToggleHistory={toggleHistory}
               onPageChange={setPage}

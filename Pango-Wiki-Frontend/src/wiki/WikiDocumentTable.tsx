@@ -13,6 +13,7 @@ interface WikiDocumentTableProps {
   totalPages: number
   totalCount: number
   onOpen: (document: WikiDocument) => void
+  onDownload: (document: WikiDocument) => void
   onToggleExpanded: (groupId: string) => void
   onToggleHistory: (groupId: string) => void
   onPageChange: (page: number) => void
@@ -28,6 +29,7 @@ export default function WikiDocumentTable({
   totalPages,
   totalCount,
   onOpen,
+  onDownload,
   onToggleExpanded,
   onToggleHistory,
   onPageChange,
@@ -53,6 +55,8 @@ export default function WikiDocumentTable({
             const actionLabel = group.current.action_label
               || (group.current.action_type === 'download' ? '下载' : '在线阅读')
             const ActionIcon = group.current.action_type === 'download' ? DownloadIcon : BookIcon
+            const downloadOnly = group.current.action_type === 'download'
+            const canDownload = Boolean(group.current.download_url)
             return (
               <Fragment key={group.id}>
                 <tr className={expanded || historyVisible ? 'is-expanded' : ''}>
@@ -75,12 +79,23 @@ export default function WikiDocumentTable({
                     <div className="wiki-row-actions">
                       <button
                         type="button"
-                        onClick={() => onOpen(group.current)}
+                        onClick={() => downloadOnly ? onDownload(group.current) : onOpen(group.current)}
                         disabled={group.current.action_disabled}
                         title={group.current.action_disabled ? group.current.source_status : actionLabel}
                       >
                         <ActionIcon size={17} />{actionLabel}
                       </button>
+                      {!downloadOnly && canDownload ? (
+                        <button
+                          type="button"
+                          className="wiki-download-action"
+                          onClick={() => onDownload(group.current)}
+                          disabled={group.current.action_disabled}
+                          title={group.current.action_disabled ? group.current.source_status : '下载'}
+                        >
+                          <DownloadIcon size={17} />下载
+                        </button>
+                      ) : null}
                       {group.history.length > 0 ? (
                         <button type="button" className="wiki-history-toggle" onClick={() => onToggleHistory(group.id)}>
                           历史版本 {group.history.length}<ChevronIcon expanded={historyVisible} />
@@ -114,15 +129,28 @@ export default function WikiDocumentTable({
                           </div>
                           <div><dt>知识片段</dt><dd>{group.current.chunk_count || '—'}</dd></div>
                         </dl>
-                        <button
-                          type="button"
-                          className="wiki-primary-action"
-                          onClick={() => onOpen(group.current)}
-                          disabled={group.current.action_disabled}
-                          title={group.current.action_disabled ? group.current.source_status : actionLabel}
-                        >
-                          <ActionIcon size={17} />{actionLabel}
-                        </button>
+                        <div className="wiki-detail-actions">
+                          <button
+                            type="button"
+                            className="wiki-primary-action"
+                            onClick={() => downloadOnly ? onDownload(group.current) : onOpen(group.current)}
+                            disabled={group.current.action_disabled}
+                            title={group.current.action_disabled ? group.current.source_status : actionLabel}
+                          >
+                            <ActionIcon size={17} />{actionLabel}
+                          </button>
+                          {!downloadOnly && canDownload ? (
+                            <button
+                              type="button"
+                              className="wiki-primary-action wiki-download-action"
+                              onClick={() => onDownload(group.current)}
+                              disabled={group.current.action_disabled}
+                              title={group.current.action_disabled ? group.current.source_status : '下载'}
+                            >
+                              <DownloadIcon size={17} />下载
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -131,6 +159,8 @@ export default function WikiDocumentTable({
                   const historyActionLabel = document.action_label
                     || (document.action_type === 'download' ? '下载' : '阅读此版本')
                   const HistoryActionIcon = document.action_type === 'download' ? DownloadIcon : BookIcon
+                  const historyDownloadOnly = document.action_type === 'download'
+                  const historyCanDownload = Boolean(document.download_url)
                   return (
                     <tr key={document.key} className="wiki-history-row">
                       <td className="wiki-cell-code" data-label={firstColumnLabel}><span className="wiki-history-label">历史</span>{documentLabel(document)}</td>
@@ -138,15 +168,28 @@ export default function WikiDocumentTable({
                       <td className="wiki-cell-version" data-label="版本">{versionLabel(document)}</td>
                       <td className="wiki-cell-kind" data-label="文档类型"><span className={`wiki-kind wiki-kind-${document.kind.toLowerCase()}`}>{document.kind}</span></td>
                       <td className="wiki-cell-actions" data-label="操作">
-                        <button
-                          type="button"
-                          className="wiki-history-read"
-                          onClick={() => onOpen(document)}
-                          disabled={document.action_disabled}
-                          title={document.action_disabled ? document.source_status : historyActionLabel}
-                        >
-                          <HistoryActionIcon size={16} />{historyActionLabel}
-                        </button>
+                        <div className="wiki-history-actions">
+                          <button
+                            type="button"
+                            className="wiki-history-read"
+                            onClick={() => historyDownloadOnly ? onDownload(document) : onOpen(document)}
+                            disabled={document.action_disabled}
+                            title={document.action_disabled ? document.source_status : historyActionLabel}
+                          >
+                            <HistoryActionIcon size={16} />{historyActionLabel}
+                          </button>
+                          {!historyDownloadOnly && historyCanDownload ? (
+                            <button
+                              type="button"
+                              className="wiki-download-action"
+                              onClick={() => onDownload(document)}
+                              disabled={document.action_disabled}
+                              title={document.action_disabled ? document.source_status : '下载此版本'}
+                            >
+                              <DownloadIcon size={16} />下载
+                            </button>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   )

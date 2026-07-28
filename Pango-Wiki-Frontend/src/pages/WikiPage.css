@@ -724,8 +724,15 @@
   gap: 10px;
 }
 
+.wiki-history-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .wiki-row-actions > button,
-.wiki-history-read {
+.wiki-history-actions > button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -735,8 +742,13 @@
 }
 
 .wiki-row-actions > button:hover,
-.wiki-history-read:hover {
+.wiki-history-actions > button:hover {
   color: var(--wiki-accent);
+}
+
+.wiki-row-actions .wiki-download-action,
+.wiki-history-actions .wiki-download-action {
+  color: #536274;
 }
 
 .wiki-history-toggle svg {
@@ -791,12 +803,18 @@
   margin-right: 6px;
 }
 
+.wiki-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
 .wiki-primary-action {
   height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 18px;
   border: 1px solid var(--wiki-accent);
   border-radius: 5px;
   padding: 0 15px;
@@ -809,6 +827,17 @@
 .wiki-primary-action:hover {
   color: #ffffff;
   background: var(--wiki-accent);
+}
+
+.wiki-primary-action.wiki-download-action {
+  border-color: #bac3ce;
+  color: #41566d;
+}
+
+.wiki-primary-action.wiki-download-action:hover {
+  border-color: #41566d;
+  color: #ffffff;
+  background: #41566d;
 }
 
 .wiki-history-row {
@@ -1346,7 +1375,7 @@
   }
 
   .wiki-row-actions > button,
-  .wiki-history-read {
+  .wiki-history-actions > button {
     min-height: 34px;
     padding: 0 9px;
     border: 1px solid #d4d8dd;
@@ -1368,6 +1397,12 @@
 
   .wiki-history-toggle {
     max-width: none;
+  }
+
+  .wiki-history-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 7px;
   }
 
   .wiki-detail-row {
@@ -1399,10 +1434,16 @@
     gap: 8px;
   }
 
+  .wiki-detail-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    margin-top: 15px;
+  }
+
   .wiki-primary-action {
     width: 100%;
     justify-content: center;
-    margin-top: 15px;
   }
 
   .wiki-history-row {
