@@ -3,6 +3,10 @@ import type { ReferenceChunk } from '../api/types'
 const ALLOWED_REFERENCE_PATHS = new Set([
   '/references/viewer',
   '/references/document',
+  '/references/download',
+  '/references/cloud/viewer',
+  '/references/cloud/document',
+  '/references/cloud/download',
 ])
 
 function referenceBaseUrl(): URL {

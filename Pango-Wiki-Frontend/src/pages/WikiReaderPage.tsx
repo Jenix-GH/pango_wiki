@@ -5,6 +5,7 @@ import './WikiReaderPage.css'
 
 const PINCH_IN_THRESHOLD = 1.12
 const PINCH_OUT_THRESHOLD = 0.9
+const READER_ASSET_VERSION = '20260728-reader-shell1'
 
 function loadScript(src: string): Promise<HTMLScriptElement> {
   return new Promise((resolve, reject) => {
@@ -55,12 +56,12 @@ export default function WikiReaderPage() {
 
         const stylesheet = document.createElement('link')
         stylesheet.rel = 'stylesheet'
-        stylesheet.href = '/references/assets/viewer.css?v=20260720-mobile1'
+        stylesheet.href = `/references/assets/viewer.css?v=${READER_ASSET_VERSION}`
         stylesheet.dataset.wikiReaderAsset = 'true'
         document.head.appendChild(stylesheet)
 
         await loadScript('/references/assets/pdf.min.js')
-        await loadScript('/references/assets/viewer.js?v=20260720-mobile1')
+        await loadScript(`/references/assets/viewer.js?v=${READER_ASSET_VERSION}`)
         if (controller.signal.aborted) return
 
         const surface = document.getElementById('documentSurface')

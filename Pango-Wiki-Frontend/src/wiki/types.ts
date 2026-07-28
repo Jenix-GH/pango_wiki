@@ -20,7 +20,12 @@ export interface WikiDocument {
   source_status_code?: 'ready' | 'processing' | 'unparsed' | 'failed' | string
   viewer_url: string
   document_url: string
+  download_url?: string
   directory_keys?: string[]
+  source_type?: 'ragflow' | 'synology' | string
+  action_type?: 'read' | 'download'
+  action_label?: string
+  action_disabled?: boolean
 }
 
 export interface WikiSeries {
@@ -66,6 +71,19 @@ export interface WikiCatalog {
   partial: boolean
   failed_dataset_count: number
   config_version?: number
+  cloud?: {
+    enabled?: boolean
+    credentials_configured?: boolean
+    status?: string
+    stale?: boolean
+    document_count?: number
+    published_document_count?: number
+    skipped_document_count?: number
+    configured_folders?: number
+    successful_folders?: number
+    warning_count?: number
+    scanned_at?: string
+  }
 }
 
 export interface WikiDocumentGroup {
