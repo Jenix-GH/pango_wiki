@@ -79,6 +79,7 @@ export default function WikiDocumentTable({
                     <div className="wiki-row-actions">
                       <button
                         type="button"
+                        className={downloadOnly ? 'wiki-download-action' : undefined}
                         onClick={() => downloadOnly ? onDownload(group.current) : onOpen(group.current)}
                         disabled={group.current.action_disabled}
                         title={group.current.action_disabled ? group.current.source_status : actionLabel}
@@ -132,7 +133,7 @@ export default function WikiDocumentTable({
                         <div className="wiki-detail-actions">
                           <button
                             type="button"
-                            className="wiki-primary-action"
+                            className={`wiki-primary-action${downloadOnly ? ' wiki-download-action' : ''}`}
                             onClick={() => downloadOnly ? onDownload(group.current) : onOpen(group.current)}
                             disabled={group.current.action_disabled}
                             title={group.current.action_disabled ? group.current.source_status : actionLabel}
@@ -171,7 +172,7 @@ export default function WikiDocumentTable({
                         <div className="wiki-history-actions">
                           <button
                             type="button"
-                            className="wiki-history-read"
+                            className={`wiki-history-read${historyDownloadOnly ? ' wiki-download-action' : ''}`}
                             onClick={() => historyDownloadOnly ? onDownload(document) : onOpen(document)}
                             disabled={document.action_disabled}
                             title={document.action_disabled ? document.source_status : historyActionLabel}

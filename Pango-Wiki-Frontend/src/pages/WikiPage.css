@@ -1383,6 +1383,12 @@
     background: #ffffff;
   }
 
+  .wiki-row-actions .wiki-download-action,
+  .wiki-history-actions .wiki-download-action,
+  .wiki-detail-actions .wiki-download-action {
+    display: none;
+  }
+
   .wiki-row-actions > button:first-child {
     border-color: #e09599;
     color: var(--wiki-accent);
