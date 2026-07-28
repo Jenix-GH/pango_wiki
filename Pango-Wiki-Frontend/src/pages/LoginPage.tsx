@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import pangoLogo from '../../Logo.png'
 import './LoginPage.css'
 
 export default function LoginPage() {
@@ -33,7 +34,7 @@ export default function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <div className="logo-icon" />
+          <img src={pangoLogo} alt="Pango" />
         </div>
         <h1 className="login-title">Pango慧答</h1>
         <p className="login-subtitle">

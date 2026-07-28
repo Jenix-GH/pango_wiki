@@ -2,9 +2,9 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { isMiniProgramEntry, returnToMiniProgramQa } from '../utils/miniProgramBridge'
-import { openReferenceUrl } from '../utils/referenceUrl'
+import { openReferenceUrl, resolveReferenceUrl } from '../utils/referenceUrl'
 import { loadWikiCatalog } from '../wiki/api'
-import { BookIcon, ChatIcon, DocumentIcon, RefreshIcon, SearchIcon } from '../wiki/icons'
+import { RefreshIcon, SearchIcon } from '../wiki/icons'
 import {
   catalogDirectories,
   catalogDocuments,
@@ -20,7 +20,8 @@ import {
 import type { WikiCatalog, WikiDocument, WikiDocumentGroup } from '../wiki/types'
 import WikiDirectoryTree from '../wiki/WikiDirectoryTree'
 import WikiDocumentTable from '../wiki/WikiDocumentTable'
-import pangoLogo from '../../Logo.png'
+import WikiAssistant from '../components/WikiAssistant'
+import TopBar from '../components/TopBar'
 import './WikiPage.css'
 
 type SortMode = 'code' | 'updated'
@@ -48,6 +49,7 @@ export default function WikiPage() {
   const [miniProgramClient, setMiniProgramClient] = useState(isMiniProgramEntry)
   const [returningToMiniProgram, setReturningToMiniProgram] = useState(false)
   const [navigationError, setNavigationError] = useState('')
+  const [embeddedDocument, setEmbeddedDocument] = useState<{ title: string; url: string } | null>(null)
 
   useEffect(() => {
     if (miniProgramClient) return
@@ -215,7 +217,19 @@ export default function WikiPage() {
       return
     }
     if (miniProgramClient && document.action_type !== 'download') {
-      navigate(`/wiki/reader?url=${encodeURIComponent(document.viewer_url)}`)
+      navigate(`/wiki/reader?url=${encodeURIComponent(document.viewer_url)}&client=miniprogram`)
+      return
+    }
+    if (document.action_type !== 'download') {
+      const viewerUrl = resolveReferenceUrl(document.viewer_url)
+      if (!viewerUrl) {
+        setActionError('文档阅读链接无效，请稍后重试。')
+        return
+      }
+      setEmbeddedDocument({
+        title: document.title || document.code || '在线阅读',
+        url: viewerUrl,
+      })
       return
     }
     if (!openReferenceUrl(document.viewer_url)) {
@@ -233,6 +247,21 @@ export default function WikiPage() {
       || (document.action_type === 'download' ? document.viewer_url : '')
     if (!downloadUrl || !openReferenceUrl(downloadUrl)) {
       setActionError('文档下载链接无效，请稍后重试。')
+    }
+  }, [])
+
+  const handleEmbeddedReaderLoad = useCallback((event: React.SyntheticEvent<HTMLIFrameElement>) => {
+    try {
+      const frameLocation = event.currentTarget.contentWindow?.location
+      if (
+        frameLocation?.origin === window.location.origin
+        && /^\/wiki\/?$/.test(frameLocation.pathname)
+      ) {
+        setEmbeddedDocument(null)
+      }
+    } catch {
+      // The viewer may be hosted on another origin. Once it returns to this
+      // frontend's /wiki route, the location becomes readable and is handled.
     }
   }, [])
 
@@ -293,46 +322,30 @@ export default function WikiPage() {
 
   return (
     <div className={`wiki-page ${directoryOpen ? 'is-directory-open' : ''}`}>
-      <header className="wiki-header">
-        <button type="button" className="wiki-brand" onClick={() => selectDirectory('all')}>
-          <img src={pangoLogo} alt="Pango" />
-          <span>Pango 器件 Wiki</span>
-        </button>
-        <nav className="wiki-primary-nav" aria-label="主导航">
-          <button type="button" className="active">
-            <DocumentIcon />
-            器件文档
-          </button>
-          <button
-            type="button"
-            onClick={() => void openSmartQa()}
-            disabled={returningToMiniProgram}
-            aria-busy={returningToMiniProgram}
-            title={miniProgramClient ? '返回小程序慧答' : '进入智能问答'}
-          >
-            <ChatIcon />
-            {returningToMiniProgram ? '正在返回' : miniProgramClient ? '返回慧答' : '智能问答'}
-          </button>
-        </nav>
-        <div className="wiki-header-meta">
-          <div className="wiki-kb-name"><BookIcon size={19} />知识库：Pango 官方文档知识库</div>
-          <button
-            type="button"
-            className="wiki-user"
-            onClick={openUserDestination}
-            disabled={returningToMiniProgram}
-            title={miniProgramClient ? '返回小程序慧答' : user ? '返回智能问答' : '登录'}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4.5 21a7.5 7.5 0 0 1 15 0" />
-            </svg>
-            <span>{user?.nickName || '访客'}</span>
-          </button>
-        </div>
-      </header>
+      <TopBar
+        active="wiki"
+        userLabel={user?.nickName || '访客'}
+        onOpenChat={() => void openSmartQa()}
+        onOpenWiki={() => {
+          if (embeddedDocument) setEmbeddedDocument(null)
+          else selectDirectory('all')
+        }}
+        onOpenUser={openUserDestination}
+        userDisabled={returningToMiniProgram}
+      />
 
-      <div className="wiki-shell">
+      {embeddedDocument ? (
+        <main className="wiki-embedded-reader">
+          <iframe
+            className="wiki-embedded-reader-frame"
+            src={embeddedDocument.url}
+            title={embeddedDocument.title}
+            allow="fullscreen"
+            onLoad={handleEmbeddedReaderLoad}
+          />
+        </main>
+      ) : (
+        <div className="wiki-shell">
         <aside id="wikiDirectoryPanel" className={`wiki-sidebar ${directoryOpen ? 'is-mobile-open' : ''}`} aria-label="文档目录">
           <div className="wiki-sidebar-title">
             <span>文档目录</span>
@@ -467,7 +480,9 @@ export default function WikiPage() {
             />
           )}
         </main>
-      </div>
+        </div>
+      )}
+      {!miniProgramClient ? <WikiAssistant /> : null}
     </div>
   )
 }

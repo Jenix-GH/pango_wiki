@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import type { QuestionItem } from '../api/types'
 import { copyToClipboard } from '../utils/clipboard'
@@ -7,6 +6,8 @@ import './LeftDrawer.css'
 interface Props {
   open: boolean
   onClose: () => void
+  onNewSession: () => void
+  onOpenLogin: () => void
   dayQuestions: QuestionItem[]
   weekQuestions: QuestionItem[]
   onSelectHistory: (id: number, content: string) => void
@@ -17,27 +18,15 @@ interface Props {
 export default function LeftDrawer({
   open,
   onClose,
+  onNewSession,
+  onOpenLogin,
   dayQuestions,
   weekQuestions,
   onSelectHistory,
   onOpenSettings,
   onRefresh,
 }: Props) {
-  const { user, isLoggedIn, logout, login } = useAuth()
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [showLogin, setShowLogin] = useState(false)
-
-  useEffect(() => {
-    if (!isLoggedIn) setShowLogin(true)
-    else setShowLogin(false)
-  }, [isLoggedIn, open])
-
-  const handleLogin = async () => {
-    if (!username.trim()) return
-    await login(username, password)
-    onRefresh()
-  }
+  const { user, isLoggedIn, logout } = useAuth()
 
   const handleCopy = async (content: string) => {
     const ok = await copyToClipboard(content)
@@ -48,28 +37,30 @@ export default function LeftDrawer({
     <>
       {open && <div className="drawer-mask" onClick={onClose} />}
       <div className={`drawer ${open ? 'drawer-open' : ''}`}>
-        {!isLoggedIn && showLogin ? (
-          <div className="drawer-login">
-            <h3 className="drawer-login-title">登录</h3>
-            <input
-              className="drawer-input"
-              placeholder="用户名"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-            <input
-              className="drawer-input"
-              type="password"
-              placeholder="密码（可留空）"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <button className="drawer-login-btn" onClick={handleLogin}>
-              登录
-            </button>
+        <div className="drawer-controls">
+          <button className="drawer-collapse-btn" onClick={onClose} title={open ? '收起侧栏' : '展开侧栏'}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 5h16M4 12h16M4 19h16" />
+            </svg>
+          </button>
+        </div>
+
+        <nav className="drawer-nav">
+          <button className="drawer-nav-item drawer-new-chat" onClick={onNewSession}>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span>新建对话</span>
+          </button>
+        </nav>
+
+        <div className="drawer-history">
+          <div className="drawer-history-title">
+            <span>历史记录</span>
+            <button onClick={onRefresh} title="刷新历史记录">↻</button>
           </div>
-        ) : (
-          <>
+          {isLoggedIn ? (
+            <>
             <div className="drawer-section">
               <h3 className="drawer-header">今天</h3>
               {dayQuestions.length === 0 && weekQuestions.length === 0 && (
@@ -117,7 +108,27 @@ export default function LeftDrawer({
                 </div>
               ))}
             </div>
-            <div className="drawer-footer">
+            </>
+          ) : (
+            <p className="drawer-empty drawer-history-empty">登录后查看历史对话</p>
+          )}
+        </div>
+
+        <div className="drawer-footer">
+          {!isLoggedIn ? (
+            <button className="drawer-login-link" onClick={onOpenLogin}>
+              <span className="drawer-login-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" />
+                </svg>
+              </span>
+              <span>
+                <strong>登录</strong>
+                <small>同步历史记录和个人设置</small>
+              </span>
+            </button>
+          ) : (
+            <>
               <div className="drawer-user">
                 <div className="drawer-avatar">
                   {user?.avatarUrl ? (
@@ -141,9 +152,9 @@ export default function LeftDrawer({
                   </svg>
                 </button>
               </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </>
   )

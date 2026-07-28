@@ -23,21 +23,12 @@
   margin-bottom: 20px;
 }
 
-.logo-icon {
+.login-logo img {
   width: 72px;
   height: 72px;
-  border-radius: 50%;
-  background: var(--bg-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 36px;
-  color: white;
-}
-
-.logo-icon::after {
-  content: 'P';
-  font-weight: bold;
+  padding: 6px;
+  object-fit: contain;
+  background: #ffffff;
 }
 
 .login-title {

@@ -1,6 +1,6 @@
 .bubble {
-  padding: 12px 16px;
-  margin-bottom: 8px;
+  padding: 12px 0;
+  margin-bottom: 10px;
 }
 
 .bubble-user {
@@ -9,7 +9,7 @@
 }
 
 .bubble-user-content {
-  max-width: 75%;
+  max-width: min(75%, 680px);
   background: var(--bg-primary);
   color: white;
   padding: 12px 16px;
@@ -57,11 +57,11 @@
 }
 
 .bubble-ai-content {
-  max-width: 85%;
+  max-width: 100%;
   background: var(--bg-white);
-  padding: 16px;
-  border-radius: 4px 16px 16px 16px;
-  box-shadow: var(--shadow-sm);
+  padding: 4px 0 8px 36px;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .bubble-actions {

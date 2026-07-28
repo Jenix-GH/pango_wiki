@@ -1,71 +1,144 @@
 .topbar {
-  display: flex;
+  height: 68px;
+  padding: 0 28px;
+  display: grid;
+  grid-template-columns: 310px minmax(360px, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  height: 48px;
-  padding: 0 16px;
-  background: var(--bg-white);
-  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
+  color: #26292d;
+  background: #fff;
+  border-bottom: 1px solid #dfe2e6;
   position: relative;
+  z-index: 15;
 }
 
-.topbar-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
+.topbar-brand {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: var(--text-dark);
-  transition: background 0.2s;
-}
-
-.topbar-btn:hover {
-  background: var(--bg-light);
-}
-
-.topbar-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--text-dark);
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  gap: 12px;
+  min-width: 0;
+  color: #17191c;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
   white-space: nowrap;
 }
 
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.topbar-brand img {
+  width: 48px;
+  height: 48px;
+  padding: 4px;
+  object-fit: contain;
+  background: #fff;
 }
 
-.topbar-wiki-btn {
-  height: 34px;
+.topbar-primary-nav {
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+}
+
+.topbar-primary-nav button {
+  position: relative;
+  padding: 0 13px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border-radius: 8px;
+  gap: 9px;
+  color: #464a50;
+  font-size: 16px;
+  font-weight: 520;
+}
+
+.topbar-primary-nav button:hover,
+.topbar-primary-nav button.active {
   color: var(--bg-primary);
+}
+
+.topbar-primary-nav button.active {
+  font-weight: 650;
+}
+
+.topbar-primary-nav button.active::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 2px;
+  background: var(--bg-primary);
+}
+
+.topbar-user {
+  height: 38px;
+  padding: 0 10px 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #35383d;
   font-size: 13px;
-  font-weight: 600;
-  transition: background 0.2s;
+  border-left: 1px solid #dfe2e6;
 }
 
-.topbar-wiki-btn:hover {
-  background: var(--bg-primary-light);
+.topbar-user:hover {
+  color: var(--bg-primary);
 }
 
-@media (max-width: 620px) {
-  .topbar-wiki-btn span {
+.topbar-user:disabled {
+  opacity: 0.62;
+  cursor: wait;
+}
+
+.topbar-menu {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .topbar {
+    height: 52px;
+    padding: 0 12px;
+    display: flex;
+    gap: 8px;
+  }
+
+  .topbar-menu {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    color: #3b3e43;
+    border-radius: 8px;
+  }
+
+  .topbar-menu:hover {
+    background: #f3f4f5;
+  }
+
+  .topbar-brand {
+    flex: 1;
+    justify-content: center;
+    font-size: 15px;
+  }
+
+  .topbar-brand img {
+    width: 38px;
+    height: 38px;
+    padding: 3px;
+  }
+
+  .topbar-primary-nav {
     display: none;
   }
 
-  .topbar-wiki-btn {
+  .topbar-user {
     width: 34px;
-    justify-content: center;
     padding: 0;
+    justify-content: center;
+    border: 0;
+  }
+
+  .topbar-user span {
+    display: none;
   }
 }

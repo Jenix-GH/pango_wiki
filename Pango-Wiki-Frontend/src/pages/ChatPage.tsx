@@ -14,6 +14,7 @@ import LeftDrawer from '../components/LeftDrawer'
 import SettingsPanel from '../components/SettingsPanel'
 import ChatBubble from '../components/ChatBubble'
 import ChatInput from '../components/ChatInput'
+import pangoLogo from '../../Logo.png'
 import './ChatPage.css'
 
 const ANSWER_LIMIT = 50
@@ -41,7 +42,7 @@ export default function ChatPage() {
   const [progressEmoji, setProgressEmoji] = useState('')
   const isTestVersion = true
   const [sessionId, setSessionId] = useState('')
-  const [showLeft, setShowLeft] = useState(false)
+  const [showLeft, setShowLeft] = useState(() => window.matchMedia('(min-width: 769px)').matches)
   const [showSettings, setShowSettings] = useState(false)
   const [dayQuestions, setDayQuestions] = useState<QuestionItem[]>([])
   const [weekQuestions, setWeekQuestions] = useState<QuestionItem[]>([])
@@ -422,6 +423,18 @@ export default function ChatPage() {
     { content: '介绍一下紫光同创' },
     { content: '紫光同创FPGA芯片有哪些?' },
   ]
+  const conversationStarted = messages.length > 0 || isStreaming
+  const chatInput = (
+    <ChatInput
+      onSend={handleSend}
+      onStop={handleStop}
+      isStreaming={isStreaming}
+      uploadImages={uploadImages}
+      onImageUpload={handleImageUpload}
+      onPasteImages={(files) => void addImageFiles(files)}
+      onRemoveImage={(i) => setUploadImages((prev) => prev.filter((_, idx) => idx !== i))}
+    />
+  )
 
   if (loading) {
     return (
@@ -433,47 +446,65 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
-      <div className="chat-card">
+      <div className={`chat-shell ${showLeft ? 'sidebar-open' : 'sidebar-collapsed'}`}>
         <TopBar
-          title="Pango慧答"
-          onOpenLeft={() => setShowLeft(true)}
-          onNewSession={handleNewSession}
+          active="chat"
+          userLabel={user?.nickName || '访客'}
+          onOpenChat={() => {}}
           onOpenWiki={() => navigate('/wiki')}
+          onOpenUser={() => user ? setShowSettings(true) : navigate('/login')}
+          onOpenMenu={() => setShowLeft(true)}
         />
 
+        <div className="chat-body">
         <LeftDrawer
           open={showLeft}
-          onClose={() => setShowLeft(false)}
+          onClose={() => setShowLeft((open) => !open)}
+          onNewSession={handleNewSession}
+          onOpenLogin={() => navigate('/login')}
           dayQuestions={dayQuestions}
           weekQuestions={weekQuestions}
           onSelectHistory={handleSelectHistory}
-          onOpenSettings={() => { setShowLeft(false); if (isLoggedIn) setShowSettings(true) }}
+          onOpenSettings={() => { if (isLoggedIn) setShowSettings(true) }}
           onRefresh={handleRefresh}
         />
 
+        <div className="chat-workspace">
         <SettingsPanel
           open={showSettings}
           onClose={() => setShowSettings(false)}
           onDeleteHistory={() => { setDayQuestions([]); setWeekQuestions([]); setShowTips(true); setMessages([]) }}
         />
 
-        <div className="chat-main">
+        <div className={`chat-main ${conversationStarted ? 'has-conversation' : 'is-empty'}`}>
+          {!conversationStarted ? (
+            <div className="chat-welcome">
+              {isGuest && (
+                <div className="guest-banner">
+                  访客模式
+                  <button onClick={() => navigate('/login')}>登录</button>
+                </div>
+              )}
+              <img className="welcome-mark" src={pangoLogo} alt="Pango" />
+              <h1>你好，我是 Pango 慧答</h1>
+              <p className="welcome-subtitle">有什么可以帮你的吗？</p>
+              <div className="tips-panel">
+                {tips.map((t, i) => (
+                  <button key={i} className="tips-item" onClick={() => handleSend(t.content)}>
+                    {t.content}
+                  </button>
+                ))}
+              </div>
+              <div className="welcome-composer">{chatInput}</div>
+              <div className="chat-disclaimer">内容由 AI 生成，仅供参考</div>
+            </div>
+          ) : (
+            <>
           <div className="chat-messages" ref={scrollRef} onScroll={handleScroll}>
             {isGuest && (
               <div className="guest-banner">
                 访客模式
                 <button onClick={() => navigate('/login')}>登录</button>
-              </div>
-            )}
-
-            {showTips && (
-              <div className="tips-panel">
-                <div className="tips-title">很高兴遇见你，你可以这样问</div>
-                {tips.map((t, i) => (
-                  <div key={i} className="tips-item" onClick={() => handleSend(t.content)}>
-                    {t.content}
-                  </div>
-                ))}
               </div>
             )}
 
@@ -531,19 +562,15 @@ export default function ChatPage() {
             )}
           </div>
 
-          <ChatInput
-            onSend={handleSend}
-            onStop={handleStop}
-            isStreaming={isStreaming}
-            uploadImages={uploadImages}
-            onImageUpload={handleImageUpload}
-            onPasteImages={(files) => void addImageFiles(files)}
-            onRemoveImage={(i) => setUploadImages((prev) => prev.filter((_, idx) => idx !== i))}
-          />
+          <div className="bottom-composer">{chatInput}</div>
 
           <div className="chat-disclaimer">
             内容由AI生成，仅供参考
           </div>
+            </>
+          )}
+        </div>
+        </div>
         </div>
       </div>
 
