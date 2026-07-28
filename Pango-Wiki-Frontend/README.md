@@ -22,6 +22,9 @@ Wiki 默认按“知识库 + 文档身份”分组，只在主列表展示当前
 - 手机端取消 1080px 桌面画布：目录改为抽屉、筛选标签支持横向滑动、文档表格自动切换为单列卡片。
 - 手机选择新目录后主内容自动回到顶部；在线阅读仍使用后端返回的原始 `viewer_url`。
 - 小程序以 `/wiki?client=miniprogram` 进入时，“智能问答”自动切换为“返回慧答”，优先返回并保留原生问答会话，无法返回时降级到 `/pages/main/main`。
+- 支持 Wiki 后端返回的 `source_type`、`action_type`、`action_label` 和 `action_disabled`，用于区分 RAGFlow 文档、群晖文件及不可用状态。
+- 桌面端 PDF 当前版本、详情和历史版本同时提供“在线阅读”和“下载”；ZIP、RAR、安装包等不可预览文件只显示“下载”。手机端隐藏下载入口，保留在线阅读和文档信息。
+- 下载使用后端返回的 `download_url`，仅允许站内 `/references/download` 与 `/references/cloud/*` 路径，前端不保存 RAGFlow 或群晖凭据。
 
 小程序侧接入方式、WebView 示例和验收步骤见 [`MINIPROGRAM_WIKI_INTEGRATION.md`](./MINIPROGRAM_WIKI_INTEGRATION.md)；服务器替换、发布验收和回滚步骤见 [`DEPLOY_MOBILE_MINIPROGRAM.md`](./DEPLOY_MOBILE_MINIPROGRAM.md)。
 
@@ -86,6 +89,7 @@ npm run build
 
 ## 当前边界
 
+- 本仓库只保存 `Pango-Wiki-Frontend/` 和 `miniprogram/` 客户端代码；Wiki 后端单独维护在私有后端仓库中。
 - Wiki 已验收桌面端和手机端响应式布局；真实微信小程序 WebView 仍应在每次发布后做一次设备抽查。
 - Wiki 目录由 `wiki-backend/config/wiki-datasets.yaml` 维护，前端不保存目录副本。
 - 当前流式问答结果的参考文档可跳 Wiki。
