@@ -210,7 +210,11 @@ export default function WikiPage() {
 
   const openDocument = useCallback((document: WikiDocument) => {
     setActionError('')
-    if (miniProgramClient) {
+    if (document.action_disabled) {
+      setActionError(document.source_status || '该文件当前不可用，请刷新目录后重试。')
+      return
+    }
+    if (miniProgramClient && document.action_type !== 'download') {
       navigate(`/wiki/reader?url=${encodeURIComponent(document.viewer_url)}`)
       return
     }

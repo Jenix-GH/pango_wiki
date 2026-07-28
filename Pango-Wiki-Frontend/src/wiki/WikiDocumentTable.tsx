@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import { BookIcon, ChevronIcon } from './icons'
+import { BookIcon, ChevronIcon, DownloadIcon } from './icons'
 import { documentLabel, formatDate, versionLabel } from './model'
 import type { WikiDocument, WikiDocumentGroup } from './types'
 
@@ -50,6 +50,9 @@ export default function WikiDocumentTable({
             const expanded = expandedGroup === group.id
             const historyVisible = historyGroups.has(group.id)
             const statusClass = group.current.source_status_code || 'ready'
+            const actionLabel = group.current.action_label
+              || (group.current.action_type === 'download' ? '下载' : '在线阅读')
+            const ActionIcon = group.current.action_type === 'download' ? DownloadIcon : BookIcon
             return (
               <Fragment key={group.id}>
                 <tr className={expanded || historyVisible ? 'is-expanded' : ''}>
@@ -70,7 +73,14 @@ export default function WikiDocumentTable({
                   </td>
                   <td className="wiki-cell-actions" data-label="操作">
                     <div className="wiki-row-actions">
-                      <button type="button" onClick={() => onOpen(group.current)}><BookIcon size={17} />在线阅读</button>
+                      <button
+                        type="button"
+                        onClick={() => onOpen(group.current)}
+                        disabled={group.current.action_disabled}
+                        title={group.current.action_disabled ? group.current.source_status : actionLabel}
+                      >
+                        <ActionIcon size={17} />{actionLabel}
+                      </button>
                       {group.history.length > 0 ? (
                         <button type="button" className="wiki-history-toggle" onClick={() => onToggleHistory(group.id)}>
                           历史版本 {group.history.length}<ChevronIcon expanded={historyVisible} />
@@ -104,22 +114,43 @@ export default function WikiDocumentTable({
                           </div>
                           <div><dt>知识片段</dt><dd>{group.current.chunk_count || '—'}</dd></div>
                         </dl>
-                        <button type="button" className="wiki-primary-action" onClick={() => onOpen(group.current)}>
-                          <BookIcon size={17} />在线阅读
+                        <button
+                          type="button"
+                          className="wiki-primary-action"
+                          onClick={() => onOpen(group.current)}
+                          disabled={group.current.action_disabled}
+                          title={group.current.action_disabled ? group.current.source_status : actionLabel}
+                        >
+                          <ActionIcon size={17} />{actionLabel}
                         </button>
                       </div>
                     </td>
                   </tr>
                 ) : null}
-                {historyVisible ? group.history.map((document) => (
-                  <tr key={document.key} className="wiki-history-row">
-                    <td className="wiki-cell-code" data-label={firstColumnLabel}><span className="wiki-history-label">历史</span>{documentLabel(document)}</td>
-                    <td className="wiki-cell-title" data-label="文档标题">{document.title}<span className="wiki-history-file">{document.file_name}</span></td>
-                    <td className="wiki-cell-version" data-label="版本">{versionLabel(document)}</td>
-                    <td className="wiki-cell-kind" data-label="文档类型"><span className={`wiki-kind wiki-kind-${document.kind.toLowerCase()}`}>{document.kind}</span></td>
-                    <td className="wiki-cell-actions" data-label="操作"><button type="button" className="wiki-history-read" onClick={() => onOpen(document)}><BookIcon size={16} />阅读此版本</button></td>
-                  </tr>
-                )) : null}
+                {historyVisible ? group.history.map((document) => {
+                  const historyActionLabel = document.action_label
+                    || (document.action_type === 'download' ? '下载' : '阅读此版本')
+                  const HistoryActionIcon = document.action_type === 'download' ? DownloadIcon : BookIcon
+                  return (
+                    <tr key={document.key} className="wiki-history-row">
+                      <td className="wiki-cell-code" data-label={firstColumnLabel}><span className="wiki-history-label">历史</span>{documentLabel(document)}</td>
+                      <td className="wiki-cell-title" data-label="文档标题">{document.title}<span className="wiki-history-file">{document.file_name}</span></td>
+                      <td className="wiki-cell-version" data-label="版本">{versionLabel(document)}</td>
+                      <td className="wiki-cell-kind" data-label="文档类型"><span className={`wiki-kind wiki-kind-${document.kind.toLowerCase()}`}>{document.kind}</span></td>
+                      <td className="wiki-cell-actions" data-label="操作">
+                        <button
+                          type="button"
+                          className="wiki-history-read"
+                          onClick={() => onOpen(document)}
+                          disabled={document.action_disabled}
+                          title={document.action_disabled ? document.source_status : historyActionLabel}
+                        >
+                          <HistoryActionIcon size={16} />{historyActionLabel}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                }) : null}
               </Fragment>
             )
           })}
