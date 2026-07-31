@@ -3,6 +3,7 @@ import type { ChatMessage, UploadImage } from '../api/types'
 import { primaryReferenceUrl } from '../utils/referenceUrl'
 import MarkdownContent from './MarkdownContent'
 import ImageLightbox from './ImageLightbox'
+import pangoLogo from '../../Logo.png'
 import './ChatBubble.css'
 
 interface Props {
@@ -47,7 +48,7 @@ export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQ
   return (
     <div className="bubble bubble-ai">
       <div className="bubble-ai-header">
-        <div className="bubble-ai-avatar">AI</div>
+        <img className="bubble-ai-avatar" src={pangoLogo} alt="Pango" />
         <span className="bubble-ai-name">智能助手</span>
       </div>
       <div className="bubble-ai-content">

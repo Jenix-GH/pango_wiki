@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
-import type { UploadImage } from '../api/types'
+import { normalizeReference, type ReferencePayload, type UploadImage } from '../api/types'
 import { usePseudoStream } from '../hooks/usePseudoStream'
+import { openReferenceUrl, primaryReferenceUrl } from '../utils/referenceUrl'
 import MarkdownContent from './MarkdownContent'
 import ImageLightbox from './ImageLightbox'
 import pangoLogo from '../../Logo.png'
@@ -11,6 +12,7 @@ interface AssistantMessage {
   role: 'user' | 'assistant'
   content: string
   images?: UploadImage[]
+  reference?: ReferencePayload
 }
 
 export default function WikiAssistant() {
@@ -115,12 +117,13 @@ export default function WikiAssistant() {
     let finalized = false
 
     const isCurrentRequest = () => requestId === requestIdRef.current && !finalized
-    const finalize = (content: string) => {
+    const finalize = (content: string, reference?: ReferencePayload) => {
       if (!isCurrentRequest()) return
       finalized = true
       setStatus('')
       controllerRef.current = null
       const authoritativeAnswer = content.trim()
+      const normalizedReference = normalizeReference(reference)
       void finishStreamText(authoritativeAnswer).then(() => {
         if (requestId !== requestIdRef.current) return
         const completedAnswer = getTargetText().trim()
@@ -129,6 +132,7 @@ export default function WikiAssistant() {
           {
             role: 'assistant',
             content: completedAnswer || '回答生成中断，请重新提问。',
+            reference: normalizedReference.chunks.length ? normalizedReference : undefined,
           },
         ])
         resetStreamText()
@@ -151,8 +155,8 @@ export default function WikiAssistant() {
           answerBuffer = mode === 'replace' ? chunk : answerBuffer + chunk
           pushStreamText(chunk, mode)
         },
-        onDone: (answer) => {
-          finalize(answer || answerBuffer)
+        onDone: (answer, reference) => {
+          finalize(answer || answerBuffer, reference)
         },
         onError: (error) => {
           finalize(answerBuffer || `请求失败：${error.message}`)
@@ -251,6 +255,9 @@ export default function WikiAssistant() {
                   ? <MarkdownContent content={message.content} />
                   : <p>{message.content}</p>
                 : null}
+              {message.role === 'assistant' && message.reference ? (
+                <AssistantReferences reference={message.reference} />
+              ) : null}
             </div>
           ))}
           {streaming ? (
@@ -329,6 +336,57 @@ export default function WikiAssistant() {
       </section>
       <ImageLightbox src={previewSrc} onClose={() => setPreviewSrc(null)} />
     </>
+  )
+}
+
+function AssistantReferences({ reference }: { reference: ReferencePayload }) {
+  return (
+    <div className="wiki-assistant-references">
+      <div className="wiki-assistant-reference-title">参考资料 · {reference.total}篇</div>
+      {reference.chunks.map((chunk) => {
+        const pageLinks = chunk.page_links || []
+        const wikiUrl = primaryReferenceUrl(chunk)
+        const displayName = chunk.display_name || chunk.document_name || chunk.title || '未知文档'
+
+        return (
+          <div
+            className="wiki-assistant-reference-card"
+            key={chunk.reference_key || chunk.chunk_id || chunk.reference_index}
+          >
+            <div className="wiki-assistant-reference-header">
+              <span>
+                {chunk.citation_label ? <strong>{chunk.citation_label}</strong> : null}
+                {displayName}
+              </span>
+              {wikiUrl ? (
+                <button type="button" onClick={() => openReferenceUrl(wikiUrl)}>Wiki阅读</button>
+              ) : null}
+            </div>
+            {pageLinks.length ? (
+              <div className="wiki-assistant-reference-pages">
+                <span>引用页：</span>
+                {pageLinks.map((pageLink, index) => (
+                  <button
+                    type="button"
+                    key={`${pageLink.page}-${index}`}
+                    onClick={() => openReferenceUrl(pageLink.document_page_url)}
+                  >
+                    第{pageLink.page}页
+                  </button>
+                ))}
+              </div>
+            ) : chunk.pages?.length ? (
+              <div className="wiki-assistant-reference-pages">
+                <span>引用页：</span>
+                <span>{chunk.pages.map((page) => `第${page}页`).join('、')}</span>
+              </div>
+            ) : chunk.page != null ? (
+              <div className="wiki-assistant-reference-pages">第{chunk.page}页</div>
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

@@ -218,6 +218,70 @@ body.is-resizing-wiki-assistant {
   font-size: 13px;
 }
 
+.wiki-assistant-references {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #eceff2;
+}
+
+.wiki-assistant-reference-title {
+  margin-bottom: 8px;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wiki-assistant-reference-card {
+  padding: 8px 9px;
+  margin-top: 6px;
+  background: #fafbfc;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.wiki-assistant-reference-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  color: #252a30;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.wiki-assistant-reference-header > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wiki-assistant-reference-header strong {
+  margin-right: 4px;
+  color: #d71920;
+}
+
+.wiki-assistant-reference-header button,
+.wiki-assistant-reference-pages button {
+  flex-shrink: 0;
+  padding: 0;
+  color: #d71920;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.wiki-assistant-reference-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+  color: #737980;
+  font-size: 12px;
+}
+
+.wiki-assistant-reference-header button:hover,
+.wiki-assistant-reference-pages button:hover {
+  text-decoration: underline;
+}
+
 .wiki-assistant-status {
   color: #777d84;
   font-size: 13px;

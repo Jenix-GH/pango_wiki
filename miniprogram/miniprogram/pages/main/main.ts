@@ -276,8 +276,8 @@ Page({
         ...createRuntimeState(),
         flagShowTip: true,
         tipData: [
-            { content: "介绍一下紫光同创" },
-            { content: "紫光同创FPGA芯片有哪些?" }
+            { content: "紫光同创FPGA芯片有哪些?" },
+            { content: "介绍一下PG2T390器件" },
         ],
         // isTestVersion: true,
         // isWebSearchEnabled: false, //是否开启联网搜索
@@ -319,7 +319,8 @@ Page({
             'td': 'border:1px solid #eee;padding:8rpx;',
             'th': 'background:#f5f5f5;padding:12rpx;',
             'a': 'color:#07c160;text-decoration:underline;',
-            'a:hover': 'color:#059e5c;'
+            'a:hover': 'color:#059e5c;',
+            'del': 'text-decoration:none;',
         },
         latexOptions: {
             katex: {

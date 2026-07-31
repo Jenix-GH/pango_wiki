@@ -109,7 +109,7 @@
             </view>
             <view class="show-answer">
                 <view class="show-content">
-                    <mp-html content="{{streamContent}}" markdown latex highlight class="mp-html contenttow" id="markdownContent" tagStyle="{{tagStyle}}" />
+                    <mp-html content="{{streamContent}}" markdown latex highlight class="mp-html contenttow" id="markdownContent" tag-tyle="{{tagStyle}}" />
                 </view>
             </view>
         </view>

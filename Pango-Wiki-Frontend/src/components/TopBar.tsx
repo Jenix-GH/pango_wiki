@@ -36,17 +36,29 @@ export default function TopBar({
       </div>
 
       <nav className="topbar-primary-nav" aria-label="主导航">
-        <button type="button" className={active === 'wiki' ? 'active' : ''} onClick={onOpenWiki}>
+        <button
+          type="button"
+          className={active === 'wiki' ? 'active' : ''}
+          onClick={onOpenWiki}
+          title="器件文档"
+          aria-label="器件文档"
+        >
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a2 2 0 0 1 2 2v16a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 0 4 21.5zM20 5.5A2.5 2.5 0 0 0 17.5 3H13v18a2 2 0 0 1 2-2h2.5a2.5 2.5 0 0 1 2.5 2.5z" />
           </svg>
-          器件文档
+          <span>器件文档</span>
         </button>
-        <button type="button" className={active === 'chat' ? 'active' : ''} onClick={onOpenChat}>
+        <button
+          type="button"
+          className={active === 'chat' ? 'active' : ''}
+          onClick={onOpenChat}
+          title="智能问答"
+          aria-label="智能问答"
+        >
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
           </svg>
-          智能问答
+          <span>智能问答</span>
         </button>
       </nav>
 

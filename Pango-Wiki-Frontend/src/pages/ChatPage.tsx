@@ -420,8 +420,8 @@ export default function ChatPage() {
   }
 
   const tips = [
-    { content: '介绍一下紫光同创' },
     { content: '紫光同创FPGA芯片有哪些?' },
+    { content: '介绍一下PG2T390器件' },
   ]
   const conversationStarted = messages.length > 0 || isStreaming
   const chatInput = (
@@ -523,7 +523,7 @@ export default function ChatPage() {
             {isStreaming && !streamContent && (
               <div className="bubble bubble-ai">
                 <div className="bubble-ai-header">
-                  <div className="bubble-ai-avatar">AI</div>
+                  <img className="bubble-ai-avatar" src={pangoLogo} alt="Pango" />
                   <span className="bubble-ai-name">智能助手</span>
                 </div>
                 <div className="bubble-ai-content">
@@ -541,7 +541,7 @@ export default function ChatPage() {
             {isStreaming && streamContent && (
               <div className="bubble bubble-ai">
                 <div className="bubble-ai-header">
-                  <div className="bubble-ai-avatar">AI</div>
+                  <img className="bubble-ai-avatar" src={pangoLogo} alt="Pango" />
                   <span className="bubble-ai-name">智能助手</span>
                 </div>
                 <div className="bubble-ai-content">
