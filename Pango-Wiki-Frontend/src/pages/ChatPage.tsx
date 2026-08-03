@@ -8,12 +8,14 @@ import { formatTime } from '../utils/formatTime'
 import { copyToClipboard } from '../utils/clipboard'
 import { openReferenceUrl } from '../utils/referenceUrl'
 import { normalizeReference } from '../api/types'
-import type { ChatMessage, QuestionItem, UploadImage } from '../api/types'
+import type { ChatMessage, FeedbackPayload, QuestionItem, UploadImage } from '../api/types'
 import TopBar from '../components/TopBar'
 import LeftDrawer from '../components/LeftDrawer'
 import SettingsPanel from '../components/SettingsPanel'
 import ChatBubble from '../components/ChatBubble'
 import ChatInput from '../components/ChatInput'
+import FeedbackModal from '../components/FeedbackModal'
+import pangoLogo from '../../Logo.png'
 import './ChatPage.css'
 
 const ANSWER_LIMIT = 50
@@ -22,8 +24,8 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const {
     user, isLoggedIn, isGuest, loading,
-    flagCompanyInfo, answerCount,
-    incrementAnswerCount, login,
+    guestCount, guestUserId,
+    incrementAnswerCount,
   } = useAuth()
   const { start, abort } = useSSE()
   const {
@@ -41,17 +43,17 @@ export default function ChatPage() {
   const [progressEmoji, setProgressEmoji] = useState('')
   const isTestVersion = true
   const [sessionId, setSessionId] = useState('')
-  const [showLeft, setShowLeft] = useState(false)
+  const [showLeft, setShowLeft] = useState(() => window.matchMedia('(min-width: 769px)').matches)
   const [showSettings, setShowSettings] = useState(false)
   const [dayQuestions, setDayQuestions] = useState<QuestionItem[]>([])
   const [weekQuestions, setWeekQuestions] = useState<QuestionItem[]>([])
   const [showTips, setShowTips] = useState(true)
   const [dotsPhase, setDotsPhase] = useState(0)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
-  const [loginUsername, setLoginUsername] = useState('')
-  const [loginPassword, setLoginPassword] = useState('')
   const [userScrolledUp, setUserScrolledUp] = useState(false)
   const [uploadImages, setUploadImages] = useState<UploadImage[]>([])
+  const [feedbackMessageIndex, setFeedbackMessageIndex] = useState<number | null>(null)
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const dotsTimer = useRef<ReturnType<typeof setInterval>>()
@@ -60,24 +62,24 @@ export default function ChatPage() {
   const activeRunRef = useRef(0)
   const streamingRef = useRef(false)
 
-  // Guest usage is temporarily unlimited.
-  const isLimitReached = isLoggedIn && !flagCompanyInfo && answerCount >= ANSWER_LIMIT
+  const isLimitReached = !isLoggedIn && guestCount >= ANSWER_LIMIT
+  const recordUserId = user?.id || guestUserId
 
   useEffect(() => {
     if (loading) return
     const init = async () => {
-      if (user) {
+      if (recordUserId) {
         await loadHistory()
       }
-      const id = api.createSession(user?.id || 'guest')
+      const id = api.createSession(recordUserId || 'guest')
       setSessionId(id)
     }
     init()
-  }, [loading, isLoggedIn])
+  }, [loading, isLoggedIn, recordUserId])
 
   const loadHistory = async () => {
-    if (!user) return
-    const res = await api.getHistory({ userinfoId: user.id })
+    if (!recordUserId) return
+    const res = await api.getHistory({ userinfoId: recordUserId })
     if (res.code === 2000) {
       setDayQuestions(res.data.todayQuestion || [])
       setWeekQuestions(res.data.weekQuestion || [])
@@ -206,13 +208,21 @@ export default function ChatPage() {
       time: formatTime(new Date()),
     }
     setMessages((prev) => [...prev, userMsg])
+    if (recordUserId && question.trim()) {
+      await api.addQuestion({
+        userinfoId: recordUserId,
+        question,
+        questionType: '1',
+        internetEnable: 0,
+      }).then(() => loadHistory()).catch(() => {})
+    }
     setUploadImages([])
     const textToSearch = question || ''
     scrollToBottom()
 
     let currentSessionId = sessionId
     if (!currentSessionId) {
-      currentSessionId = api.createSession(user?.id || 'guest')
+      currentSessionId = api.createSession(recordUserId || 'guest')
       setSessionId(currentSessionId)
     }
 
@@ -252,16 +262,27 @@ export default function ChatPage() {
           const completedContent = getTargetText() || answerContent
           setStreamingActive(false)
           if (completedContent.trim()) {
+            const completedTime = formatTime(new Date())
             commitAiMessage({
               flagAi: 1,
               content: completedContent,
               contentData: completedContent,
-              time: formatTime(new Date()),
+              time: completedTime,
+              answerTime: completedTime,
               flagEvaluate: 0,
               reference: normalizedRef.chunks.length > 0 ? normalizedRef : undefined,
               structuredCitations: citations.length > 0 ? citations : undefined,
               questionTrace: trace || undefined,
             })
+            if (recordUserId) {
+              void api.addAnswer({
+                userinfoId: recordUserId,
+                think: '',
+                content: completedContent,
+                answerTime: completedTime,
+                reference: JSON.stringify(normalizedRef),
+              }).catch(() => {})
+            }
           }
           clearLiveStreamUi()
 
@@ -294,21 +315,62 @@ export default function ChatPage() {
   }
 
   const handleEvaluate = async (index: number, evaluate: number, time: string) => {
-    if (!user || evaluate === 0) return
-    setMessages((prev) =>
-      prev.map((m, i) => (i === index ? { ...m, flagEvaluate: evaluate } : m))
-    )
-    api.evaluateAnswer({
-      userinfoId: user.id,
-      flagEvaluate: evaluate,
-      answerTime: time,
-    }).catch(() => {})
+    if (messages[index]?.flagEvaluate === evaluate) return
+    if (!recordUserId) {
+      setMessages((previous) => previous.map((message, messageIndex) => (
+        messageIndex === index ? { ...message, flagEvaluate: evaluate } : message
+      )))
+      showToast(evaluate === 1 ? '感谢你的认可' : '感谢反馈，我们会继续改进')
+      return
+    }
+    try {
+      const response = await api.evaluateAnswer({
+        userinfoId: recordUserId,
+        flagEvaluate: evaluate,
+        answerTime: time,
+      })
+      if (response.code !== 2000) throw new Error(response.message || '评价失败')
+      setMessages((prev) => prev.map((message, messageIndex) => (
+        messageIndex === index ? { ...message, flagEvaluate: evaluate } : message
+      )))
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '评价失败，请稍后重试')
+    }
+  }
+
+  const handleSubmitFeedback = async (form: Pick<FeedbackPayload, 'feedbackType' | 'detail' | 'contactName' | 'companyName' | 'email' | 'phone'>) => {
+    if (feedbackMessageIndex === null) return
+    const answer = messages[feedbackMessageIndex]
+    const question = [...messages.slice(0, feedbackMessageIndex)].reverse().find((message) => message.flagAi === 0)
+    if (!answer || !question) {
+      showToast('无法关联本次问答，请稍后重试')
+      return
+    }
+
+    setFeedbackSubmitting(true)
+    try {
+      const response = await api.submitFeedback({
+        ...form,
+        userinfoId: recordUserId,
+        sessionId,
+        platform: 'web',
+        questionContent: question.content,
+        answerContent: answer.contentData || answer.content,
+      })
+      if (response.code !== 2000) throw new Error(response.message || '提交失败')
+      setFeedbackMessageIndex(null)
+      showToast('感谢反馈，我们会认真核查')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '反馈提交失败，请稍后重试')
+    } finally {
+      setFeedbackSubmitting(false)
+    }
   }
 
   const handleSelectHistory = async (questionId: number, content: string) => {
-    if (!user) return
+    if (!recordUserId) return
     const res = await api.getAnswerByQuestionId({
-      userinfoId: user.id,
+      userinfoId: recordUserId,
       questionId,
     })
     if (res.code === 2000) {
@@ -320,7 +382,9 @@ export default function ChatPage() {
         content: res.data.content,
         contentData: res.data.content,
         time: res.data.dotime,
+        answerTime: res.data.answerTime || res.data.dotime,
         flagEvaluate: res.data.flagEvaluate,
+        reference: normalizeReference(res.data.reference),
       }
       setMessages([qMsg, aMsg])
     }
@@ -334,7 +398,7 @@ export default function ChatPage() {
     clearLiveStreamUi()
     setMessages([])
     setShowTips(true)
-    const id = api.createSession(user?.id || 'guest', true)
+    const id = api.createSession(recordUserId || 'guest', true)
     setSessionId(id)
     showToast('已切换新对话')
   }
@@ -348,18 +412,6 @@ export default function ChatPage() {
       showToast('参考文档链接无效')
     }
   }, [showToast])
-
-  const handleLoginFromPrompt = async () => {
-    if (!loginUsername.trim()) {
-      showToast('请输入用户名')
-      return
-    }
-    await login(loginUsername, loginPassword)
-    setShowLoginPrompt(false)
-    setLoginUsername('')
-    setLoginPassword('')
-    showToast('登录成功')
-  }
 
   const addImageFiles = async (files: File[]) => {
     if (uploadImages.length >= 3) {
@@ -419,9 +471,21 @@ export default function ChatPage() {
   }
 
   const tips = [
-    { content: '介绍一下紫光同创' },
     { content: '紫光同创FPGA芯片有哪些?' },
+    { content: '介绍一下PG2T390器件' },
   ]
+  const conversationStarted = messages.length > 0 || isStreaming
+  const chatInput = (
+    <ChatInput
+      onSend={handleSend}
+      onStop={handleStop}
+      isStreaming={isStreaming}
+      uploadImages={uploadImages}
+      onImageUpload={handleImageUpload}
+      onPasteImages={(files) => void addImageFiles(files)}
+      onRemoveImage={(i) => setUploadImages((prev) => prev.filter((_, idx) => idx !== i))}
+    />
+  )
 
   if (loading) {
     return (
@@ -433,47 +497,66 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
-      <div className="chat-card">
+      <div className={`chat-shell ${showLeft ? 'sidebar-open' : 'sidebar-collapsed'}`}>
         <TopBar
-          title="Pango慧答"
-          onOpenLeft={() => setShowLeft(true)}
-          onNewSession={handleNewSession}
+          active="chat"
+          userLabel={user?.nickName || '访客'}
+          onOpenChat={() => {}}
           onOpenWiki={() => navigate('/wiki')}
+          onOpenLicense={() => navigate('/license-application')}
+          onOpenUser={() => user ? setShowSettings(true) : navigate('/login')}
+          onOpenMenu={() => setShowLeft(true)}
         />
 
+        <div className="chat-body">
         <LeftDrawer
           open={showLeft}
-          onClose={() => setShowLeft(false)}
+          onClose={() => setShowLeft((open) => !open)}
+          onNewSession={handleNewSession}
+          onOpenLogin={() => navigate('/login')}
           dayQuestions={dayQuestions}
           weekQuestions={weekQuestions}
           onSelectHistory={handleSelectHistory}
-          onOpenSettings={() => { setShowLeft(false); if (isLoggedIn) setShowSettings(true) }}
+          onOpenSettings={() => { if (isLoggedIn) setShowSettings(true) }}
           onRefresh={handleRefresh}
         />
 
+        <div className="chat-workspace">
         <SettingsPanel
           open={showSettings}
           onClose={() => setShowSettings(false)}
           onDeleteHistory={() => { setDayQuestions([]); setWeekQuestions([]); setShowTips(true); setMessages([]) }}
         />
 
-        <div className="chat-main">
+        <div className={`chat-main ${conversationStarted ? 'has-conversation' : 'is-empty'}`}>
+          {!conversationStarted ? (
+            <div className="chat-welcome">
+              {isGuest && (
+                <div className="guest-banner">
+                  <span><strong>访客模式</strong> · 最多可询问 {ANSWER_LIMIT} 次，剩余 {Math.max(0, ANSWER_LIMIT - guestCount)} 次</span>
+                  <button onClick={() => navigate('/login')}>登录</button>
+                </div>
+              )}
+              <img className="welcome-mark" src={pangoLogo} alt="Pango" />
+              <h1>你好，我是 Pango 慧答</h1>
+              <p className="welcome-subtitle">有什么可以帮你的吗？</p>
+              <div className="tips-panel">
+                {tips.map((t, i) => (
+                  <button key={i} className="tips-item" onClick={() => handleSend(t.content)}>
+                    {t.content}
+                  </button>
+                ))}
+              </div>
+              <div className="welcome-composer">{chatInput}</div>
+              <div className="chat-disclaimer">内容由 AI 生成，仅供参考</div>
+            </div>
+          ) : (
+            <>
           <div className="chat-messages" ref={scrollRef} onScroll={handleScroll}>
             {isGuest && (
               <div className="guest-banner">
-                访客模式
+                <span><strong>访客模式</strong> · 最多可询问 {ANSWER_LIMIT} 次，剩余 {Math.max(0, ANSWER_LIMIT - guestCount)} 次</span>
                 <button onClick={() => navigate('/login')}>登录</button>
-              </div>
-            )}
-
-            {showTips && (
-              <div className="tips-panel">
-                <div className="tips-title">很高兴遇见你，你可以这样问</div>
-                {tips.map((t, i) => (
-                  <div key={i} className="tips-item" onClick={() => handleSend(t.content)}>
-                    {t.content}
-                  </div>
-                ))}
               </div>
             )}
 
@@ -486,13 +569,14 @@ export default function ChatPage() {
                 onEvaluate={handleEvaluate}
                 onCopyQuestion={handleCopy}
                 onOpenReference={handleOpenReference}
+                onFeedback={setFeedbackMessageIndex}
               />
             ))}
 
             {isStreaming && !streamContent && (
               <div className="bubble bubble-ai">
                 <div className="bubble-ai-header">
-                  <div className="bubble-ai-avatar">AI</div>
+                  <img className="bubble-ai-avatar" src={pangoLogo} alt="Pango" />
                   <span className="bubble-ai-name">智能助手</span>
                 </div>
                 <div className="bubble-ai-content">
@@ -510,7 +594,7 @@ export default function ChatPage() {
             {isStreaming && streamContent && (
               <div className="bubble bubble-ai">
                 <div className="bubble-ai-header">
-                  <div className="bubble-ai-avatar">AI</div>
+                  <img className="bubble-ai-avatar" src={pangoLogo} alt="Pango" />
                   <span className="bubble-ai-name">智能助手</span>
                 </div>
                 <div className="bubble-ai-content">
@@ -531,49 +615,36 @@ export default function ChatPage() {
             )}
           </div>
 
-          <ChatInput
-            onSend={handleSend}
-            onStop={handleStop}
-            isStreaming={isStreaming}
-            uploadImages={uploadImages}
-            onImageUpload={handleImageUpload}
-            onPasteImages={(files) => void addImageFiles(files)}
-            onRemoveImage={(i) => setUploadImages((prev) => prev.filter((_, idx) => idx !== i))}
-          />
+          <div className="bottom-composer">{chatInput}</div>
 
           <div className="chat-disclaimer">
             内容由AI生成，仅供参考
           </div>
+            </>
+          )}
+        </div>
+        </div>
         </div>
       </div>
 
       {showLoginPrompt && (
         <div className="login-overlay">
           <div className="login-prompt-card">
-            <h3>登录以继续使用</h3>
-            <p>体验次数已用完，登录后可获取更多对话次数</p>
-            <input
-              className="drawer-input"
-              placeholder="用户名"
-              value={loginUsername}
-              onChange={(e) => setLoginUsername(e.target.value)}
-              autoFocus
-            />
-            <input
-              className="drawer-input"
-              type="password"
-              placeholder="密码（可留空）"
-              value={loginPassword}
-              onChange={(e) => setLoginPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleLoginFromPrompt()}
-            />
+            <h3>访客体验次数已用完</h3>
+            <p>访客可以免费提问 50 次，注册或登录后可继续使用，并同步小程序历史记录。</p>
             <div className="login-prompt-actions">
               <button className="prompt-btn secondary" onClick={() => setShowLoginPrompt(false)}>稍后再说</button>
-              <button className="prompt-btn primary" onClick={handleLoginFromPrompt}>登录</button>
+              <button className="prompt-btn primary" onClick={() => navigate('/login')}>注册或登录</button>
             </div>
           </div>
         </div>
       )}
+      <FeedbackModal
+        open={feedbackMessageIndex !== null}
+        submitting={feedbackSubmitting}
+        onClose={() => !feedbackSubmitting && setFeedbackMessageIndex(null)}
+        onSubmit={handleSubmitFeedback}
+      />
     </div>
   )
 }

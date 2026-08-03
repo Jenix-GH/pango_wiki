@@ -3,6 +3,7 @@ import type { ChatMessage, UploadImage } from '../api/types'
 import { primaryReferenceUrl } from '../utils/referenceUrl'
 import MarkdownContent from './MarkdownContent'
 import ImageLightbox from './ImageLightbox'
+import pangoLogo from '../../Logo.png'
 import './ChatBubble.css'
 
 interface Props {
@@ -12,9 +13,10 @@ interface Props {
   onEvaluate: (index: number, evaluate: number, time: string) => void
   onCopyQuestion: (content: string) => void
   onOpenReference: (url: string) => void
+  onFeedback: (index: number) => void
 }
 
-export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQuestion, onOpenReference }: Props) {
+export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQuestion, onOpenReference, onFeedback }: Props) {
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   if (message.flagAi === 0) {
     return (
@@ -47,7 +49,7 @@ export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQ
   return (
     <div className="bubble bubble-ai">
       <div className="bubble-ai-header">
-        <div className="bubble-ai-avatar">AI</div>
+        <img className="bubble-ai-avatar" src={pangoLogo} alt="Pango" />
         <span className="bubble-ai-name">智能助手</span>
       </div>
       <div className="bubble-ai-content">
@@ -134,7 +136,7 @@ export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQ
         </button>
         <button
           className={`bubble-action-btn ${message.flagEvaluate === 1 ? 'active-like' : ''}`}
-          onClick={() => onEvaluate(index, message.flagEvaluate === 1 ? 0 : 1, message.time)}
+          onClick={() => onEvaluate(index, 1, message.answerTime || message.time)}
           title="赞"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill={message.flagEvaluate === 1 ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
@@ -143,12 +145,19 @@ export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQ
         </button>
         <button
           className={`bubble-action-btn ${message.flagEvaluate === -1 ? 'active-dislike' : ''}`}
-          onClick={() => onEvaluate(index, message.flagEvaluate === -1 ? 0 : -1, message.time)}
+          onClick={() => onEvaluate(index, -1, message.answerTime || message.time)}
           title="踩"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill={message.flagEvaluate === -1 ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
             <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10zM17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
           </svg>
+        </button>
+        <button className="bubble-action-btn feedback-action-btn" onClick={() => onFeedback(index)} title="反馈此回答">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 15.5A7.5 7.5 0 0 1 11.5 8H18l2-3v11a2 2 0 0 1-2 2h-6.5A7.5 7.5 0 0 1 4 10.5z" />
+            <path d="M12 12h4M12 15h3" />
+          </svg>
+          <span>反馈</span>
         </button>
       </div>
     </div>

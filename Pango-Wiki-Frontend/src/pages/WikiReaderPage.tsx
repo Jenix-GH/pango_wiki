@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import { resolveReferenceUrl } from '../utils/referenceUrl'
+import TopBar from '../components/TopBar'
+import WikiAssistant from '../components/WikiAssistant'
 import './WikiReaderPage.css'
 
 const PINCH_IN_THRESHOLD = 1.12
@@ -20,6 +23,7 @@ function loadScript(src: string): Promise<HTMLScriptElement> {
 
 export default function WikiReaderPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [searchParams] = useSearchParams()
   const hostRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState('')
@@ -27,6 +31,7 @@ export default function WikiReaderPage() {
     () => resolveReferenceUrl(searchParams.get('url') || ''),
     [searchParams],
   )
+  const miniProgramClient = searchParams.get('client') === 'miniprogram'
 
   useEffect(() => {
     if (!viewerUrl || !hostRef.current) return
@@ -129,11 +134,24 @@ export default function WikiReaderPage() {
   }
 
   return (
-    <main className="wiki-reader-page">
-      {error && <div className="wiki-reader-notice">{error}</div>}
-      <div ref={hostRef} className="wiki-reader-host">
-        <p className="wiki-reader-loading">正在加载文档阅读器...</p>
-      </div>
-    </main>
+    <div className={`wiki-reader-page ${miniProgramClient ? 'is-miniprogram' : ''}`}>
+      {!miniProgramClient ? (
+        <TopBar
+          active="wiki"
+          userLabel={user?.nickName || '访客'}
+          onOpenChat={() => navigate('/')}
+          onOpenWiki={() => navigate('/wiki')}
+          onOpenLicense={() => navigate('/license-application')}
+          onOpenUser={() => navigate(user ? '/' : '/login')}
+        />
+      ) : null}
+      <main className="wiki-reader-content">
+        {error && <div className="wiki-reader-notice">{error}</div>}
+        <div ref={hostRef} className="wiki-reader-host">
+          <p className="wiki-reader-loading">正在加载文档阅读器...</p>
+        </div>
+      </main>
+      {!miniProgramClient ? <WikiAssistant /> : null}
+    </div>
   )
 }

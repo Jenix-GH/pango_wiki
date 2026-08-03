@@ -18,6 +18,12 @@ export interface UserInfo {
   jobName?: string
   mailAddress?: string
   flagUseData?: number
+  phoneNumber?: string
+}
+
+export interface AuthData {
+  token: string
+  user: UserInfo
 }
 
 export interface QuestionItem {
@@ -92,12 +98,27 @@ export interface ChatMessage {
   content: string
   contentData?: string
   time: string
+  answerTime?: string
   think?: string
   flagEvaluate?: number
   images?: UploadImage[]
   reference?: ReferencePayload
   structuredCitations?: unknown[]
   questionTrace?: unknown
+}
+
+export interface FeedbackPayload {
+  userinfoId?: number
+  sessionId: string
+  platform: 'web' | 'miniprogram'
+  feedbackType: string
+  detail?: string
+  questionContent: string
+  answerContent: string
+  contactName?: string
+  companyName?: string
+  email?: string
+  phone?: string
 }
 
 export interface StreamProgressState {
@@ -123,7 +144,15 @@ export function createStreamState(): StreamProgressState {
 }
 
 export function normalizeReference(reference: unknown): ReferencePayload {
-  const ref = reference as Record<string, unknown> | null
+  let parsed = reference
+  if (typeof parsed === 'string') {
+    try {
+      parsed = parsed.trim() ? JSON.parse(parsed) : null
+    } catch {
+      parsed = null
+    }
+  }
+  const ref = parsed as Record<string, unknown> | null
   const rawChunks: ReferenceChunk[] = Array.isArray(ref?.chunks)
     ? (ref!.chunks as ReferenceChunk[])
     : []
@@ -153,4 +182,18 @@ export interface SSECallbacks {
   onChunk: (text: string, mode: 'append' | 'replace') => void
   onDone: (finalAnswer: string, reference: ReferencePayload, citations: unknown[], trace: unknown) => void
   onError: (err: Error) => void
+}
+
+export interface LicenseApplicationPayload {
+  userinfoId?: number
+  operatingSystem: 'Windows' | 'Linux'
+  softwareVersion: string
+  licenseType: 'STANDALONE' | 'SERVER'
+  durationYears: 1 | 2 | 3
+  macAddress: string
+  applicantName: string
+  companyName: string
+  email: string
+  phone: string
+  address: string
 }

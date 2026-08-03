@@ -1,0 +1,79 @@
+spring:
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 3MB
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${AGENT_DB_URL}
+    username: ${AGENT_DB_USERNAME}
+    password: ${AGENT_DB_PASSWORD}
+    druid:
+      #连接池配置(通常来说，只需要修改initialSize、minIdle、maxActive
+      initial-size: 5
+      max-active: 20
+      min-idle: 1
+      # 配置获取连接等待超时的时间
+      max-wait: 60000
+      #打开PSCache，并且指定每个连接上PSCache的大小
+      pool-prepared-statements: true
+      max-pool-prepared-statement-per-connection-size: 20
+      validation-query: SELECT 'x'
+      test-on-borrow: true
+      test-on-return: false
+      test-while-idle: true
+      keep-alive: true
+      validation-query-timeout: 5
+      connection-properties: connectTimeout=10000;socketTimeout=60000;tcpKeepAlive=true
+      #配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
+      time-between-eviction-runs-millis: 60000
+      #配置一个连接在池中最小生存的时间，单位是毫秒
+      min-evictable-idle-time-millis: 300000
+      filters: stat,wall
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password:
+      database: 0
+      timeout: 1800s
+      lettuce:
+        pool:
+          max-active: 20
+          max-wait: -1s
+          max-idle: 5
+          min-idle: 0
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl #开启sql日志
+logging:
+  config: classpath:logback-dev.xml
+# 对话服务相关
+dialogue:
+  url: http://8.217.177.186:881/api/v1/agentbots/afcf3258612a11f0b7ad76cc98224e2d/completions
+  authorization: ${DIALOGUE_AUTHORIZATION}
+  question: "你是谁？"
+  conversation_id: "5cc430a85d2a11f0b56a76cc98224e2d"
+  quote: true
+wx:
+  appid: "wxafd59b2bb3a66e06"
+  secret: ${WX_SECRET}
+ali_audio:
+  appkey: E72pGCTGFpgSGRJk
+  access-key-id: ${ALIYUN_AK_ID}
+  access-key-secret: ${ALIYUN_AK_SECRET}
+  token:
+  rest-url: https://nls-gateway-cn-shanghai.aliyuncs.com/stream/v1/asr
+  sample-rate: 16000
+ali_sms:
+  access-key-id: ${ALIYUN_AK_ID}
+  access-key-secret: ${ALIYUN_AK_SECRET}
+  endpoint: dysmsapi.aliyuncs.com
+  sign-name: 深圳市紫光同创电子
+  template-code: SMS_510370098
+  code-expire-minutes: 5
+  send-interval-seconds: 60

@@ -276,8 +276,8 @@ Page({
         ...createRuntimeState(),
         flagShowTip: true,
         tipData: [
-            { content: "介绍一下紫光同创" },
-            { content: "紫光同创FPGA芯片有哪些?" }
+            { content: "紫光同创FPGA芯片有哪些?" },
+            { content: "介绍一下PG2T390器件" },
         ],
         // isTestVersion: true,
         // isWebSearchEnabled: false, //是否开启联网搜索
@@ -300,6 +300,16 @@ Page({
         flagCancel: false,
         flagTalkOver: true,
         answerCount: 0, //当前用户的总数量
+        feedbackVisible: false,
+        feedbackSubmitting: false,
+        feedbackMessageIndex: -1,
+        feedbackTypeOptions: ['回答不准确', '没有解决问题', '内容过时', '引用资料有误', '其他问题'],
+        feedbackType: '回答不准确',
+        feedbackDetail: '',
+        feedbackContactName: '',
+        feedbackCompanyName: '',
+        feedbackEmail: '',
+        feedbackPhone: '',
         tagStyle: {
             // 标题样式
             'h1': 'font-size:36rpx;line-height:1.8;margin:24rpx 0;',
@@ -319,7 +329,8 @@ Page({
             'td': 'border:1px solid #eee;padding:8rpx;',
             'th': 'background:#f5f5f5;padding:12rpx;',
             'a': 'color:#07c160;text-decoration:underline;',
-            'a:hover': 'color:#059e5c;'
+            'a:hover': 'color:#059e5c;',
+            'del': 'text-decoration:none;',
         },
         latexOptions: {
             katex: {
@@ -342,11 +353,91 @@ Page({
             }
         })
     },
+
+    openFeedback(e: any) {
+        this.setData({
+            feedbackVisible: true,
+            feedbackMessageIndex: Number(e.currentTarget.dataset.index),
+            feedbackType: '回答不准确',
+            feedbackDetail: '',
+            feedbackContactName: '',
+            feedbackCompanyName: '',
+            feedbackEmail: '',
+            feedbackPhone: ''
+        })
+    },
+
+    closeFeedback() {
+        if (this.data.feedbackSubmitting) return
+        this.setData({ feedbackVisible: false, feedbackMessageIndex: -1 })
+    },
+
+    stopPropagation() {},
+
+    chooseFeedbackType(e: any) {
+        this.setData({ feedbackType: String(e.currentTarget.dataset.type || '') })
+    },
+
+    inputFeedbackField(e: any) {
+        const field = String(e.currentTarget.dataset.field || '')
+        if (!field) return
+        this.setData({ [field]: e.detail.value })
+    },
+
+    submitFeedback() {
+        if (this.data.feedbackSubmitting) return
+        const answerIndex = this.data.feedbackMessageIndex
+        const answer = this.data.sessionList[answerIndex]
+        let question: any = null
+        for (let index = answerIndex - 1; index >= 0; index -= 1) {
+            if (this.data.sessionList[index].flagAi === 0) {
+                question = this.data.sessionList[index]
+                break
+            }
+        }
+        if (!answer || !question) {
+            wx.showToast({ title: '无法关联本次问答', icon: 'none' })
+            return
+        }
+
+        this.setData({ feedbackSubmitting: true })
+        const userinfoId = this.data.userInfo && this.data.userInfo.id
+        wx.request({
+            url: app.globalData.baseHost + '/feedback/submit',
+            method: 'POST',
+            data: {
+                userinfoId: userinfoId || null,
+                sessionId: app.globalData.sessionId || '',
+                platform: 'miniprogram',
+                feedbackType: this.data.feedbackType,
+                detail: this.data.feedbackDetail,
+                questionContent: question.content || '',
+                answerContent: answer.contentData || answer.content || '',
+                contactName: this.data.feedbackContactName,
+                companyName: this.data.feedbackCompanyName,
+                email: this.data.feedbackEmail,
+                phone: this.data.feedbackPhone
+            },
+            success: (res: any) => {
+                const result = res.data as { code?: number; message?: string }
+                if (result && result.code === 2000) {
+                    this.setData({ feedbackVisible: false, feedbackMessageIndex: -1 })
+                    wx.showToast({ title: '感谢您的反馈', icon: 'success' })
+                    return
+                }
+                wx.showToast({ title: result.message || '提交失败，请稍后重试', icon: 'none' })
+            },
+            fail: () => wx.showToast({ title: '网络异常，请稍后重试', icon: 'none' }),
+            complete: () => this.setData({ feedbackSubmitting: false })
+        })
+    },
     // 开始录音（长按输入框触发）
     startRecord(e: any) {
         if (this.data._inputFocused) return;
-        //判断是否登录
-        if (!this.checkLogin()) return
+        if (!this.data.userInfo?.id) {
+            showError("访客信息初始化中，请稍后重试")
+            return
+        }
         //判断是否未完善公司信息
         if (this.checkAnswerLimit()) return;
         if (!this.data.flagTalkOver) {
@@ -363,7 +454,7 @@ Page({
             scope: 'scope.record',
             success: () => {
                 recorderManager.start({
-                    format: 'aac',
+                    format: 'mp3',
                     sampleRate: 16000,
                     encodeBitRate: 36000,
                     numberOfChannels: 1,
@@ -405,15 +496,27 @@ Page({
             url: app.globalData.baseHost + '/wx/transcribe',
             filePath: filePath,
             name: 'audio',
-            timeout: 6000,
+            timeout: 90000,
             success: (res) => {
                 if (res.statusCode === 200 && res.errMsg === "uploadFile:ok") {
-                    const data = res.data;
-                    const payload: ApiResponse<SessionData | boolean> = JSON.parse(data)
-                    const text = typeof payload.data === "object" && payload.data !== null ? payload.data.text : "";
-                    if (payload.code === 2000 && "" != text) {
-                        this.setData({ questionContent: text })
-                        this.changeInMode();//切换到文字模式
+                    try {
+                        const payload: ApiResponse<SessionData | boolean | string> = JSON.parse(res.data)
+                        const text = typeof payload.data === "object" && payload.data !== null
+                            ? payload.data.text
+                            : "";
+                        if (payload.code === 2000 && text !== "") {
+                            this.setData({ questionContent: text })
+                            this.changeInMode();//切换到文字模式
+                        } else if (payload.code !== 2000) {
+                            const errorMessage = typeof payload.data === "string" && payload.data !== ""
+                                ? payload.data
+                                : payload.message || "录音解析失败";
+                            showError(errorMessage)
+                        } else {
+                            showError("未识别到有效语音")
+                        }
+                    } catch {
+                        showError("服务器返回数据格式错误")
                     }
                 } else {
                     showError("录音解析失败")
@@ -563,9 +666,10 @@ Page({
     },
     //执行查询
     doSearch() {
-        // add by csj
-        //判断是否登录
-        if (!this.checkLogin()) return
+        if (!this.data.userInfo?.id) {
+            showError("访客信息初始化中，请稍后重试")
+            return
+        }
         //判断是否未完善公司信息
         if (this.checkAnswerLimit()) return;
         //判断是否有正在回答中的
@@ -1289,6 +1393,20 @@ Page({
                 })
                 app.globalData.flagCompanyInfo = rs.data.flagCompanyInfo;
             }
+        } else {
+            info = await this.getOrCreateGuestUser()
+            if (info?.id) {
+                this.setData({ userInfo: info })
+                const data = await this.getHisData()
+                const rs: ApiResponse<questionList> = JSON.parse(JSON.stringify(data))
+                if (rs && rs.code === 2000) {
+                    this.setData({
+                        dataDayTitle: rs.data.todayQuestion || [],
+                        dataHisTitle: rs.data.weekQuestion || [],
+                        answerCount: rs.data.count || 0
+                    })
+                }
+            }
         }
         const EXTRA_OFFSET = 0; // 键盘顶部与输入框之间的额外间距
         wx.onKeyboardHeightChange(res => {
@@ -1300,6 +1418,30 @@ Page({
                 }
             })
         })
+    },
+    async getOrCreateGuestUser() {
+        let guestKey = wx.getStorageSync("pangoGuestKey") as string
+        if (!guestKey) {
+            guestKey = `mini_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
+            wx.setStorageSync("pangoGuestKey", guestKey)
+        }
+        try {
+            const res: any = await new Promise((resolve, reject) => {
+                wx.request({
+                    url: app.globalData.baseHost + '/userinfo/guest',
+                    method: 'POST',
+                    data: { guestKey, platform: 'miniprogram' },
+                    success: resolve,
+                    fail: reject
+                })
+            })
+            const result = res.data as ApiResponse<any>
+            if (result.code === 2000 && result.data?.id) return result.data
+        } catch (error) {
+            console.error('初始化访客信息失败', error)
+        }
+        showError("访客信息初始化失败，请检查网络后重试")
+        return null
     },
     async getHisData() {
         try {

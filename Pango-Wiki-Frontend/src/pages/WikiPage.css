@@ -38,10 +38,13 @@
 }
 
 .wiki-brand img {
-  width: 40px;
-  height: 36px;
+  width: 48px;
+  height: 48px;
+  padding: 4px;
   object-fit: contain;
-  object-position: left center;
+  object-position: center;
+  background: #ffffff;
+  border-radius: 0;
 }
 
 .wiki-primary-nav {
@@ -121,6 +124,22 @@
   height: calc(100% - 68px);
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
+}
+
+.wiki-embedded-reader {
+  height: calc(100% - 68px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f3f5f7;
+}
+
+.wiki-embedded-reader-frame {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  border: 0;
+  background: #ffffff;
 }
 
 .wiki-sidebar {
