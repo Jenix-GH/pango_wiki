@@ -50,7 +50,7 @@ export const api = {
 
   transcribe: async (audioBlob: Blob): Promise<{ text: string } | null> => {
     const formData = new FormData()
-    const extension = audioBlob.type.includes('mp4') ? 'm4a' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm'
+    const extension = audioBlob.type.includes('wav') ? 'wav' : audioBlob.type.includes('mp4') ? 'm4a' : audioBlob.type.includes('ogg') ? 'ogg' : 'webm'
     formData.append('audio', audioBlob, `recording.${extension}`)
     const res = await fetch(ENDPOINTS.transcribe, {
       method: 'POST',
@@ -59,7 +59,8 @@ export const api = {
     })
     const json: ApiResponse<{ text: string }> = await res.json()
     if (json.code === 2000 && json.data?.text) return { text: json.data.text }
-    return null
+    const errorData = json.data as unknown
+    throw new Error(typeof errorData === 'string' && errorData ? errorData : json.message || '语音识别失败')
   },
 
   addQuestion: (data: { userinfoId: number; question: string; questionType: string; internetEnable: number }) =>

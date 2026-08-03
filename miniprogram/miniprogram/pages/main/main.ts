@@ -364,7 +364,7 @@ Page({
             scope: 'scope.record',
             success: () => {
                 recorderManager.start({
-                    format: 'aac',
+                    format: 'mp3',
                     sampleRate: 16000,
                     encodeBitRate: 36000,
                     numberOfChannels: 1,
@@ -406,15 +406,27 @@ Page({
             url: app.globalData.baseHost + '/wx/transcribe',
             filePath: filePath,
             name: 'audio',
-            timeout: 6000,
+            timeout: 90000,
             success: (res) => {
                 if (res.statusCode === 200 && res.errMsg === "uploadFile:ok") {
-                    const data = res.data;
-                    const payload: ApiResponse<SessionData | boolean> = JSON.parse(data)
-                    const text = typeof payload.data === "object" && payload.data !== null ? payload.data.text : "";
-                    if (payload.code === 2000 && "" != text) {
-                        this.setData({ questionContent: text })
-                        this.changeInMode();//切换到文字模式
+                    try {
+                        const payload: ApiResponse<SessionData | boolean | string> = JSON.parse(res.data)
+                        const text = typeof payload.data === "object" && payload.data !== null
+                            ? payload.data.text
+                            : "";
+                        if (payload.code === 2000 && text !== "") {
+                            this.setData({ questionContent: text })
+                            this.changeInMode();//切换到文字模式
+                        } else if (payload.code !== 2000) {
+                            const errorMessage = typeof payload.data === "string" && payload.data !== ""
+                                ? payload.data
+                                : payload.message || "录音解析失败";
+                            showError(errorMessage)
+                        } else {
+                            showError("未识别到有效语音")
+                        }
+                    } catch {
+                        showError("服务器返回数据格式错误")
                     }
                 } else {
                     showError("录音解析失败")
