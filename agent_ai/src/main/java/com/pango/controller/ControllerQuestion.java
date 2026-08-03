@@ -13,6 +13,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import javax.annotation.Resource;
 import java.util.Map;
+import java.util.List;
+import java.util.Collections;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.Objects;
+import com.pango.entity.DtoAnswer;
 
 /**
  * 问题控制入口
@@ -56,6 +62,29 @@ public class ControllerQuestion implements MyAssert {
         int flagCompany = serviceUserinfo.getCompany(userId);
         rs.setFlagCompanyInfo(flagCompany != 0); //返回用户是否有填写公司信息
         return R.ok(rs);
+    }
+
+    @PostMapping("/findBySessionId")
+    public R findBySessionId(@RequestBody Map<String, Object> params){
+        int userId = idIsNull(params.get("userinfoId"), "用户ID");
+        String sessionId = strIsNull(params.get("sessionId"), "会话ID");
+        List<DtoQuestion> questions;
+        if (sessionId.startsWith("legacy_")) {
+            long questionId = Long.parseLong(sessionId.substring("legacy_".length()));
+            DtoQuestion question = serviceQuestion.getById(questionId);
+            if (question == null || !Objects.equals(question.getUserinfoId(), (long) userId)
+                    || !Objects.equals(question.getFlagDel(), 0)) {
+                return R.ok(Collections.emptyList());
+            }
+            questions = Collections.singletonList(question);
+        } else {
+            questions = serviceQuestion.findSession(userId, sessionId);
+        }
+        List<Long> ids = questions.stream().map(DtoQuestion::getId).collect(Collectors.toList());
+        Map<Long, DtoAnswer> answers = serviceAnswer.getByQuestionIds(ids, userId).stream()
+                .collect(Collectors.toMap(DtoAnswer::getQuestionId, Function.identity(), (first, ignored) -> first));
+        questions.forEach(question -> question.setAnswer(answers.get(question.getId())));
+        return R.ok(questions);
     }
 
     /**

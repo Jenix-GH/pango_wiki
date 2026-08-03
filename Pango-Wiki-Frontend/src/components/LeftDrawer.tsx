@@ -10,7 +10,7 @@ interface Props {
   onOpenLogin: () => void
   dayQuestions: QuestionItem[]
   weekQuestions: QuestionItem[]
-  onSelectHistory: (id: number, content: string) => void
+  onSelectHistory: (sessionId: string) => void
   onOpenSettings: () => void
   onRefresh: () => void
 }
@@ -70,7 +70,7 @@ export default function LeftDrawer({
                 <div
                   key={q.id}
                   className="drawer-item"
-                  onClick={() => onSelectHistory(q.id, q.question)}
+                  onClick={() => onSelectHistory(q.sessionId)}
                 >
                   <span className="drawer-item-text" title={q.question}>{q.question}</span>
                   <button
@@ -92,7 +92,7 @@ export default function LeftDrawer({
                 <div
                   key={q.id}
                   className="drawer-item"
-                  onClick={() => onSelectHistory(q.id, q.question)}
+                  onClick={() => onSelectHistory(q.sessionId)}
                 >
                   <span className="drawer-item-text" title={q.question}>{q.question}</span>
                   <button

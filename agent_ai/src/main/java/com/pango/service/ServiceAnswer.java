@@ -15,6 +15,7 @@ import javax.annotation.Resource;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Collections;
 
 /**
  * 对话的回答记录
@@ -61,6 +62,15 @@ public class ServiceAnswer extends ServiceImpl<MapperAnswer, DtoAnswer> implemen
             return null;
         }
         return list.get(0);
+    }
+
+    public List<DtoAnswer> getByQuestionIds(List<Long> questionIds, long userinfoId) {
+        if (questionIds == null || questionIds.isEmpty()) return Collections.emptyList();
+        LambdaQueryWrapper<DtoAnswer> qw = loadQw();
+        qw.eq(DtoAnswer::getUserinfoId, userinfoId)
+                .in(DtoAnswer::getQuestionId, questionIds)
+                .orderByAsc(DtoAnswer::getId);
+        return this.list(qw);
     }
 
     /**

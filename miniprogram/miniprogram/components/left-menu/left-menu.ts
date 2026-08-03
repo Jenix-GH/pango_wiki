@@ -133,9 +133,9 @@ Component({
         },
         //根据ID查询历史回答记录
         doSearchHis(e: any) {
-            const { id, content } = e.currentTarget.dataset
+            const { id, sessionId } = e.currentTarget.dataset
             this.setData({ activeId: id, activeId0: -1 })
-            this.triggerEvent('doSearchHisItem', { id, content })
+            this.triggerEvent('doSearchHisItem', { sessionId })
         },
         //获取用户信息
         getUserInfo() {

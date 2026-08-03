@@ -17,6 +17,7 @@ public class DtoQuestion {
 
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
+    private String sessionId;
     private Long userinfoId; //用户ID
     private String questionType; //问题类型
     private String question; //问题内容
@@ -31,6 +32,9 @@ public class DtoQuestion {
 
     @TableField(exist = false)
     private List<DtoQuestion> weekQuestion;
+
+    @TableField(exist = false)
+    private DtoAnswer answer;
 
     @TableField(exist = false)
     private Long count; //单个用户的回答数量

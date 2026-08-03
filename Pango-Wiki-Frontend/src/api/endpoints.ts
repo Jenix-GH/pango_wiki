@@ -19,6 +19,7 @@ export const ENDPOINTS = {
   answerAdd: `${DB_HOST}/answer/doAdd`,
   answerByQuestionId: `${DB_HOST}/answer/getByQuestionId`,
   historyByUserId: `${DB_HOST}/question/findHisByUserId`,
+  historyBySessionId: `${DB_HOST}/question/findBySessionId`,
   answerEvaluate: `${DB_HOST}/answer/doEvaluate`,
   upFlagUseData: `${DB_HOST}/set/upFlagUseData`,
   deleteHistory: `${DB_HOST}/question/doDelHis`,

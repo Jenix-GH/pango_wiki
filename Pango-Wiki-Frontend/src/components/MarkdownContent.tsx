@@ -11,12 +11,12 @@ interface Props {
 }
 
 export default function MarkdownContent({ content }: Props) {
-  const fixedContent = fixMarkdownTableSpacing(content)
+  const fixedContent = normalizeMarkdownBlockSpacing(content)
 
   return (
     <div className="markdown-body">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath]}
         rehypePlugins={[rehypeKatex, rehypeRaw]}
         components={{
           a: ({ href, children }) => (
@@ -41,16 +41,14 @@ export default function MarkdownContent({ content }: Props) {
   )
 }
 
-function fixMarkdownTableSpacing(md: string): string {
+function normalizeMarkdownBlockSpacing(md: string): string {
   const lines = md.split(/\r?\n/)
   const fixed: string[] = []
   let inCodeFence = false
 
   for (let i = 0; i < lines.length; i++) {
-    const current = lines[i]
-    const next = lines[i + 1] ?? ''
+    let current = lines[i]
     const currentTrimmed = current.trim()
-    const nextTrimmed = next.trim()
 
     if (/^(```|~~~)/.test(currentTrimmed)) {
       inCodeFence = !inCodeFence
@@ -58,19 +56,47 @@ function fixMarkdownTableSpacing(md: string): string {
       continue
     }
 
-    const currentIsTable = !inCodeFence && currentTrimmed.startsWith('|')
-    const nextIsTable = !inCodeFence && nextTrimmed.startsWith('|')
+    if (inCodeFence) {
+      fixed.push(current)
+      continue
+    }
 
-    // 普通文本与表格起始行之间补一个空行。
-    if (currentIsTable && fixed.length > 0) {
-      const previous = fixed[fixed.length - 1]
-      if (previous.trim() !== '' && !previous.trim().startsWith('|')) fixed.push('')
+    // CommonMark requires a space after the # sequence. Accept headings such as
+    // "###标题" from the backend by converting them to "### 标题".
+    current = current.replace(/^(\s{0,3}#{1,6})(?=[^\s#])/, '$1 ')
+
+    const normalizedTrimmed = current.trim()
+    const nextTrimmed = (lines[i + 1] ?? '').trim()
+    const currentIsTable = normalizedTrimmed.startsWith('|')
+    const previousIsTable = fixed.length > 0
+      && fixed[fixed.length - 1].trim().startsWith('|')
+    const nextIsTable = nextTrimmed.startsWith('|')
+    const currentIsHeading = /^#{1,6}(?:\s+|$)/.test(normalizedTrimmed)
+    const currentIsEmphasisHeading = /^(\*{2,3}|_{2,3})\S(?:.*\S)?\1[：:]?$/.test(normalizedTrimmed)
+    const currentStartsWithEmphasis = /^(\*{2,3}|_{2,3})\S.*?\1(?=[：:\s（(]|$)/.test(normalizedTrimmed)
+    const currentIsThematicBreak = /^(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(normalizedTrimmed)
+    const currentNeedsLeadingSpacing = currentIsTable
+      || currentIsHeading
+      || currentStartsWithEmphasis
+      || currentIsThematicBreak
+    const currentNeedsTrailingSpacing = currentIsTable
+      || currentIsHeading
+      || currentIsEmphasisHeading
+      || currentIsThematicBreak
+
+    if (currentNeedsLeadingSpacing && fixed.length > 0) {
+      const previous = fixed[fixed.length - 1] ?? ''
+      if (previous.trim() !== '' && !(currentIsTable && previousIsTable)) fixed.push('')
     }
 
     fixed.push(current)
 
-    // 表格结束行与后续文本之间也补一个空行。
-    if (currentIsTable && !nextIsTable && nextTrimmed !== '') fixed.push('')
+    if (
+      currentNeedsTrailingSpacing
+      && nextTrimmed !== ''
+      && !(currentIsTable && nextIsTable)
+    ) fixed.push('')
   }
+
   return fixed.join('\n')
 }
