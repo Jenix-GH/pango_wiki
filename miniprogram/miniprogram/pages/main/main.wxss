@@ -734,9 +734,10 @@ margin-left: 0rpx !important;
 
 .feedback-entry {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  min-width: 96rpx;
+  min-width: 120rpx;
   height: 48rpx;
   padding: 0 18rpx;
   box-sizing: border-box;
@@ -749,6 +750,7 @@ margin-left: 0rpx !important;
   font-weight: 600;
   line-height: 1;
   text-align: center;
+  white-space: nowrap;
   transform: translateY(-2rpx);
 }
 .feedback-entry::before { content: "!"; display: inline-flex; align-items: center; justify-content: center; width: 24rpx; height: 24rpx; margin-right: 8rpx; border: 2rpx solid currentColor; border-radius: 50%; font-size: 18rpx; line-height: 22rpx; }

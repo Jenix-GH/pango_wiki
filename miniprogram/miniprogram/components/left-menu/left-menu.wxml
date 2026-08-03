@@ -38,7 +38,7 @@
                 <view hidden="{{dataDayTitle.length === 0}}" class="data-group">
                     <view class="left-panel-title">今天</view>
                     <view wx:for="{{dataDayTitle}}" wx:key="index">
-                        <view bind:longpress="doCopy" bind:tap="doSearchHis" data-id="{{item.id}}" data-content="{{item.question}}" class="data-item {{activeId === item.id ? 'active-style' : ''}}">
+                        <view bind:longpress="doCopy" bind:tap="doSearchHis" data-id="{{item.id}}" data-session-id="{{item.sessionId}}" data-content="{{item.question}}" class="data-item {{activeId === item.id ? 'active-style' : ''}}">
                             {{item.question}}
                         </view>
                     </view>
@@ -47,7 +47,7 @@
                 <view hidden="{{dataHisTitle.length === 0}}" class="data-group">
                     <view class="left-panel-title">7天内</view>
                     <view wx:for="{{dataHisTitle}}" wx:key="index">
-                        <view bind:longpress="doCopy" bind:tap="doSearchHis" data-id="{{item.id}}" data-content="{{item.question}}" class="data-item {{activeId === item.id ? 'active-style' : ''}}">
+                        <view bind:longpress="doCopy" bind:tap="doSearchHis" data-id="{{item.id}}" data-session-id="{{item.sessionId}}" data-content="{{item.question}}" class="data-item {{activeId === item.id ? 'active-style' : ''}}">
                             {{item.question}}
                         </view>
                     </view>

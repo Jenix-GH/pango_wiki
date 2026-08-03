@@ -80,12 +80,14 @@ CREATE TABLE `dto_question` (
   `userinfo_id` int DEFAULT NULL,
   `question` varchar(5000) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `question_type` varchar(25) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `session_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '客户端会话ID',
   `do_date` varchar(25) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `dotime` datetime DEFAULT CURRENT_TIMESTAMP,
   `uptime` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   `flag_del` int DEFAULT '0',
   `internet_enable` int DEFAULT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_question_user_session` (`userinfo_id`,`session_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `dto_set` (

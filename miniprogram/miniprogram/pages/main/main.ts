@@ -70,13 +70,6 @@ interface SessionData {
     session_id: string  // 关键字段定义
 }
 
-interface HistoryAnswer {
-    content: string
-    dotime: string
-    flagEvaluate: string | number
-    reference?: unknown
-}
-
 interface ReferencePageLink {
     page: number
     document_page_url: string
@@ -707,7 +700,8 @@ Page({
             data: {
               userinfoId: this.data.userInfo.id,
               question: content,
-              questionType: "1"
+              questionType: "1",
+              sessionId: app.globalData.sessionId
               // internetEnable: this.data.isWebSearchEnabled? 1 : 2
             },
             success: (res) => {
@@ -1302,14 +1296,13 @@ Page({
     },
     //根据问题ID查询回答对象
     doSearchHisItem(e: any) {
-        const id = e.detail.id
-        const content = e.detail.content
+        const sessionId = e.detail.sessionId
         wx.request({
-            url: app.globalData.baseHost + '/answer/getByQuestionId',
+            url: app.globalData.baseHost + '/question/findBySessionId',
             method: 'POST',
-            data: { userinfoId: this.data.userInfo.id, questionId: id },
+            data: { userinfoId: this.data.userInfo.id, sessionId },
             success: (res) => {
-                let rs: ApiResponse<HistoryAnswer> = JSON.parse(JSON.stringify(res.data));
+                let rs: ApiResponse<any[]> = JSON.parse(JSON.stringify(res.data));
                 if (res.errMsg === "request:ok" && rs.code === 2000) {
                     // 切换历史记录时终止当前流，避免后续分片混入历史会话。
                     resetStreamDisplayQueue()
@@ -1326,25 +1319,25 @@ Page({
                     const leftPanel = this.selectComponent('#leftPanel');
                     leftPanel.hideLeftPanel();
                     //填充问题与答案
-                    let row: any = {
-                        flagAi: 0,
-                        content: content,
-                        time: ''
-                    };
-                    const questionRow = row
-                    //let answerContent = marked.parse(rs.data.content);
-                    row = {
-                        flagAi: 1,
-                        //think: rs.data.think,
-                        content: rs.data.content,
-                        contentData: rs.data.content,
-                        time: rs.data.dotime,
-                        flagEvaluate: rs.data.flagEvaluate,
-                        reference: normalizeReference(rs.data.reference)
-                    };
+                    app.globalData.sessionId = sessionId
+                    const historyRows: any[] = []
+                    ;(rs.data || []).forEach((item: any) => {
+                        historyRows.push({ flagAi: 0, content: item.question, time: item.dotime || '' })
+                        if (item.answer) {
+                            historyRows.push({
+                                flagAi: 1,
+                                content: item.answer.content,
+                                contentData: item.answer.content,
+                                time: item.answer.dotime,
+                                answerTime: item.answer.answerTime || item.answer.dotime,
+                                flagEvaluate: item.answer.flagEvaluate,
+                                reference: normalizeReference(item.answer.reference)
+                            })
+                        }
+                    })
                     this.setData({
                         // 历史记录是一次会话切换，不追加到当前会话。
-                        sessionList: [questionRow, row],
+                        sessionList: historyRows,
                         requestTask: null,
                         flagDoReady: false,
                         flagStart: false,

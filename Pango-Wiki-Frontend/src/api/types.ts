@@ -29,7 +29,12 @@ export interface AuthData {
 export interface QuestionItem {
   id: number
   question: string
+  sessionId: string
   dotime?: string
+}
+
+export interface SessionQuestion extends QuestionItem {
+  answer?: AnswerData
 }
 
 export interface HistoryData {
@@ -46,6 +51,8 @@ export interface AnswerData {
   dotime: string
   flagEvaluate: number
   questionId?: number
+  answerTime?: string
+  reference?: unknown
 }
 
 export interface SessionData {

@@ -208,23 +208,24 @@ export default function ChatPage() {
       time: formatTime(new Date()),
     }
     setMessages((prev) => [...prev, userMsg])
-    if (recordUserId && question.trim()) {
-      await api.addQuestion({
-        userinfoId: recordUserId,
-        question,
-        questionType: '1',
-        internetEnable: 0,
-      }).then(() => loadHistory()).catch(() => {})
-    }
-    setUploadImages([])
-    const textToSearch = question || ''
-    scrollToBottom()
 
     let currentSessionId = sessionId
     if (!currentSessionId) {
       currentSessionId = api.createSession(recordUserId || 'guest')
       setSessionId(currentSessionId)
     }
+    if (recordUserId && question.trim()) {
+      await api.addQuestion({
+        userinfoId: recordUserId,
+        question,
+        questionType: '1',
+        internetEnable: 0,
+        sessionId: currentSessionId,
+      }).then(() => loadHistory()).catch(() => {})
+    }
+    setUploadImages([])
+    const textToSearch = question || ''
+    scrollToBottom()
 
     const runId = ++activeRunRef.current
     setStreamingActive(true)
@@ -367,26 +368,30 @@ export default function ChatPage() {
     }
   }
 
-  const handleSelectHistory = async (questionId: number, content: string) => {
+  const handleSelectHistory = async (historySessionId: string) => {
     if (!recordUserId) return
-    const res = await api.getAnswerByQuestionId({
+    const res = await api.getHistoryBySessionId({
       userinfoId: recordUserId,
-      questionId,
+      sessionId: historySessionId,
     })
     if (res.code === 2000) {
-      setShowLeft(false)
       setShowTips(false)
-      const qMsg: ChatMessage = { flagAi: 0, content, time: '' }
-      const aMsg: ChatMessage = {
-        flagAi: 1,
-        content: res.data.content,
-        contentData: res.data.content,
-        time: res.data.dotime,
-        answerTime: res.data.answerTime || res.data.dotime,
-        flagEvaluate: res.data.flagEvaluate,
-        reference: normalizeReference(res.data.reference),
-      }
-      setMessages([qMsg, aMsg])
+      setSessionId(historySessionId)
+      const historyMessages = res.data.flatMap<ChatMessage>((item) => {
+        const questionMessage: ChatMessage = { flagAi: 0, content: item.question, time: item.dotime || '' }
+        if (!item.answer) return [questionMessage]
+        const answerMessage: ChatMessage = {
+          flagAi: 1,
+          content: item.answer.content,
+          contentData: item.answer.content,
+          time: item.answer.dotime,
+          answerTime: item.answer.answerTime || item.answer.dotime,
+          flagEvaluate: item.answer.flagEvaluate,
+          reference: normalizeReference(item.answer.reference),
+        }
+        return [questionMessage, answerMessage]
+      })
+      setMessages(historyMessages)
     }
   }
 

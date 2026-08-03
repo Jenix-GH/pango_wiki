@@ -1,5 +1,5 @@
 import { API_CONFIG, ENDPOINTS } from './endpoints'
-import type { ApiResponse, AuthData, FeedbackPayload, HistoryData, LicenseApplicationPayload, QuestionItem, ReferencePayload, UploadImage, UserInfo } from './types'
+import type { ApiResponse, AuthData, FeedbackPayload, HistoryData, LicenseApplicationPayload, QuestionItem, ReferencePayload, SessionQuestion, UploadImage, UserInfo } from './types'
 import { emptyReference } from './types'
 import { normalizeReference } from './types'
 
@@ -88,7 +88,7 @@ export const api = {
     throw new Error(typeof errorData === 'string' && errorData ? errorData : json.message || '语音识别失败')
   },
 
-  addQuestion: (data: { userinfoId: number; question: string; questionType: string; internetEnable: number }) =>
+  addQuestion: (data: { userinfoId: number; question: string; questionType: string; internetEnable: number; sessionId: string }) =>
     post<{ todayQuestion: QuestionItem[] }>(ENDPOINTS.questionAdd, data),
 
   addAnswer: (data: { userinfoId: number; think: string; content: string; answerTime: string; reference?: string }) =>
@@ -99,6 +99,9 @@ export const api = {
 
   getHistory: (data: { userinfoId: number }) =>
     post<HistoryData>(ENDPOINTS.historyByUserId, data),
+
+  getHistoryBySessionId: (data: { userinfoId: number; sessionId: string }) =>
+    post<SessionQuestion[]>(ENDPOINTS.historyBySessionId, data),
 
   evaluateAnswer: (data: { userinfoId: number; flagEvaluate: number; answerTime: string }) =>
     post(ENDPOINTS.answerEvaluate, data),
