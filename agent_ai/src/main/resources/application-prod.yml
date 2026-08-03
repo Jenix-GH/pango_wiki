@@ -29,10 +29,10 @@ spring:
       min-evictable-idle-time-millis: 300000
       filters: stat,wall
   redis:
-      host: ${REDIS_HOST}
-      port: ${REDIS_PORT}
-      password: ${REDIS_PASSWORD}
-      database: ${REDIS_DATABASE}
+    host: ${REDIS_HOST}
+    port: ${REDIS_PORT}
+    password: ${REDIS_PASSWORD}
+    database: ${REDIS_DATABASE}
     timeout: 1800s
     lettuce:
       pool:
