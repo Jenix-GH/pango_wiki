@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Date;
 import java.util.List;
 
@@ -19,6 +20,8 @@ public class DtoUserinfo {
     private String wxCode;
     private String nickName;
     private String phoneNumber;
+    @JsonIgnore
+    private String passwordHash;
     private String mailAddress;
     private String companyName;
     private String jobName;

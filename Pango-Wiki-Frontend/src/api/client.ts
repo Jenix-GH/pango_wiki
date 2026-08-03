@@ -1,14 +1,20 @@
 import { API_CONFIG, ENDPOINTS } from './endpoints'
-import type { ApiResponse, FeedbackPayload, HistoryData, QuestionItem, ReferencePayload, UploadImage } from './types'
+import type { ApiResponse, AuthData, FeedbackPayload, HistoryData, LicenseApplicationPayload, QuestionItem, ReferencePayload, UploadImage, UserInfo } from './types'
 import { emptyReference } from './types'
 import { normalizeReference } from './types'
 
 function getHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = localStorage.getItem('pango_auth_token')
   return {
     'Content-Type': 'application/json',
-    Authorization: API_CONFIG.authToken,
+    Authorization: token ? `Bearer ${token}` : API_CONFIG.authToken,
     ...extra,
   }
+}
+
+async function get<T>(url: string): Promise<ApiResponse<T>> {
+  const res = await fetch(url, { headers: getHeaders() })
+  return res.json()
 }
 
 async function post<T>(url: string, body?: unknown): Promise<ApiResponse<T>> {
@@ -45,6 +51,25 @@ function splitStreamFrames(raw: string): { frames: string[]; rest: string } {
 }
 
 export const api = {
+  sendSmsCode: (data: { phone: string; purpose: 'REGISTER' | 'RESET_PASSWORD' }) =>
+    post(ENDPOINTS.authSendSms, data),
+
+  register: (data: { phone: string; code: string; password: string; nickName?: string; companyName?: string; jobName?: string; mailAddress?: string }) =>
+    post<AuthData>(ENDPOINTS.authRegister, data),
+
+  login: (data: { phone: string; password: string }) =>
+    post<AuthData>(ENDPOINTS.authLogin, data),
+
+  resetPassword: (data: { phone: string; code: string; password: string }) =>
+    post(ENDPOINTS.authResetPassword, data),
+
+  getCurrentUser: () => get<UserInfo>(ENDPOINTS.authMe),
+
+  getOrCreateGuest: (data: { guestKey: string; platform: 'web' | 'miniprogram' }) =>
+    post<UserInfo>(ENDPOINTS.guestUser, data),
+
+  logout: () => post(ENDPOINTS.authLogout),
+
   getPhone: (data: { code: string; nickName: string }) =>
     post<{ nickName: string; avatarUrl: string; wxCode: string; count: number; flagCompanyInfo: boolean; todayQuestionList: unknown[]; weekQuestionList: unknown[] }>(ENDPOINTS.getPhone, data),
 
@@ -66,11 +91,11 @@ export const api = {
   addQuestion: (data: { userinfoId: number; question: string; questionType: string; internetEnable: number }) =>
     post<{ todayQuestion: QuestionItem[] }>(ENDPOINTS.questionAdd, data),
 
-  addAnswer: (data: { userinfoId: number; think: string; content: string; answerTime: string }) =>
+  addAnswer: (data: { userinfoId: number; think: string; content: string; answerTime: string; reference?: string }) =>
     post(ENDPOINTS.answerAdd, data),
 
   getAnswerByQuestionId: (data: { userinfoId: number; questionId: number }) =>
-    post<{ content: string; dotime: string; flagEvaluate: number }>(ENDPOINTS.answerByQuestionId, data),
+    post<{ content: string; dotime: string; answerTime?: string; flagEvaluate: number; reference?: unknown }>(ENDPOINTS.answerByQuestionId, data),
 
   getHistory: (data: { userinfoId: number }) =>
     post<HistoryData>(ENDPOINTS.historyByUserId, data),
@@ -89,6 +114,9 @@ export const api = {
 
   submitFeedback: (data: FeedbackPayload) =>
     post<{ id: number; status: number }>(ENDPOINTS.feedbackSubmit, data),
+
+  submitLicenseApplication: (data: LicenseApplicationPayload) =>
+    post<{ id: number; status: number }>(ENDPOINTS.licenseApplicationSubmit, data),
 
   createSession: (userId: string | number = 'guest', forceNew = false): string => {
     const key = 'pango_session_id'

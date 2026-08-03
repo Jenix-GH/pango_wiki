@@ -136,7 +136,7 @@ export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQ
         </button>
         <button
           className={`bubble-action-btn ${message.flagEvaluate === 1 ? 'active-like' : ''}`}
-          onClick={() => onEvaluate(index, message.flagEvaluate === 1 ? 0 : 1, message.time)}
+          onClick={() => onEvaluate(index, 1, message.answerTime || message.time)}
           title="赞"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill={message.flagEvaluate === 1 ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
@@ -145,7 +145,7 @@ export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQ
         </button>
         <button
           className={`bubble-action-btn ${message.flagEvaluate === -1 ? 'active-dislike' : ''}`}
-          onClick={() => onEvaluate(index, message.flagEvaluate === -1 ? 0 : -1, message.time)}
+          onClick={() => onEvaluate(index, -1, message.answerTime || message.time)}
           title="踩"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill={message.flagEvaluate === -1 ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">

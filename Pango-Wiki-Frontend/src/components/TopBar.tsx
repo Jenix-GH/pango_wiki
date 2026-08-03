@@ -2,10 +2,11 @@ import pangoLogo from '../../Logo.png'
 import './TopBar.css'
 
 interface Props {
-  active: 'chat' | 'wiki'
+  active: 'chat' | 'wiki' | 'license'
   userLabel: string
   onOpenChat: () => void
   onOpenWiki: () => void
+  onOpenLicense: () => void
   onOpenUser: () => void
   onOpenMenu?: () => void
   userDisabled?: boolean
@@ -16,6 +17,7 @@ export default function TopBar({
   userLabel,
   onOpenChat,
   onOpenWiki,
+  onOpenLicense,
   onOpenUser,
   onOpenMenu,
   userDisabled = false,
@@ -59,6 +61,19 @@ export default function TopBar({
             <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
           </svg>
           <span>智能问答</span>
+        </button>
+        <button
+          type="button"
+          className={active === 'license' ? 'active' : ''}
+          onClick={onOpenLicense}
+          title="License申请"
+          aria-label="License申请"
+        >
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M7 3h8l4 4v14H7z" />
+            <path d="M15 3v5h5M10 13h6M10 17h6" />
+          </svg>
+          <span>License申请</span>
         </button>
       </nav>
 

@@ -20,9 +20,12 @@ spring:
       pool-prepared-statements: true
       max-pool-prepared-statement-per-connection-size: 20
       validation-query: SELECT 'x'
-      test-on-borrow: false
+      test-on-borrow: true
       test-on-return: false
       test-while-idle: true
+      keep-alive: true
+      validation-query-timeout: 5
+      connection-properties: connectTimeout=10000;socketTimeout=60000;tcpKeepAlive=true
       #配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
       time-between-eviction-runs-millis: 60000
       #配置一个连接在池中最小生存的时间，单位是毫秒
@@ -65,3 +68,11 @@ ali_audio:
   token:
   rest-url: https://nls-gateway-cn-shanghai.aliyuncs.com/stream/v1/asr
   sample-rate: 16000
+ali_sms:
+  access-key-id: ${ALIYUN_AK_ID}
+  access-key-secret: ${ALIYUN_AK_SECRET}
+  endpoint: dysmsapi.aliyuncs.com
+  sign-name: 深圳市紫光同创电子
+  template-code: SMS_510370098
+  code-expire-minutes: 5
+  send-interval-seconds: 60

@@ -24,8 +24,8 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const {
     user, isLoggedIn, isGuest, loading,
-    flagCompanyInfo, answerCount,
-    incrementAnswerCount, login,
+    guestCount, guestUserId,
+    incrementAnswerCount,
   } = useAuth()
   const { start, abort } = useSSE()
   const {
@@ -50,8 +50,6 @@ export default function ChatPage() {
   const [showTips, setShowTips] = useState(true)
   const [dotsPhase, setDotsPhase] = useState(0)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
-  const [loginUsername, setLoginUsername] = useState('')
-  const [loginPassword, setLoginPassword] = useState('')
   const [userScrolledUp, setUserScrolledUp] = useState(false)
   const [uploadImages, setUploadImages] = useState<UploadImage[]>([])
   const [feedbackMessageIndex, setFeedbackMessageIndex] = useState<number | null>(null)
@@ -64,24 +62,24 @@ export default function ChatPage() {
   const activeRunRef = useRef(0)
   const streamingRef = useRef(false)
 
-  // Guest usage is temporarily unlimited.
-  const isLimitReached = isLoggedIn && !flagCompanyInfo && answerCount >= ANSWER_LIMIT
+  const isLimitReached = !isLoggedIn && guestCount >= ANSWER_LIMIT
+  const recordUserId = user?.id || guestUserId
 
   useEffect(() => {
     if (loading) return
     const init = async () => {
-      if (user) {
+      if (recordUserId) {
         await loadHistory()
       }
-      const id = api.createSession(user?.id || 'guest')
+      const id = api.createSession(recordUserId || 'guest')
       setSessionId(id)
     }
     init()
-  }, [loading, isLoggedIn])
+  }, [loading, isLoggedIn, recordUserId])
 
   const loadHistory = async () => {
-    if (!user) return
-    const res = await api.getHistory({ userinfoId: user.id })
+    if (!recordUserId) return
+    const res = await api.getHistory({ userinfoId: recordUserId })
     if (res.code === 2000) {
       setDayQuestions(res.data.todayQuestion || [])
       setWeekQuestions(res.data.weekQuestion || [])
@@ -210,13 +208,21 @@ export default function ChatPage() {
       time: formatTime(new Date()),
     }
     setMessages((prev) => [...prev, userMsg])
+    if (recordUserId && question.trim()) {
+      await api.addQuestion({
+        userinfoId: recordUserId,
+        question,
+        questionType: '1',
+        internetEnable: 0,
+      }).then(() => loadHistory()).catch(() => {})
+    }
     setUploadImages([])
     const textToSearch = question || ''
     scrollToBottom()
 
     let currentSessionId = sessionId
     if (!currentSessionId) {
-      currentSessionId = api.createSession(user?.id || 'guest')
+      currentSessionId = api.createSession(recordUserId || 'guest')
       setSessionId(currentSessionId)
     }
 
@@ -256,16 +262,27 @@ export default function ChatPage() {
           const completedContent = getTargetText() || answerContent
           setStreamingActive(false)
           if (completedContent.trim()) {
+            const completedTime = formatTime(new Date())
             commitAiMessage({
               flagAi: 1,
               content: completedContent,
               contentData: completedContent,
-              time: formatTime(new Date()),
+              time: completedTime,
+              answerTime: completedTime,
               flagEvaluate: 0,
               reference: normalizedRef.chunks.length > 0 ? normalizedRef : undefined,
               structuredCitations: citations.length > 0 ? citations : undefined,
               questionTrace: trace || undefined,
             })
+            if (recordUserId) {
+              void api.addAnswer({
+                userinfoId: recordUserId,
+                think: '',
+                content: completedContent,
+                answerTime: completedTime,
+                reference: JSON.stringify(normalizedRef),
+              }).catch(() => {})
+            }
           }
           clearLiveStreamUi()
 
@@ -298,15 +315,27 @@ export default function ChatPage() {
   }
 
   const handleEvaluate = async (index: number, evaluate: number, time: string) => {
-    if (!user || evaluate === 0) return
-    setMessages((prev) =>
-      prev.map((m, i) => (i === index ? { ...m, flagEvaluate: evaluate } : m))
-    )
-    api.evaluateAnswer({
-      userinfoId: user.id,
-      flagEvaluate: evaluate,
-      answerTime: time,
-    }).catch(() => {})
+    if (messages[index]?.flagEvaluate === evaluate) return
+    if (!recordUserId) {
+      setMessages((previous) => previous.map((message, messageIndex) => (
+        messageIndex === index ? { ...message, flagEvaluate: evaluate } : message
+      )))
+      showToast(evaluate === 1 ? '感谢你的认可' : '感谢反馈，我们会继续改进')
+      return
+    }
+    try {
+      const response = await api.evaluateAnswer({
+        userinfoId: recordUserId,
+        flagEvaluate: evaluate,
+        answerTime: time,
+      })
+      if (response.code !== 2000) throw new Error(response.message || '评价失败')
+      setMessages((prev) => prev.map((message, messageIndex) => (
+        messageIndex === index ? { ...message, flagEvaluate: evaluate } : message
+      )))
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '评价失败，请稍后重试')
+    }
   }
 
   const handleSubmitFeedback = async (form: Pick<FeedbackPayload, 'feedbackType' | 'detail' | 'contactName' | 'companyName' | 'email' | 'phone'>) => {
@@ -322,7 +351,7 @@ export default function ChatPage() {
     try {
       const response = await api.submitFeedback({
         ...form,
-        userinfoId: user?.id,
+        userinfoId: recordUserId,
         sessionId,
         platform: 'web',
         questionContent: question.content,
@@ -339,9 +368,9 @@ export default function ChatPage() {
   }
 
   const handleSelectHistory = async (questionId: number, content: string) => {
-    if (!user) return
+    if (!recordUserId) return
     const res = await api.getAnswerByQuestionId({
-      userinfoId: user.id,
+      userinfoId: recordUserId,
       questionId,
     })
     if (res.code === 2000) {
@@ -353,7 +382,9 @@ export default function ChatPage() {
         content: res.data.content,
         contentData: res.data.content,
         time: res.data.dotime,
+        answerTime: res.data.answerTime || res.data.dotime,
         flagEvaluate: res.data.flagEvaluate,
+        reference: normalizeReference(res.data.reference),
       }
       setMessages([qMsg, aMsg])
     }
@@ -367,7 +398,7 @@ export default function ChatPage() {
     clearLiveStreamUi()
     setMessages([])
     setShowTips(true)
-    const id = api.createSession(user?.id || 'guest', true)
+    const id = api.createSession(recordUserId || 'guest', true)
     setSessionId(id)
     showToast('已切换新对话')
   }
@@ -381,18 +412,6 @@ export default function ChatPage() {
       showToast('参考文档链接无效')
     }
   }, [showToast])
-
-  const handleLoginFromPrompt = async () => {
-    if (!loginUsername.trim()) {
-      showToast('请输入用户名')
-      return
-    }
-    await login(loginUsername, loginPassword)
-    setShowLoginPrompt(false)
-    setLoginUsername('')
-    setLoginPassword('')
-    showToast('登录成功')
-  }
 
   const addImageFiles = async (files: File[]) => {
     if (uploadImages.length >= 3) {
@@ -484,6 +503,7 @@ export default function ChatPage() {
           userLabel={user?.nickName || '访客'}
           onOpenChat={() => {}}
           onOpenWiki={() => navigate('/wiki')}
+          onOpenLicense={() => navigate('/license-application')}
           onOpenUser={() => user ? setShowSettings(true) : navigate('/login')}
           onOpenMenu={() => setShowLeft(true)}
         />
@@ -513,7 +533,7 @@ export default function ChatPage() {
             <div className="chat-welcome">
               {isGuest && (
                 <div className="guest-banner">
-                  访客模式
+                  <span><strong>访客模式</strong> · 最多可询问 {ANSWER_LIMIT} 次，剩余 {Math.max(0, ANSWER_LIMIT - guestCount)} 次</span>
                   <button onClick={() => navigate('/login')}>登录</button>
                 </div>
               )}
@@ -535,7 +555,7 @@ export default function ChatPage() {
           <div className="chat-messages" ref={scrollRef} onScroll={handleScroll}>
             {isGuest && (
               <div className="guest-banner">
-                访客模式
+                <span><strong>访客模式</strong> · 最多可询问 {ANSWER_LIMIT} 次，剩余 {Math.max(0, ANSWER_LIMIT - guestCount)} 次</span>
                 <button onClick={() => navigate('/login')}>登录</button>
               </div>
             )}
@@ -610,26 +630,11 @@ export default function ChatPage() {
       {showLoginPrompt && (
         <div className="login-overlay">
           <div className="login-prompt-card">
-            <h3>登录以继续使用</h3>
-            <p>体验次数已用完，登录后可获取更多对话次数</p>
-            <input
-              className="drawer-input"
-              placeholder="用户名"
-              value={loginUsername}
-              onChange={(e) => setLoginUsername(e.target.value)}
-              autoFocus
-            />
-            <input
-              className="drawer-input"
-              type="password"
-              placeholder="密码（可留空）"
-              value={loginPassword}
-              onChange={(e) => setLoginPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleLoginFromPrompt()}
-            />
+            <h3>访客体验次数已用完</h3>
+            <p>访客可以免费提问 50 次，注册或登录后可继续使用，并同步小程序历史记录。</p>
             <div className="login-prompt-actions">
               <button className="prompt-btn secondary" onClick={() => setShowLoginPrompt(false)}>稍后再说</button>
-              <button className="prompt-btn primary" onClick={handleLoginFromPrompt}>登录</button>
+              <button className="prompt-btn primary" onClick={() => navigate('/login')}>注册或登录</button>
             </div>
           </div>
         </div>

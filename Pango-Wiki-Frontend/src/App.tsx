@@ -6,6 +6,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage'))
 const ChatPage = lazy(() => import('./pages/ChatPage'))
 const WikiPage = lazy(() => import('./pages/WikiPage'))
 const WikiReaderPage = lazy(() => import('./pages/WikiReaderPage'))
+const LicenseApplicationPage = lazy(() => import('./pages/LicenseApplicationPage'))
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
             <Route path="/wiki" element={<WikiPage />} />
             <Route path="/wiki/reader" element={<WikiReaderPage />} />
             <Route path="/wiki/preview" element={<Navigate to="/wiki" replace />} />
+            <Route path="/license-application" element={<LicenseApplicationPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

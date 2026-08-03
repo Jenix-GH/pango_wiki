@@ -90,10 +90,28 @@
 
 .feedback-action-btn {
   width: auto;
-  padding: 0 10px;
-  gap: 5px;
-  border-radius: 16px;
-  font-size: 12px;
+  height: 34px;
+  padding: 0 13px;
+  gap: 6px;
+  border: 1px solid rgba(215, 25, 32, 0.38);
+  border-radius: 17px;
+  color: #c5161d;
+  background: #fff3f3;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 7px rgba(215, 25, 32, 0.1);
+}
+
+.feedback-action-btn:hover {
+  border-color: #d71920;
+  color: #fff;
+  background: #d71920;
+  box-shadow: 0 4px 12px rgba(215, 25, 32, 0.22);
+  transform: translateY(-1px);
+}
+
+.feedback-action-btn:active {
+  transform: translateY(0);
 }
 
 .bubble-images {

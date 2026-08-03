@@ -34,10 +34,10 @@ public class ServiceUserinfo extends ServiceImpl<MapperUserinfo, DtoUserinfo> im
      */
     public DtoUserinfo doAdd(String wxCode, String nickName){
         //获取用户信息
-        DtoUserinfo userinfo = getByWxCode(wxCode);
+        DtoUserinfo userinfo = getByPhone(wxCode);
         if(null == userinfo){ // 空值,需要新增信息
             // 新增用户信息
-            userinfo = new DtoUserinfo().setWxCode(wxCode).setNickName(nickName);
+            userinfo = new DtoUserinfo().setWxCode(wxCode).setPhoneNumber(wxCode).setNickName(nickName);
             this.save(userinfo);
             // 新增设置信息
             DtoSet set = new DtoSet().setUserinfoId(userinfo.getId()).setDataUseFlag(1);
@@ -45,6 +45,10 @@ public class ServiceUserinfo extends ServiceImpl<MapperUserinfo, DtoUserinfo> im
             // 增加人员的设置信息
             userinfo.setSetId(set.getId()).setFlagUseData(1);
             return userinfo;
+        }
+        if (userinfo.getPhoneNumber() == null || userinfo.getPhoneNumber().trim().isEmpty()) {
+            userinfo.setPhoneNumber(wxCode);
+            this.updateById(userinfo);
         }
         // 判断有无设置信息
         if(null == userinfo.getSetId() || userinfo.getSetId() <= 0){ //表示没有设置信息
@@ -99,6 +103,44 @@ public class ServiceUserinfo extends ServiceImpl<MapperUserinfo, DtoUserinfo> im
             list.get(0).setFlagUseData(set.getDataUseFlag()).setSetId(set.getId());
         }
         return rs;
+    }
+
+    public DtoUserinfo getByPhone(String phone) {
+        LambdaQueryWrapper<DtoUserinfo> qw = loadQw();
+        qw.eq(DtoUserinfo::getPhoneNumber, phone).or().eq(DtoUserinfo::getWxCode, phone);
+        List<DtoUserinfo> list = this.list(qw);
+        if (CollectionUtils.isEmpty(list)) return null;
+        DtoUserinfo userinfo = list.get(0);
+        DtoSet set = serviceSet.findByUserId(Math.toIntExact(userinfo.getId()));
+        if (set != null) userinfo.setFlagUseData(set.getDataUseFlag()).setSetId(set.getId());
+        return userinfo;
+    }
+
+    public DtoUserinfo createPhoneUser(String phone, String nickName, String passwordHash) {
+        DtoUserinfo userinfo = new DtoUserinfo()
+                .setWxCode(phone)
+                .setPhoneNumber(phone)
+                .setNickName(nickName)
+                .setPasswordHash(passwordHash);
+        this.save(userinfo);
+        DtoSet set = new DtoSet().setUserinfoId(userinfo.getId()).setDataUseFlag(1);
+        serviceSet.save(set);
+        return userinfo.setSetId(set.getId()).setFlagUseData(1);
+    }
+
+    public DtoUserinfo getOrCreateGuest(String guestKey, String platform) {
+        String wxCode = "guest:" + platform + ":" + guestKey;
+        DtoUserinfo userinfo = getByWxCode(wxCode);
+        if (userinfo != null) return userinfo;
+        userinfo = new DtoUserinfo()
+                .setWxCode(wxCode)
+                .setNickName("访客")
+                .setDotime(new java.util.Date())
+                .setUptime(new java.util.Date());
+        this.save(userinfo);
+        DtoSet set = new DtoSet().setUserinfoId(userinfo.getId()).setDataUseFlag(1);
+        serviceSet.save(set);
+        return userinfo.setSetId(set.getId()).setFlagUseData(1);
     }
 
     /**

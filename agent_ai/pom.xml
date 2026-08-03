@@ -99,6 +99,16 @@
             <artifactId>nls-sdk-recognizer</artifactId>
             <version>2.2.19</version>
         </dependency>
+        <!-- 阿里云短信服务 V2.0 SDK -->
+        <dependency>
+            <groupId>com.aliyun</groupId>
+            <artifactId>dysmsapi20170525</artifactId>
+            <version>4.5.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
     </dependencies>
     <build>
         <finalName>agent_ai_${profiles.active}</finalName>

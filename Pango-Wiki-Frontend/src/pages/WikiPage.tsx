@@ -239,6 +239,11 @@ export default function WikiPage() {
 
   const downloadDocument = useCallback((document: WikiDocument) => {
     setActionError('')
+    if (!miniProgramClient && !user) {
+      setActionError('下载文档需要先登录，在线阅读不受影响。')
+      navigate('/login')
+      return
+    }
     if (document.action_disabled) {
       setActionError(document.source_status || '该文件当前不可用，请刷新目录后重试。')
       return
@@ -248,7 +253,7 @@ export default function WikiPage() {
     if (!downloadUrl || !openReferenceUrl(downloadUrl)) {
       setActionError('文档下载链接无效，请稍后重试。')
     }
-  }, [])
+  }, [miniProgramClient, navigate, user])
 
   const handleEmbeddedReaderLoad = useCallback((event: React.SyntheticEvent<HTMLIFrameElement>) => {
     try {
@@ -330,6 +335,7 @@ export default function WikiPage() {
           if (embeddedDocument) setEmbeddedDocument(null)
           else selectDirectory('all')
         }}
+        onOpenLicense={() => navigate('/license-application')}
         onOpenUser={openUserDestination}
         userDisabled={returningToMiniProgram}
       />

@@ -141,6 +141,7 @@ export default function WikiReaderPage() {
           userLabel={user?.nickName || '访客'}
           onOpenChat={() => navigate('/')}
           onOpenWiki={() => navigate('/wiki')}
+          onOpenLicense={() => navigate('/license-application')}
           onOpenUser={() => navigate(user ? '/' : '/login')}
         />
       ) : null}

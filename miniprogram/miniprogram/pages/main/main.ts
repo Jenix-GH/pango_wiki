@@ -434,8 +434,10 @@ Page({
     // 开始录音（长按输入框触发）
     startRecord(e: any) {
         if (this.data._inputFocused) return;
-        //判断是否登录
-        if (!this.checkLogin()) return
+        if (!this.data.userInfo?.id) {
+            showError("访客信息初始化中，请稍后重试")
+            return
+        }
         //判断是否未完善公司信息
         if (this.checkAnswerLimit()) return;
         if (!this.data.flagTalkOver) {
@@ -664,9 +666,10 @@ Page({
     },
     //执行查询
     doSearch() {
-        // add by csj
-        //判断是否登录
-        if (!this.checkLogin()) return
+        if (!this.data.userInfo?.id) {
+            showError("访客信息初始化中，请稍后重试")
+            return
+        }
         //判断是否未完善公司信息
         if (this.checkAnswerLimit()) return;
         //判断是否有正在回答中的
@@ -1390,6 +1393,20 @@ Page({
                 })
                 app.globalData.flagCompanyInfo = rs.data.flagCompanyInfo;
             }
+        } else {
+            info = await this.getOrCreateGuestUser()
+            if (info?.id) {
+                this.setData({ userInfo: info })
+                const data = await this.getHisData()
+                const rs: ApiResponse<questionList> = JSON.parse(JSON.stringify(data))
+                if (rs && rs.code === 2000) {
+                    this.setData({
+                        dataDayTitle: rs.data.todayQuestion || [],
+                        dataHisTitle: rs.data.weekQuestion || [],
+                        answerCount: rs.data.count || 0
+                    })
+                }
+            }
         }
         const EXTRA_OFFSET = 0; // 键盘顶部与输入框之间的额外间距
         wx.onKeyboardHeightChange(res => {
@@ -1401,6 +1418,30 @@ Page({
                 }
             })
         })
+    },
+    async getOrCreateGuestUser() {
+        let guestKey = wx.getStorageSync("pangoGuestKey") as string
+        if (!guestKey) {
+            guestKey = `mini_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
+            wx.setStorageSync("pangoGuestKey", guestKey)
+        }
+        try {
+            const res: any = await new Promise((resolve, reject) => {
+                wx.request({
+                    url: app.globalData.baseHost + '/userinfo/guest',
+                    method: 'POST',
+                    data: { guestKey, platform: 'miniprogram' },
+                    success: resolve,
+                    fail: reject
+                })
+            })
+            const result = res.data as ApiResponse<any>
+            if (result.code === 2000 && result.data?.id) return result.data
+        } catch (error) {
+            console.error('初始化访客信息失败', error)
+        }
+        showError("访客信息初始化失败，请检查网络后重试")
+        return null
     },
     async getHisData() {
         try {

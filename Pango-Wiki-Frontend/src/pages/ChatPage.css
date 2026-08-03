@@ -220,6 +220,10 @@
   color: var(--bg-primary-hover);
 }
 
+.guest-banner strong {
+  font-weight: 700;
+}
+
 .login-overlay {
   position: fixed;
   inset: 0;

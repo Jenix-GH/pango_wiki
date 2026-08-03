@@ -73,7 +73,7 @@
                     <view class="bottom-menu-item" bind:tap="doEvaluate" data-evaluate="-1" data-index="{{index}}" data-dotime="{{item.time}}">
                         <view class="{{item.flagEvaluate==='-1'? 'cai1' : 'cai'}}"></view>
                     </view>
-                    <view class="feedback-entry" bind:tap="openFeedback" data-index="{{index}}">反馈</view>
+                    <view class="bottom-menu-item feedback-entry" bind:tap="openFeedback" data-index="{{index}}">反馈</view>
                 </view>
             </view>
             <!--右侧内容-->
