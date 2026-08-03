@@ -88,6 +88,14 @@
   color: var(--bg-primary);
 }
 
+.feedback-action-btn {
+  width: auto;
+  padding: 0 10px;
+  gap: 5px;
+  border-radius: 16px;
+  font-size: 12px;
+}
+
 .bubble-images {
   display: flex;
   gap: 6px;

@@ -300,6 +300,16 @@ Page({
         flagCancel: false,
         flagTalkOver: true,
         answerCount: 0, //当前用户的总数量
+        feedbackVisible: false,
+        feedbackSubmitting: false,
+        feedbackMessageIndex: -1,
+        feedbackTypeOptions: ['回答不准确', '没有解决问题', '内容过时', '引用资料有误', '其他问题'],
+        feedbackType: '回答不准确',
+        feedbackDetail: '',
+        feedbackContactName: '',
+        feedbackCompanyName: '',
+        feedbackEmail: '',
+        feedbackPhone: '',
         tagStyle: {
             // 标题样式
             'h1': 'font-size:36rpx;line-height:1.8;margin:24rpx 0;',
@@ -341,6 +351,84 @@ Page({
                 console.error('打开 Wiki 页面失败', err)
                 showError('Wiki 页面打开失败')
             }
+        })
+    },
+
+    openFeedback(e: any) {
+        this.setData({
+            feedbackVisible: true,
+            feedbackMessageIndex: Number(e.currentTarget.dataset.index),
+            feedbackType: '回答不准确',
+            feedbackDetail: '',
+            feedbackContactName: '',
+            feedbackCompanyName: '',
+            feedbackEmail: '',
+            feedbackPhone: ''
+        })
+    },
+
+    closeFeedback() {
+        if (this.data.feedbackSubmitting) return
+        this.setData({ feedbackVisible: false, feedbackMessageIndex: -1 })
+    },
+
+    stopPropagation() {},
+
+    chooseFeedbackType(e: any) {
+        this.setData({ feedbackType: String(e.currentTarget.dataset.type || '') })
+    },
+
+    inputFeedbackField(e: any) {
+        const field = String(e.currentTarget.dataset.field || '')
+        if (!field) return
+        this.setData({ [field]: e.detail.value })
+    },
+
+    submitFeedback() {
+        if (this.data.feedbackSubmitting) return
+        const answerIndex = this.data.feedbackMessageIndex
+        const answer = this.data.sessionList[answerIndex]
+        let question: any = null
+        for (let index = answerIndex - 1; index >= 0; index -= 1) {
+            if (this.data.sessionList[index].flagAi === 0) {
+                question = this.data.sessionList[index]
+                break
+            }
+        }
+        if (!answer || !question) {
+            wx.showToast({ title: '无法关联本次问答', icon: 'none' })
+            return
+        }
+
+        this.setData({ feedbackSubmitting: true })
+        const userinfoId = this.data.userInfo && this.data.userInfo.id
+        wx.request({
+            url: app.globalData.baseHost + '/feedback/submit',
+            method: 'POST',
+            data: {
+                userinfoId: userinfoId || null,
+                sessionId: app.globalData.sessionId || '',
+                platform: 'miniprogram',
+                feedbackType: this.data.feedbackType,
+                detail: this.data.feedbackDetail,
+                questionContent: question.content || '',
+                answerContent: answer.contentData || answer.content || '',
+                contactName: this.data.feedbackContactName,
+                companyName: this.data.feedbackCompanyName,
+                email: this.data.feedbackEmail,
+                phone: this.data.feedbackPhone
+            },
+            success: (res: any) => {
+                const result = res.data as { code?: number; message?: string }
+                if (result && result.code === 2000) {
+                    this.setData({ feedbackVisible: false, feedbackMessageIndex: -1 })
+                    wx.showToast({ title: '感谢您的反馈', icon: 'success' })
+                    return
+                }
+                wx.showToast({ title: result.message || '提交失败，请稍后重试', icon: 'none' })
+            },
+            fail: () => wx.showToast({ title: '网络异常，请稍后重试', icon: 'none' }),
+            complete: () => this.setData({ feedbackSubmitting: false })
         })
     },
     // 开始录音（长按输入框触发）

@@ -8,12 +8,13 @@ import { formatTime } from '../utils/formatTime'
 import { copyToClipboard } from '../utils/clipboard'
 import { openReferenceUrl } from '../utils/referenceUrl'
 import { normalizeReference } from '../api/types'
-import type { ChatMessage, QuestionItem, UploadImage } from '../api/types'
+import type { ChatMessage, FeedbackPayload, QuestionItem, UploadImage } from '../api/types'
 import TopBar from '../components/TopBar'
 import LeftDrawer from '../components/LeftDrawer'
 import SettingsPanel from '../components/SettingsPanel'
 import ChatBubble from '../components/ChatBubble'
 import ChatInput from '../components/ChatInput'
+import FeedbackModal from '../components/FeedbackModal'
 import pangoLogo from '../../Logo.png'
 import './ChatPage.css'
 
@@ -53,6 +54,8 @@ export default function ChatPage() {
   const [loginPassword, setLoginPassword] = useState('')
   const [userScrolledUp, setUserScrolledUp] = useState(false)
   const [uploadImages, setUploadImages] = useState<UploadImage[]>([])
+  const [feedbackMessageIndex, setFeedbackMessageIndex] = useState<number | null>(null)
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const dotsTimer = useRef<ReturnType<typeof setInterval>>()
@@ -306,6 +309,35 @@ export default function ChatPage() {
     }).catch(() => {})
   }
 
+  const handleSubmitFeedback = async (form: Pick<FeedbackPayload, 'feedbackType' | 'detail' | 'contactName' | 'companyName' | 'email' | 'phone'>) => {
+    if (feedbackMessageIndex === null) return
+    const answer = messages[feedbackMessageIndex]
+    const question = [...messages.slice(0, feedbackMessageIndex)].reverse().find((message) => message.flagAi === 0)
+    if (!answer || !question) {
+      showToast('无法关联本次问答，请稍后重试')
+      return
+    }
+
+    setFeedbackSubmitting(true)
+    try {
+      const response = await api.submitFeedback({
+        ...form,
+        userinfoId: user?.id,
+        sessionId,
+        platform: 'web',
+        questionContent: question.content,
+        answerContent: answer.contentData || answer.content,
+      })
+      if (response.code !== 2000) throw new Error(response.message || '提交失败')
+      setFeedbackMessageIndex(null)
+      showToast('感谢反馈，我们会认真核查')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '反馈提交失败，请稍后重试')
+    } finally {
+      setFeedbackSubmitting(false)
+    }
+  }
+
   const handleSelectHistory = async (questionId: number, content: string) => {
     if (!user) return
     const res = await api.getAnswerByQuestionId({
@@ -517,6 +549,7 @@ export default function ChatPage() {
                 onEvaluate={handleEvaluate}
                 onCopyQuestion={handleCopy}
                 onOpenReference={handleOpenReference}
+                onFeedback={setFeedbackMessageIndex}
               />
             ))}
 
@@ -601,6 +634,12 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+      <FeedbackModal
+        open={feedbackMessageIndex !== null}
+        submitting={feedbackSubmitting}
+        onClose={() => !feedbackSubmitting && setFeedbackMessageIndex(null)}
+        onSubmit={handleSubmitFeedback}
+      />
     </div>
   )
 }

@@ -23,6 +23,7 @@ export const ENDPOINTS = {
   upFlagUseData: `${DB_HOST}/set/upFlagUseData`,
   deleteHistory: `${DB_HOST}/question/doDelHis`,
   updateUserInfo: `${DB_HOST}/userinfo/doUpdate`,
+  feedbackSubmit: `${DB_HOST}/feedback/submit`,
   chatCompletions: CHAT_STREAM_URL,
   chatCompletionsChoose: CHAT_STREAM_URL,
 } as const

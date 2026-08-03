@@ -1,5 +1,5 @@
 import { API_CONFIG, ENDPOINTS } from './endpoints'
-import type { ApiResponse, HistoryData, QuestionItem, ReferencePayload, UploadImage } from './types'
+import type { ApiResponse, FeedbackPayload, HistoryData, QuestionItem, ReferencePayload, UploadImage } from './types'
 import { emptyReference } from './types'
 import { normalizeReference } from './types'
 
@@ -86,6 +86,9 @@ export const api = {
 
   updateUserInfo: (data: Record<string, unknown>) =>
     post<{ companyName?: string } & Record<string, unknown>>(ENDPOINTS.updateUserInfo, data),
+
+  submitFeedback: (data: FeedbackPayload) =>
+    post<{ id: number; status: number }>(ENDPOINTS.feedbackSubmit, data),
 
   createSession: (userId: string | number = 'guest', forceNew = false): string => {
     const key = 'pango_session_id'

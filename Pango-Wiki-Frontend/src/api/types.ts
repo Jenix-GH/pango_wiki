@@ -100,6 +100,20 @@ export interface ChatMessage {
   questionTrace?: unknown
 }
 
+export interface FeedbackPayload {
+  userinfoId?: number
+  sessionId: string
+  platform: 'web' | 'miniprogram'
+  feedbackType: string
+  detail?: string
+  questionContent: string
+  answerContent: string
+  contactName?: string
+  companyName?: string
+  email?: string
+  phone?: string
+}
+
 export interface StreamProgressState {
   currentStatusText: string
   currentStatusEmoji: string

@@ -73,6 +73,7 @@
                     <view class="bottom-menu-item" bind:tap="doEvaluate" data-evaluate="-1" data-index="{{index}}" data-dotime="{{item.time}}">
                         <view class="{{item.flagEvaluate==='-1'? 'cai1' : 'cai'}}"></view>
                     </view>
+                    <view class="feedback-entry" bind:tap="openFeedback" data-index="{{index}}">反馈</view>
                 </view>
             </view>
             <!--右侧内容-->
@@ -164,5 +165,31 @@
         </view>
         <!-- 提示信息 -->
         <view class="question-bottom-text">内容由AI生成，仅供参考</view>
+    </view>
+</view>
+
+<view wx:if="{{feedbackVisible}}" class="feedback-mask" catch:tap="closeFeedback">
+    <view class="feedback-dialog" catch:tap="stopPropagation">
+        <view class="feedback-close" bind:tap="closeFeedback">×</view>
+        <view class="feedback-kicker">回答质量反馈</view>
+        <view class="feedback-title">告诉我们哪里需要改进</view>
+        <view class="feedback-desc">反馈将与本次问题和 AI 回答一起提交，帮助我们持续改进回答质量。</view>
+        <view class="feedback-label">问题类型</view>
+        <view class="feedback-types">
+            <view wx:for="{{feedbackTypeOptions}}" wx:key="*this" class="feedback-type {{feedbackType === item ? 'selected' : ''}}" bind:tap="chooseFeedbackType" data-type="{{item}}">{{item}}</view>
+        </view>
+        <view class="feedback-label">详细说明 <text>选填</text></view>
+        <textarea class="feedback-textarea" maxlength="2000" value="{{feedbackDetail}}" bindinput="inputFeedbackField" data-field="feedbackDetail" placeholder="例如：器件参数不准确，正确值应为……" />
+        <view class="feedback-label">联系方式 <text>选填，方便工程师进一步联系</text></view>
+        <view class="feedback-contact-grid">
+            <input maxlength="100" value="{{feedbackContactName}}" bindinput="inputFeedbackField" data-field="feedbackContactName" placeholder="姓名" />
+            <input maxlength="200" value="{{feedbackCompanyName}}" bindinput="inputFeedbackField" data-field="feedbackCompanyName" placeholder="公司名称" />
+            <input maxlength="200" value="{{feedbackEmail}}" bindinput="inputFeedbackField" data-field="feedbackEmail" placeholder="电子邮箱" />
+            <input maxlength="50" value="{{feedbackPhone}}" bindinput="inputFeedbackField" data-field="feedbackPhone" placeholder="联系电话" />
+        </view>
+        <view class="feedback-actions">
+            <button class="feedback-cancel" bind:tap="closeFeedback">暂不反馈</button>
+            <button class="feedback-submit" loading="{{feedbackSubmitting}}" disabled="{{feedbackSubmitting}}" bind:tap="submitFeedback">提交反馈</button>
+        </view>
     </view>
 </view>

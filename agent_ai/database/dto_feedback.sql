@@ -1,0 +1,21 @@
+CREATE TABLE `dto_feedback` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '反馈ID',
+  `userinfo_id` BIGINT NULL COMMENT '用户ID，访客反馈可为空',
+  `session_id` VARCHAR(100) NULL COMMENT '客户端会话ID',
+  `platform` VARCHAR(20) NOT NULL COMMENT '来源：web/miniprogram',
+  `feedback_type` VARCHAR(30) NOT NULL COMMENT '反馈类型',
+  `detail` TEXT NULL COMMENT '用户补充说明',
+  `question_content` TEXT NOT NULL COMMENT '用户问题快照',
+  `answer_content` LONGTEXT NOT NULL COMMENT 'AI回答快照',
+  `contact_name` VARCHAR(100) NULL COMMENT '联系人姓名',
+  `company_name` VARCHAR(200) NULL COMMENT '公司名称',
+  `email` VARCHAR(200) NULL COMMENT '电子邮箱',
+  `phone` VARCHAR(50) NULL COMMENT '联系电话',
+  `status` TINYINT NOT NULL DEFAULT 0 COMMENT '处理状态：0待处理，1处理中，2已处理，3已关闭',
+  `dotime` DATETIME NOT NULL COMMENT '创建时间',
+  `uptime` DATETIME NOT NULL COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_feedback_status_dotime` (`status`, `dotime`),
+  KEY `idx_feedback_userinfo_id` (`userinfo_id`),
+  KEY `idx_feedback_session_id` (`session_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI回答问题反馈';
