@@ -1,97 +1,106 @@
-# Pango 智能问答 + 器件 Wiki 独立前端
+# Pango 智能问答与器件 Wiki Web 前端
 
-`web-wiki-version/` 是从现有 `web-version/` 复制出来的独立集成版。原始智能问答前端、FastAPI 问答入口、Agent Runtime 和 RAGFlow 检索逻辑均不需要修改。
+本目录是 React 18、TypeScript 和 Vite 实现的统一 Web 客户端，包含智能问答、器件 Wiki、在线文档阅读、用户登录、License 申请和使用说明。业务接口由仓库中的 `agent_ai/` Java 服务提供；Wiki 目录、PDF 阅读器和文档资源由独立 Wiki 服务提供。
 
-## 页面
+## 页面路由
 
-- `/`：现有 Pango慧答。
-- `/login`：现有登录页。
-- `/wiki`：响应式 Wiki；目录和文档类型完全由独立 Wiki 后端返回，桌面浏览器与手机/小程序 WebView 共用同一页面。
-- `/wiki/preview`：转到 `/wiki`，与 PDF 阅读器的“返回器件文档”链接兼容。
+- `/`：智能问答。支持登录/访客、历史会话、流式回答、图片提问、回答配图、参考资料、评价和反馈。
+- `/login`：注册、登录、短信验证码及密码重置入口。
+- `/wiki`：响应式器件文档中心；桌面端使用目录栏和表格，移动端使用抽屉与卡片布局。
+- `/wiki/reader`：统一在线阅读外壳。桌面端保留站点顶部导航和“边看边问”，内部加载 Wiki 阅读器；小程序模式使用 `client=miniprogram`。
+- `/wiki/preview`：兼容旧阅读器返回地址，重定向到 `/wiki`。
+- `/license-application`：License 申请。
+- `/user-guide`：读取部署目录中的 `/pango_huida_user_guide.md` 并显示使用说明。
 
-Wiki 默认按“知识库 + 文档身份”分组，只在主列表展示当前版本，其余版本收入“历史版本”。同版本同时存在正式 PDF 与 `clean_pages` 处理副本时，正式 PDF 优先作为当前文档。本页不提供“针对本文提问”。
+## 智能问答
 
-## 新版 Wiki 能力
+- 浏览器请求 `/dbServ/dialogue/stream-answer`，由 Java 后端完成用户校验、访客额度扣减和模型请求代理；前端不直接持有模型服务凭据。
+- 页面首次进入或刷新会创建新的 `session_id`；主动新建会话也会生成新 ID；从历史记录进入时恢复对应会话 ID。
+- 流式内容通过双缓冲队列平滑显示，支持进度帧、增量答案和最终结果帧。
+- 问题和答案通过 Java 后端持久化。答案记录可保存参考资料 JSON 和 `answer_media`，因此重新打开历史会话后仍能显示引用和图片。
+- 参考资料跳转到 `/wiki/reader`，保留回答生成时实际引用的文档及页码，不按文件名重新匹配最新版本。
+- 回答图片仅接受同源 `/references/figures/` 地址；根据 `citation_label` 插入到正文对应 `<sup>...</sup>` 脚标之后，无法匹配时在答案末尾兜底显示。
+- Markdown 渲染支持 GFM 表格、数学公式、原始 HTML、代码块，并统一处理标题/表格间距和引用脚标后的换行。
+- 访客 50 次额度以 Java 后端原子扣减结果为准，前端显示剩余额度但不是安全边界。
 
-- 左侧为后端配置驱动的递归目录，不再把知识库或 UG/DS 写死在前端。
-- 当前同时展示“器件文档”和“软件文档”；`soft` 知识库显示为“PDS 软件应用指南”。
-- PDS 文档自动进入用户指南、参考手册、快速入门等子目录。
-- 支持搜索、目录筛选、类型筛选、最近更新排序、当前/历史版本和文档详情。
-- “刷新目录”会绕过前后端缓存，立即重新读取 RAGFlow 的启用状态和文档列表。
-- 新增知识库、修改显示名称或增加多级目录时，只改后端 YAML，前端无需重新构建。
-- 手机端取消 1080px 桌面画布：目录改为抽屉、筛选标签支持横向滑动、文档表格自动切换为单列卡片。
-- 手机选择新目录后主内容自动回到顶部；在线阅读仍使用后端返回的原始 `viewer_url`。
-- 小程序以 `/wiki?client=miniprogram` 进入时，“智能问答”自动切换为“返回慧答”，优先返回并保留原生问答会话，无法返回时降级到 `/pages/main/main`。
-- 支持 Wiki 后端返回的 `source_type`、`action_type`、`action_label` 和 `action_disabled`，用于区分 RAGFlow 文档、群晖文件及不可用状态。
-- 桌面端 PDF 当前版本、详情和历史版本同时提供“在线阅读”和“下载”；ZIP、RAR、安装包等不可预览文件只显示“下载”。手机端隐藏下载入口，保留在线阅读和文档信息。
-- 下载使用后端返回的 `download_url`，仅允许站内 `/references/download` 与 `/references/cloud/*` 路径，前端不保存 RAGFlow 或群晖凭据。
+## Wiki 能力
 
-小程序侧接入方式、WebView 示例和验收步骤见 [`MINIPROGRAM_WIKI_INTEGRATION.md`](./MINIPROGRAM_WIKI_INTEGRATION.md)；服务器替换、发布验收和回滚步骤见 [`DEPLOY_MOBILE_MINIPROGRAM.md`](./DEPLOY_MOBILE_MINIPROGRAM.md)。
+- 目录和文档列表来自 `/wiki/api/catalog`，前端不写死知识库、产品系列或文档类型。
+- 支持递归目录、搜索、目录筛选、类型筛选、排序、当前版本、历史版本和文档详情。
+- 支持后端返回的 `source_type`、`action_type`、`action_label` 和 `action_disabled`，以区分在线阅读、下载和不可用状态。
+- 桌面端可在线阅读或下载可用文档；移动端优先保留在线阅读和文档信息。
+- 在线阅读和下载只接受白名单中的同源 `/references/*` 路径，浏览器不保存 Wiki/RAGFlow/存储服务凭据。
+- Wiki 在线阅读页保留统一 Banner 和“边看边问”浮窗。阅读器内部返回 `/wiki` 时由外层路由接管，避免页面和 Banner 重复嵌套。
+- 小程序通过 `/wiki?client=miniprogram` 和 `/wiki/reader?...&client=miniprogram` 复用 Web 页面，并通过 WebView 返回原生问答页。
 
-## 问答与 Wiki 联动
+## 目录结构
 
-问答结束包中的 `reference.chunks[].page_links[].document_page_url` 会被原样使用：
-
-- “Wiki阅读”优先打开后端返回的 Wiki 阅读器 URL。
-- “引用页”按钮保留 `dataset_id` / `document_id` / `page` / `display_page`。
-- 只有原始文档链接而没有页码时，进入 Wiki 阅读器第 1 页，而不是打开裸 PDF。
-- 不根据文件名重新匹配“最新版”，避免历史回答的证据页错位。
-- 浏览器不直连 RAGFlow，也不会获得 RAGFlow API Key。
-- 用户界面统一展示为 Pango 官方文档，不暴露底层知识库实现名称。
-- 问答接口保持原协议，前端通过双缓冲打字机做平滑伪流式呈现；完整回答显示后再挂载参考文档。
-
-回答引用与 Wiki 主目录承担不同职责：主目录展示当前正式版本；回答中的引用始终打开生成该答案时实际检索到的文档与页码。这样不会把旧答案强行跳到新版后产生证据错位。
+```text
+src/
+  api/          Java 业务接口、流式请求及类型
+  components/   顶部栏、消息气泡、Markdown、Wiki 助手等复用组件
+  contexts/     登录状态上下文
+  hooks/        SSE/流式请求 Hooks
+  pages/        路由页面
+  utils/        引用 URL、媒体与通用工具
+  wiki/         Wiki API、类型和目录/文档组件
+```
 
 ## 本地开发
 
-1. 如需同时调试智能问答，先在仓库根目录启动现有问答 FastAPI：
+安装依赖并启动 Vite：
 
-   ```bash
-   uvicorn src.main:app --host 127.0.0.1 --port 8000
-   ```
-
-2. 单独启动 Wiki 后端（默认 `8010`），再在本目录启动前端：
-
-   ```bash
-   cd ../wiki-backend
-   uvicorn app.main:app --host 127.0.0.1 --port 8010
-
-   cd ../web-wiki-version
-   npm ci
-   npm run dev
-   ```
-
-3. 访问 Vite 输出的本地地址，例如 `http://127.0.0.1:3000/wiki`。
-
-Vite 将 `/chat` 代理到 `VITE_DEV_CHAT_BACKEND_ORIGIN`，把 `/wiki/api` 和 `/references` 代理到 `VITE_DEV_WIKI_BACKEND_ORIGIN`；前端路由 `/wiki` 不会被整体代理。这样本地开发也不会把 Wiki 服务混入智能问答后端。
-
-## 生产分发规则
-
-推荐前端和 API 保持同一域名，分发规则顺序如下：
-
-```text
-/chat/*       -> 现有智能问答服务
-/dbServ/*     -> 现有业务服务
-/wiki/api/*   -> Wiki 目录接口
-/references/* -> PDF 阅读器与文档代理
-其他路径       -> web-wiki-version/dist/index.html
+```bash
+npm ci
+npm run dev
 ```
 
-`/wiki/api/*` 和 `/references/*` 必须放在 SPA fallback 之前。不要把整个 `/wiki/*` 都转发给 FastAPI，否则 `/wiki` 前端页会被覆盖。
+默认访问地址为 `http://127.0.0.1:3000`。开发代理的默认目标是 `https://aiapp.pangomicro.com`，可通过环境变量覆盖：
 
-## 构建
+- `VITE_DEV_BACKEND_ORIGIN`：旧的统一开发目标，作为聊天和 Wiki 目标的回退值。
+- `VITE_DEV_CHAT_BACKEND_ORIGIN`：`/chat` 和 `/api/ragflow` 的开发代理目标。
+- `VITE_DEV_WIKI_BACKEND_ORIGIN`：`/wiki/api` 和 `/references` 的开发代理目标。
+- `VITE_CHAT_BASE_URL`、`VITE_CHAT_API_URL`：旧聊天接口兼容配置；当前主问答请求使用 `/dbServ/dialogue/stream-answer`。
+- `VITE_DB_BASE_URL`：Java 业务接口前缀，默认 `/dbServ`。
+- `VITE_WIKI_CATALOG_URL`：Wiki 目录接口，默认 `/wiki/api/catalog`。
+- `VITE_REFERENCE_ORIGIN`：参考文档和回答图片的允许来源；为空时要求与页面同源。
+
+如需调试本仓库 Java 后端，请在 `../agent_ai` 中准备 `application-dev.yml` 所引用的环境变量，然后运行：
+
+```bash
+mvn spring-boot:run -Pdev
+```
+
+独立 Wiki 服务不在本仓库中；本地联调时将 `VITE_DEV_WIKI_BACKEND_ORIGIN` 指向可用的 Wiki 服务。
+
+## 构建与发布
 
 ```bash
 npm run build
 ```
 
-产物位于本目录的 `dist/`，可单独发布和回滚；不需要覆盖原 `web-version/dist/`。
+该命令先执行 TypeScript 检查，再由 Vite 生成 `dist/`。生产环境应将 SPA 静态资源与接口部署在同一 HTTPS 域名下，并确保 Nginx 的精确接口 location 位于 SPA fallback 之前：
 
-## 当前边界
+```text
+/dbServ/*     -> Java 业务服务（含鉴权、额度、历史和模型代理）
+/wiki/api/*   -> Wiki 目录服务
+/references/* -> PDF 阅读器、文档与回答图片服务
+其他路径       -> Pango-Wiki-Frontend/dist/index.html
+```
 
-- 本仓库只保存 `Pango-Wiki-Frontend/` 和 `miniprogram/` 客户端代码；Wiki 后端单独维护在私有后端仓库中。
-- Wiki 已验收桌面端和手机端响应式布局；真实微信小程序 WebView 仍应在每次发布后做一次设备抽查。
-- Wiki 目录由 `wiki-backend/config/wiki-datasets.yaml` 维护，前端不保存目录副本。
-- 当前流式问答结果的参考文档可跳 Wiki。
-- PDF 有章节书签时显示章节目录；没有书签时阅读器提供页码导航目录。
-- 原业务数据库返回的历史问答记录不包含 `reference`，因此旧历史回答仍不显示参考文档；解决该点才需要另行扩展历史记录的数据契约。
+Java 服务向模型服务发起请求时会根据已校验的 JSON `session_id` 设置 `X-Session-Id`。若部署多个模型实例，可使用 `agent_ai/deploy/nginx-chat-upstream.conf` 中的一致性哈希示例保证同一会话落到同一实例。回答图片相关代理示例见 `agent_ai/deploy/nginx-answer-media.conf`。
+
+## 发布检查
+
+- 执行 `npm run build`。
+- 验证问答刷新后创建新会话、历史会话恢复、访客额度和 SSE 流式输出。
+- 验证回答引用、回答图片、图片放大和指定页在线阅读。
+- 验证在线阅读返回后不会嵌套第二个 Banner。
+- 验证 Wiki 桌面端、移动端及真实微信 WebView。
+- 新增域名或路径时同步检查 Nginx、HTTPS、CORS/CSP 和微信业务域名/下载域名配置。
+
+## 系统边界
+
+- 本仓库包含 Web、小程序和 Java 业务后端；模型服务及独立 Wiki 服务不在本仓库中。
+- 数据库初始化和增量脚本位于 `agent_ai/database/`。已部署数据库应按顺序执行迁移脚本，不应重复执行或修改已执行的迁移。
+- 服务端是鉴权和访客额度的最终安全边界；客户端限制仅用于交互提示。

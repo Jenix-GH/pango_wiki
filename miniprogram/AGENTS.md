@@ -1,14 +1,15 @@
-# AGENTS.md
+# Mini Program Guidelines
 
 ## Project overview
 
-WeChat miniprogram (微信小程序) — AI-powered Q&A assistant ("PangoAI") targeting FPGA chip selection and smart Q&A, backed by a RAGFlow server. Written in TypeScript; compiled by the WeChat Developer Tools IDE.
+This is the native WeChat Mini Program client for Pango intelligent Q&A. It is written in TypeScript and compiled by WeChat DevTools. The client calls the Java business backend under `/dbServ`; the backend authenticates users, enforces the guest quota, persists conversations, and proxies streaming model requests. The Mini Program does not call a model server directly.
 
-## Build & dev workflow
+## Build and development workflow
 
-- **No npm build scripts.** The WeChat Developer Tools IDE compiles TypeScript via its built-in plugin. Open the project root in the IDE to get TS compilation and miniprogram preview.
-- **npm packages must be "built"** via the IDE's "Tools → Build npm" after `npm install`. This populates `miniprogram/miniprogram_npm/`. If components like `mp-html` don't render, run this step.
-- **Miniprogram root** is `miniprogram/` (set by `project.config.json` → `miniprogramRoot`). All page/component paths in `app.json` are relative to that directory.
+- There is no npm build script. Open this directory in WeChat DevTools to compile, preview, and upload the application.
+- Run `npm install`, then use **Tools → Build npm** in DevTools. This populates `miniprogram/miniprogram_npm/`; do not hand-edit that generated directory.
+- `project.config.json` sets `miniprogram/` as `miniprogramRoot`, so runtime source is under `miniprogram/miniprogram/` when viewed from the repository root and under `miniprogram/` from this directory.
+- Production hosts are currently configured in `miniprogram/app.ts`. Any new HTTPS host used by requests, downloads, images, or WebViews must also be added to the corresponding WeChat legal-domain configuration.
 
 ## Running tests
 
@@ -16,60 +17,56 @@ WeChat miniprogram (微信小程序) — AI-powered Q&A assistant ("PangoAI") ta
 npx tsx tests/stream_parser.test.mts
 ```
 
-Tests use Node.js native `assert` and import source directly from `miniprogram/pages/main/stream`. No test framework — the file is a plain assertion script that exits non-zero on failure.
+The test uses Node's native `assert` and imports `miniprogram/pages/main/stream.ts` directly. A local `tsx` installation is not committed, so `npx` may need to download it.
 
-## Streaming protocol (RAGFlow SSE)
+## Streaming protocol and request path
 
-The app calls the RAGFlow chat endpoint with `wx.request` + `enableChunked: true` + `responseType: 'arraybuffer'`. The stream parser in `miniprogram/pages/main/stream.ts` handles:
+`pages/main/main.ts` sends chunked requests with `wx.request`, `enableChunked: true`, and `responseType: 'arraybuffer'` to `/dbServ/dialogue/stream-answer`. The Java backend validates `session_id`, enforces the server-side guest quota, adds the trusted `X-Session-Id` header, and proxies the request to the configured model endpoint. Nginx may consistently hash that header so one session remains on one model server.
 
-- **SSE frames** split by `\n` (not `\n\n`). The `splitStreamFrames()` function is what production code uses.
-- **Content format:** Each frame is trimmed; `data:` prefix is stripped if present; the remainder is JSON-parsed.
-- **Manual UTF-8 decoding** (`decodeSSE`) is used instead of `TextDecoder` because the miniprogram environment may lack it.
-- **Message types** (handled in `main.ts` `startStreaming()` callback):
-  - `{"code":0,"data":{"status":"...","phase":"..."}}` — progress indicator
-  - `{"code":0,"data":{"answer":"..."}}` — incremental answer text (appended)
-  - `{"event":"message","data":{"content":"..."}}` — RAGFlow Agent message format
-  - `{"code":0,"data":true}` — terminal signal (stop streaming, attach references)
-  - `[DONE]` — stop streaming
-  - Plain text (non-JSON) — treated as cumulative answer, replaces display (not append)
+The active parser is `pages/main/stream.ts`:
+
+- It manually decodes UTF-8 because `TextDecoder` is not guaranteed in the Mini Program runtime.
+- It accepts newline-delimited/SSE-like frames, strips an optional `data:` prefix, and JSON-parses each frame.
+- Progress frames update the waiting status.
+- Incremental `data.answer` and RAGFlow Agent `event: "message"` frames feed the buffered streaming renderer.
+- The final frame may contain references, structured citations, trace data, and `answer_media` at the JSON top level.
+- `[DONE]` and terminal frames complete the response; plain non-JSON text is handled as replacement content.
 
 ## Architecture
 
-```
+```text
 miniprogram/
-  app.ts / app.json / app.wxss     — App entry, globalData (hosts, sessionId, toggles)
+  app.ts / app.json / app.wxss        App entry, production hosts, session state
   pages/
-    index/                          — Welcome/login page (user authorization, phone binding)
-    main/                           — Core chat page (streaming Q&A, voice input, markdown rendering)
-      main.ts                       — ~1277 lines: all page logic, no subcomponents extracted
-      stream.ts                     — SSE stream parser with manual UTF-8 decoding (ACTIVE, imported by main.ts)
+    index/                            Login/welcome flow
+    main/                             Q&A, streaming, history, media, voice input
+      main.ts                         Main page state and request orchestration
+      stream.ts                       Active chunk/SSE parser
+    wiki/                             Wiki WebView entry
+    reference-viewer/                 Reference document WebView
   components/
-    mp-html/                        — Rich text / markdown renderer (npm component, built into miniprogram_npm)
-    left-menu/                      — Slide-out history sidebar
-    set-menu/                       — Bottom settings panel
-    set-userinfo/ set-company/ ...  — Various settings sub-panels
+    mp-html/                          Markdown/HTML renderer
+    left-menu/                        History sidebar
+    set-menu/                         Settings panel
+    set-userinfo/ set-company/ ...    Profile/settings components
   utils/
-    stream.ts                       — Alternate stream parser using TextDecoder (STALE, NOT used)
-    tools.ts                        — Clipboard, toast helpers
-    util.ts                         — Date formatting
+    stream.ts                         Legacy parser; not used by the main page
+    tools.ts                          Clipboard, text extraction, toast helpers
+    util.ts                           Date formatting
 tests/
-  stream_parser.test.mts            — Tests for splitStreamFrames
-typings/                            — Global type declarations (miniprogram-api-typings)
+  stream_parser.test.mts
 ```
 
-## Key quirks
+## Current behavior and important details
 
-- **Two stream implementations exist.** Only `miniprogram/pages/main/stream.ts` is used. Do not modify or rely on `miniprogram/utils/stream.ts` — it is dead code.
-- **`._*` files** (e.g. `._app.ts`, `._stream.ts`) are macOS resource fork artifacts. Not excluded by `.gitignore`.
-- **`project.private.config.json`** contains IDE-local settings. Not excluded by `.gitignore`.
-- **No backend persistence.** Most `wx.request` calls (login, question/answer persistence) are commented out. Session management is entirely client-side.
-- **Session IDs** are generated client-side in `getSessionId()`, not returned by the server.
-- **Toggle modes** — `isTestVersion` and `isWebSearchEnabled` both trigger `getSessionId(true)` to force a new session. The test toggle switches between `sessionUrl` and `sessionUrl_choose` (different `conversationId`).
-- **No state management library** — all state is in page/component `data` objects. Communication between components uses `triggerEvent`.
-- **Markdown rendering** uses `mp-html` with latex support via KaTeX and code highlighting via Prism. Table formatting needs an explicit empty line before markdown tables — see `fixMarkdownTableSpacing()`.
-- **Image upload** uses `wx.chooseMedia` to select images, converts to base64 via `wx.getFileSystemManager().readFileSync`, and sends to the RAGFlow API alongside the question.
-- **Voice input** uses long-press on the textarea, uploads audio to `{baseHost}/wx/transcribe` for ASR. A `flagVoiceMode` toggle exists to separate text and voice modes.
-- **Icons** are inline SVG data URIs in wxss, not external image files.
-- **Component framework** is `glass-easel` (set in `app.json`), not the default `exparser`. Skyline renderer is enabled.
-- **TSConfig** is strict with `noUnusedLocals` and `noUnusedParameters` — unused imports/vars will cause IDE compilation errors.
-- **Tab width** is 2 spaces (set in `project.config.json`).
+- Questions and answers are persisted through `/question/doAdd` and `/answer/doAdd`. History is grouped and reloaded by `session_id`; reference JSON and `answer_media` are persisted with the answer.
+- Session IDs are generated client-side by `getSessionId()`. Starting a new conversation forces a new ID, while opening history restores that historical session ID.
+- Guest identity is initialized through `/userinfo/guest`. The authoritative 50-question guest quota is enforced by the Java backend, not by client state alone.
+- Answer media URLs must resolve under the configured HTTPS `referenceHost` and `/references/figures/`. Images are associated with citation labels, inserted between multiple `mp-html` fragments after the matching `<sup>...</sup>` marker, and can be previewed with `wx.previewImage`.
+- References open through `pages/reference-viewer/`; Wiki opens through `pages/wiki/`. Both depend on approved WebView/business domains and should be tested on a real device.
+- Markdown preprocessing inserts table spacing and preserves line breaks after citation markers. Do not bypass `fixMarkdownTableSpacing()` when restoring historical answers.
+- Image upload uses `wx.chooseMedia`, reads base64 data through the file-system manager, and sends it with the question.
+- Voice input uploads audio to `{baseHost}/wx/transcribe`.
+- Most state lives in the page/component `data` object; components communicate with `triggerEvent`. There is no external state-management library.
+- `componentFramework` is `glass-easel`, Skyline is enabled, and TypeScript uses strict unused-variable checks.
+- `project.private.config.json` and `._*` files are machine-specific artifacts; avoid intentionally committing new ones.

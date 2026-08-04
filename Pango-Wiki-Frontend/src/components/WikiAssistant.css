@@ -218,6 +218,45 @@ body.is-resizing-wiki-assistant {
   font-size: 13px;
 }
 
+.wiki-assistant-answer-media {
+  margin-top: 10px;
+  display: grid;
+  gap: 9px;
+}
+
+.wiki-assistant-answer-media figure {
+  margin: 0;
+  padding: 7px;
+  background: #fafafa;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.wiki-assistant-answer-media figure > button:first-child,
+.wiki-assistant-answer-media img {
+  width: 100%;
+  display: block;
+}
+
+.wiki-assistant-answer-media img {
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 5px;
+}
+
+.wiki-assistant-answer-media figcaption {
+  margin-top: 6px;
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.wiki-assistant-media-source {
+  margin-top: 5px;
+  color: var(--bg-primary);
+  font-size: 12px;
+}
+
 .wiki-assistant-references {
   margin-top: 12px;
   padding-top: 10px;

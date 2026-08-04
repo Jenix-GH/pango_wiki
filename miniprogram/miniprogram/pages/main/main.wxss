@@ -204,6 +204,47 @@ page {
   border-radius: 50%;
 }
 
+.answer-figure-panel {
+  margin: 16rpx 0;
+  max-width: 580rpx;
+}
+
+.answer-figure-item {
+  padding: 14rpx;
+  margin-bottom: 16rpx;
+  overflow: hidden;
+  background: #fafafa;
+  border: 1px solid #e5e7eb;
+  border-radius: 10rpx;
+}
+
+.main-session .answer-figure-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 480rpx;
+  object-fit: contain;
+  background: #f7f7f8;
+  border-radius: 8rpx;
+}
+
+.answer-figure-caption {
+  margin-top: 8rpx;
+  color: #374151;
+  font-size: 24rpx;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.answer-figure-source {
+  min-height: 48rpx;
+  margin-top: 6rpx;
+  display: flex;
+  align-items: center;
+  color: #d4237a;
+  font-size: 22rpx;
+}
+
 .main-session-content {
   padding: 10rpx 0 20rpx 45rpx;
 }

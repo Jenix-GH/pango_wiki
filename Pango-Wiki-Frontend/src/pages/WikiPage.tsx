@@ -412,7 +412,7 @@ export default function WikiPage() {
               </div>
               <div className="wiki-hero-meta">
                 <span>{allGroups.length} 份文档</span><i />
-                <span>{directories.length} 个产品系列</span><i />
+                <span>{directories.length} 个文档类型</span><i />
                 <span>最近同步：{catalog ? formatSyncTime(catalog.generated_at) : '—'}</span>
                 <b className="wiki-online-dot" />
               </div>
@@ -426,7 +426,6 @@ export default function WikiPage() {
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={searchPlaceholder}
               />
-              <kbd>⌘ K</kbd>
             </label>
           </section>
 

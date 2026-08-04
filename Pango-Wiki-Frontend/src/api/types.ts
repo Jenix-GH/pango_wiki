@@ -58,6 +58,8 @@ export interface AnswerData {
   questionId?: number
   answerTime?: string
   reference?: unknown
+  answerMedia?: unknown
+  answer_media?: unknown
 }
 
 export interface SessionData {
@@ -105,6 +107,16 @@ export interface UploadImage {
   original_data_url?: string
 }
 
+export interface AnswerMedia {
+  asset_id: string
+  url: string
+  absoluteUrl: string
+  caption?: string
+  citation_label?: string
+  page?: number
+  document_page_url?: string
+}
+
 export interface ChatMessage {
   flagAi: 0 | 1
   content: string
@@ -115,6 +127,7 @@ export interface ChatMessage {
   flagEvaluate?: number
   images?: UploadImage[]
   reference?: ReferencePayload
+  answerMedia?: AnswerMedia[]
   structuredCitations?: unknown[]
   questionTrace?: unknown
 }
@@ -192,7 +205,7 @@ export function normalizeReference(reference: unknown): ReferencePayload {
 export interface SSECallbacks {
   onProgress: (statusText: string, emoji: string) => void
   onChunk: (text: string, mode: 'append' | 'replace') => void
-  onDone: (finalAnswer: string, reference: ReferencePayload, citations: unknown[], trace: unknown) => void
+  onDone: (finalAnswer: string, reference: ReferencePayload, citations: unknown[], trace: unknown, answerMedia: AnswerMedia[]) => void
   onError: (err: Error) => void
 }
 

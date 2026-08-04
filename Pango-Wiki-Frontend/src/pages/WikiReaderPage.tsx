@@ -26,6 +26,7 @@ export default function WikiReaderPage() {
   const { user } = useAuth()
   const [searchParams] = useSearchParams()
   const hostRef = useRef<HTMLDivElement>(null)
+  const frameRef = useRef<HTMLIFrameElement>(null)
   const [error, setError] = useState('')
   const viewerUrl = useMemo(
     () => resolveReferenceUrl(searchParams.get('url') || ''),
@@ -33,8 +34,25 @@ export default function WikiReaderPage() {
   )
   const miniProgramClient = searchParams.get('client') === 'miniprogram'
 
+  const handleFrameLoad = () => {
+    const frame = frameRef.current
+    if (!frame) return
+    try {
+      const frameLocation = frame.contentWindow?.location
+      if (!frameLocation || frameLocation.origin !== window.location.origin) return
+      if (frameLocation.pathname === '/wiki' || frameLocation.pathname === '/') {
+        navigate(`${frameLocation.pathname}${frameLocation.search}${frameLocation.hash}`, { replace: true })
+        return
+      }
+      setError('')
+    } catch {
+      // The configured reader may be cross-origin in some deployments.
+      setError('')
+    }
+  }
+
   useEffect(() => {
-    if (!viewerUrl || !hostRef.current) return
+    if (!miniProgramClient || !viewerUrl || !hostRef.current) return
     const controller = new AbortController()
     const host = hostRef.current
     const appRoot = document.getElementById('root')
@@ -122,7 +140,7 @@ export default function WikiReaderPage() {
       if (appRoot) appRoot.style.display = previousRootDisplay
       host.innerHTML = ''
     }
-  }, [viewerUrl])
+  }, [miniProgramClient, viewerUrl])
 
   if (!viewerUrl) {
     return (
@@ -147,9 +165,19 @@ export default function WikiReaderPage() {
       ) : null}
       <main className="wiki-reader-content">
         {error && <div className="wiki-reader-notice">{error}</div>}
-        <div ref={hostRef} className="wiki-reader-host">
-          <p className="wiki-reader-loading">正在加载文档阅读器...</p>
-        </div>
+        {miniProgramClient ? (
+          <div ref={hostRef} className="wiki-reader-host">
+            <p className="wiki-reader-loading">正在加载文档阅读器...</p>
+          </div>
+        ) : (
+          <iframe
+            ref={frameRef}
+            className="wiki-reader-frame"
+            src={viewerUrl}
+            title="在线文档阅读"
+            onLoad={handleFrameLoad}
+          />
+        )}
       </main>
       {!miniProgramClient ? <WikiAssistant /> : null}
     </div>

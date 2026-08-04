@@ -1561,21 +1561,6 @@
   flex: 0 0 auto;
 }
 
-.wiki-search kbd {
-  min-width: 40px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #dce3ed;
-  border-radius: 5px;
-  color: #708097;
-  background: rgba(255, 255, 255, 0.82);
-  font-family: inherit;
-  font-size: 11px;
-  box-shadow: 0 1px 1px rgba(25, 47, 75, 0.04);
-}
-
 .wiki-toolbar-actions {
   display: flex;
   align-items: center;
@@ -1771,8 +1756,7 @@
 }
 
 @media (max-width: 768px) {
-  .wiki-hero-meta,
-  .wiki-search kbd {
+  .wiki-hero-meta {
     display: none;
   }
 

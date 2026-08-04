@@ -6,7 +6,7 @@ import { usePseudoStream } from '../hooks/usePseudoStream'
 import { api } from '../api/client'
 import { formatTime } from '../utils/formatTime'
 import { copyToClipboard } from '../utils/clipboard'
-import { openReferenceUrl } from '../utils/referenceUrl'
+import { normalizeAnswerMedia, openReferenceReaderUrl, serializeAnswerMedia } from '../utils/referenceUrl'
 import { normalizeReference } from '../api/types'
 import type { ChatMessage, FeedbackPayload, QuestionItem, UploadImage } from '../api/types'
 import TopBar from '../components/TopBar'
@@ -71,7 +71,7 @@ export default function ChatPage() {
       if (recordUserId) {
         await loadHistory()
       }
-      const id = api.createSession(recordUserId || 'guest')
+      const id = api.createSession(recordUserId || 'guest', true)
       setSessionId(id)
     }
     init()
@@ -202,7 +202,7 @@ export default function ChatPage() {
 
     let currentSessionId = sessionId
     if (!currentSessionId) {
-      currentSessionId = api.createSession(recordUserId || 'guest')
+      currentSessionId = api.createSession(recordUserId || 'guest', true)
       setSessionId(currentSessionId)
     }
     setUploadImages([])
@@ -233,7 +233,7 @@ export default function ChatPage() {
         pushStreamContent(text, mode)
         armStreamTimeout(runId)
       },
-      (finalAnswer, reference, citations, trace) => {
+      (finalAnswer, reference, citations, trace, answerMedia) => {
         if (activeRunRef.current !== runId) return
         clearStreamTimeout()
         setProgressText('')
@@ -255,6 +255,7 @@ export default function ChatPage() {
               answerTime: completedTime,
               flagEvaluate: 0,
               reference: normalizedRef.chunks.length > 0 ? normalizedRef : undefined,
+              answerMedia: answerMedia.length > 0 ? answerMedia : undefined,
               structuredCitations: citations.length > 0 ? citations : undefined,
               questionTrace: trace || undefined,
             })
@@ -265,6 +266,7 @@ export default function ChatPage() {
                 content: completedContent,
                 answerTime: completedTime,
                 reference: JSON.stringify(normalizedRef),
+                answerMedia: serializeAnswerMedia(answerMedia),
               }).catch(() => {})
             }
             void loadHistory()
@@ -382,6 +384,7 @@ export default function ChatPage() {
           answerTime: item.answer.answerTime || item.answer.dotime,
           flagEvaluate: item.answer.flagEvaluate,
           reference: normalizeReference(item.answer.reference),
+          answerMedia: normalizeAnswerMedia(item.answer.answerMedia || item.answer.answer_media),
         }
         return [questionMessage, answerMessage]
       })
@@ -407,7 +410,7 @@ export default function ChatPage() {
   }
 
   const handleOpenReference = useCallback((relUrl: string) => {
-    if (!openReferenceUrl(relUrl)) {
+    if (!openReferenceReaderUrl(relUrl)) {
       showToast('参考文档链接无效')
     }
   }, [showToast])

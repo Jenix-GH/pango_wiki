@@ -2,10 +2,11 @@
 
 ## Project Structure & Module Organization
 
-This Git repository contains two client projects:
+This repository contains two clients and the Java business backend:
 
 - `Pango-Wiki-Frontend/` is the React 18, TypeScript, and Vite web application. Route pages live in `src/pages/`, reusable UI in `src/components/`, API code in `src/api/`, Wiki domain code in `src/wiki/`, and shared hooks/utilities in `src/hooks/` and `src/utils/`.
-- `miniprogram/` is the WeChat Mini Program project opened by WeChat DevTools. Its `project.config.json` sets `miniprogram/` as the source root, so runtime code is under `miniprogram/miniprogram/`. Pages, components, utilities, and generated npm packages are respectively in `pages/`, `components/`, `utils/`, and `miniprogram_npm/` beneath that directory. Tests are in `miniprogram/tests/`, while typings and package configuration remain at `miniprogram/`.
+- `miniprogram/` is the WeChat Mini Program project opened by WeChat DevTools. Its `project.config.json` sets `miniprogram/` as the source root, so runtime code is under `miniprogram/miniprogram/`. Pages, components, utilities, and generated npm packages are respectively in `pages/`, `components/`, `utils/`, and `miniprogram_npm/`. Tests are in `miniprogram/tests/`.
+- `agent_ai/` is the Spring Boot 2.7 business backend. Controllers, services, entities, and mappers live under `src/main/java/com/pango/`; environment configuration is under `src/main/resources/`; schema and ordered migrations are in `database/`; deployment snippets are in `deploy/`.
 
 Follow the more specific instructions in `miniprogram/AGENTS.md` when changing that project. Do not hand-edit generated `miniprogram_npm/` files.
 
@@ -14,25 +15,31 @@ Follow the more specific instructions in `miniprogram/AGENTS.md` when changing t
 Run web commands from `Pango-Wiki-Frontend/`:
 
 - `npm ci` installs lockfile-pinned dependencies.
-- `npm run dev` starts the Vite development server.
+- `npm run dev` starts the Vite development server on port 3000.
 - `npm run build` performs TypeScript checking and writes production assets to `dist/`.
 - `npm run preview` serves the production build locally.
 
 Run Mini Program commands from `miniprogram/`:
 
 - `npm install` installs dependencies; then use **Tools → Build npm** in WeChat DevTools.
-- `npx tsx tests/stream_parser.test.mts` runs the stream parser assertions.
+- `npx tsx tests/stream_parser.test.mts` runs the stream parser assertions (install `tsx` locally or allow `npx` to fetch it first).
 
 Compile and preview the native application through WeChat DevTools; no npm build script is configured.
 
+Run backend commands from `agent_ai/`:
+
+- `mvn spring-boot:run -Pdev` starts the development profile. Supply the database, model authorization, WeChat, SMS, and audio environment variables referenced by `application-dev.yml`.
+- `mvn clean package -Pdev` builds a development JAR; use `-Punit` or `-Pprod` for the matching deployment profile.
+- Apply `database/schema.sql` only to a fresh database. Apply files in `database/migrations/` once, in filename order, when upgrading an existing database.
+
 ## Coding Style & Naming Conventions
 
-Use two-space indentation, single quotes, and no semicolons in TypeScript. Name React components/files with `PascalCase`, hooks and functions with `camelCase`, and Mini Program page/component directories with kebab-case. Keep TSX and CSS together; keep Mini Program `.ts`, `.wxml`, `.wxss`, and `.json` files together. Preserve existing generated JavaScript unless intentionally rebuilding it through DevTools.
+For the web client, use two-space indentation, single quotes, and no semicolons in TypeScript. Preserve the established style in older Mini Program and Java files instead of mechanically reformatting them. Name React components/files with `PascalCase`, hooks and functions with `camelCase`, and Mini Program page/component directories with `kebab-case`. Keep TSX and CSS together; keep Mini Program `.ts`, `.wxml`, `.wxss`, and `.json` files together. Preserve generated JavaScript unless intentionally rebuilding it through DevTools.
 
 ## Testing Guidelines
 
-Before submitting web changes, run `npm run build` and manually verify affected desktop/mobile routes. For Mini Program changes, run the stream parser test when relevant, compile in DevTools, and test WebView, media, or bridge behavior on a real device.
+Before submitting web changes, run `npm run build` and manually verify affected desktop/mobile routes. For Mini Program changes, run the stream parser test when relevant, compile in DevTools, and test WebView, media, or bridge behavior on a real device. For backend changes, build the relevant Maven profile and verify schema compatibility. Do not rewrite an already-deployed migration for a new change; add a new migration instead.
 
 ## Commit & Pull Request Guidelines
 
-Keep commits concise, focused, and explicit about the affected client. Pull requests should describe behavior changes, list verification performed, link related issues, and include screenshots or recordings for UI changes. Highlight API, domain-whitelist, configuration, or deployment impacts.
+Keep commits concise, focused, and explicit about the affected client or backend. Pull requests should describe behavior changes, list verification performed, link related issues, and include screenshots or recordings for UI changes. Highlight API, database migration, domain-whitelist, configuration, or deployment impacts.

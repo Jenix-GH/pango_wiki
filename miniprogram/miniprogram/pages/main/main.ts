@@ -100,6 +100,22 @@ interface ReferencePayload {
     [key: string]: unknown
 }
 
+interface AnswerMedia {
+    asset_id: string
+    url: string
+    absoluteUrl: string
+    caption?: string
+    citation_label?: string
+    page?: number
+    document_page_url?: string
+}
+
+interface AnswerContentSection {
+    section_key: string
+    content: string
+    media: AnswerMedia[]
+}
+
 function emptyReference(): ReferencePayload {
     return { chunks: [], total: 0 }
 }
@@ -109,6 +125,7 @@ function createRuntimeState() {
         currentStatusText: "",
         currentStatusEmoji: "",
         currentReference: emptyReference(),
+        currentAnswerMedia: [] as AnswerMedia[],
         currentStructuredCitations: [] as unknown[],
         currentQuestionTrace: null as unknown
     }
@@ -221,6 +238,101 @@ function absoluteReferenceUrl(urlValue: unknown): string {
     const host = String(app.globalData.referenceHost || '').trim().replace(/\/$/, '')
     if (!host) return ''
     return `${host}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}`
+}
+
+function normalizeAnswerMedia(value: unknown): AnswerMedia[] {
+    const parsed = parseStoredJson(value)
+    if (!Array.isArray(parsed)) return []
+    const configuredHost = String(app.globalData.referenceHost || '').trim().replace(/\/$/, '')
+    return parsed.slice(0, 10).reduce((result: AnswerMedia[], item: any, index: number) => {
+        if (!item || typeof item !== 'object') return result
+        const rawUrl = String(item.url || item.image_url || item.absolute_url || item.absoluteUrl || '').trim()
+        const absoluteUrl = absoluteReferenceUrl(rawUrl)
+        if (!absoluteUrl || !absoluteUrl.startsWith(`${configuredHost}/references/figures/`) || !/^https:\/\//i.test(absoluteUrl)) return result
+        const page = toPositivePage(item.page)
+        result.push({
+            asset_id: String(item.asset_id || `answer_media_${index}`),
+            url: rawUrl,
+            absoluteUrl,
+            caption: item.caption ? String(item.caption) : undefined,
+            citation_label: item.citation_label ? String(item.citation_label) : undefined,
+            page: page || undefined,
+            document_page_url: item.document_page_url ? String(item.document_page_url) : undefined
+        })
+        return result
+    }, [])
+}
+
+function serializeAnswerMedia(media: AnswerMedia[]): string {
+    return JSON.stringify(media.map(item => ({
+        asset_id: item.asset_id,
+        url: item.url,
+        caption: item.caption,
+        citation_label: item.citation_label,
+        page: item.page,
+        document_page_url: item.document_page_url
+    })))
+}
+
+function placeMediaAfterCitations(content: string, media: AnswerMedia[]): AnswerContentSection[] {
+    if (media.length === 0) {
+        return [{ section_key: 'answer_section_0', content, media: [] }]
+    }
+
+    const mediaByOffset = new Map<number, AnswerMedia[]>()
+    const unplaced: AnswerMedia[] = []
+    media.forEach(item => {
+        const label = item.citation_label?.trim()
+        const bracketLabel = label?.match(/\[[^\]]+\]/)?.[0]
+        const candidates = Array.from(new Set([label, bracketLabel].filter((value): value is string => Boolean(value))))
+        let matchIndex = -1
+        let matchedLabel = ''
+
+        for (const candidate of candidates) {
+            matchIndex = content.indexOf(candidate)
+            if (matchIndex >= 0) {
+                matchedLabel = candidate
+                break
+            }
+        }
+
+        if (matchIndex < 0) {
+            unplaced.push(item)
+            return
+        }
+
+        let insertionOffset = matchIndex + matchedLabel.length
+        const openingSup = content.lastIndexOf('<sup', matchIndex)
+        const closingSupBeforeLabel = content.lastIndexOf('</sup>', matchIndex)
+        const closingSupAfterLabel = content.indexOf('</sup>', insertionOffset)
+        if (openingSup > closingSupBeforeLabel && closingSupAfterLabel >= insertionOffset) {
+            insertionOffset = closingSupAfterLabel + '</sup>'.length
+            const trailingPunctuation = content.slice(insertionOffset).match(/^[ \t]*[。！？.!?；;：:]?/)
+            insertionOffset += trailingPunctuation?.[0].length || 0
+        }
+        mediaByOffset.set(insertionOffset, [...(mediaByOffset.get(insertionOffset) || []), item])
+    })
+
+    const sections: AnswerContentSection[] = []
+    let contentOffset = 0
+    Array.from(mediaByOffset.keys()).sort((a, b) => a - b).forEach(insertionOffset => {
+        sections.push({
+            section_key: `answer_section_${sections.length}_${insertionOffset}`,
+            content: content.slice(contentOffset, insertionOffset),
+            media: mediaByOffset.get(insertionOffset) || []
+        })
+        contentOffset = insertionOffset
+    })
+
+    const trailingContent = content.slice(contentOffset)
+    if (trailingContent || unplaced.length || sections.length === 0) {
+        sections.push({
+            section_key: `answer_section_${sections.length}_tail`,
+            content: trailingContent,
+            media: unplaced
+        })
+    }
+    return sections
 }
 
 function openReferenceViewer(url: string) {
@@ -657,6 +769,17 @@ Page({
             urls
         });
     },
+    previewReferenceFigure(e: any) {
+        const messageIndex = Number(e.currentTarget.dataset.messageIndex)
+        const media = this.data.sessionList?.[messageIndex]?.answerMedia || []
+        const urls = media.map((item: AnswerMedia) => item.absoluteUrl).filter(Boolean)
+        if (!urls.length) return
+        const currentUrl = String(e.currentTarget.dataset.url || '')
+        wx.previewImage({
+            current: urls.includes(currentUrl) ? currentUrl : urls[0],
+            urls
+        })
+    },
     //执行查询
     doSearch() {
         if (!this.data.userInfo?.id) {
@@ -721,8 +844,13 @@ Page({
       const fixed: string[] = [];
 
       for (let i = 0; i < lines.length; i++) {
-        const current = lines[i];
+        let current = lines[i];
         const next = lines[i + 1] ?? "";
+
+        const currentEndsWithCitation = /<sup\b[^>]*>\s*\[[^\]]+\]\s*<\/sup>\s*[。！？.!?；;：:]?$/.test(current.trim())
+        if (currentEndsWithCitation && next.trim() !== '') {
+          current = `${current.trimEnd()}  `
+        }
 
         fixed.push(current);
 
@@ -1014,6 +1142,7 @@ Page({
                 streamContentData: fixedAnswer,
                 streamContent: fixedAnswer,
                 currentReference: normalizeReference(payload.reference, payload.structured_citations),
+                currentAnswerMedia: normalizeAnswerMedia(payload.answer_media),
                 currentStructuredCitations: payload.structured_citations || [],
                 currentQuestionTrace: payload.question_trace || null
               }, () => {
@@ -1023,6 +1152,7 @@ Page({
             } else {
               this.setData({
                 currentReference: normalizeReference(payload.reference, payload.structured_citations),
+                currentAnswerMedia: normalizeAnswerMedia(payload.answer_media),
                 currentStructuredCitations: payload.structured_citations || [],
                 currentQuestionTrace: payload.question_trace || null
               }, () => {
@@ -1112,6 +1242,8 @@ Page({
             time: endTime,
             flagEvaluate: 0,
             reference: this.data.currentReference,
+            answerMedia: this.data.currentAnswerMedia,
+            answerSections: placeMediaAfterCitations(this.data.streamContent, this.data.currentAnswerMedia),
             structuredCitations: this.data.currentStructuredCitations,
             questionTrace: this.data.currentQuestionTrace
         };
@@ -1120,7 +1252,8 @@ Page({
             think: extractText(this.data.streamThink),
             content: this.data.streamContentData,
             answerTime: endTime,
-            reference: JSON.stringify(this.data.currentReference)
+            reference: JSON.stringify(this.data.currentReference),
+            answerMedia: serializeAnswerMedia(this.data.currentAnswerMedia)
         }
         let newList = [...this.data.sessionList, row]; // 创建新数组
         let newCount = this.data.answerCount + 1;
@@ -1335,14 +1468,18 @@ Page({
                     ;(rs.data || []).forEach((item: any) => {
                         historyRows.push({ flagAi: 0, content: item.question, time: item.dotime || '' })
                         if (item.answer) {
+                            const answerContent = this.fixMarkdownTableSpacing(item.answer.content || '')
+                            const answerMedia = normalizeAnswerMedia(item.answer.answerMedia || item.answer.answer_media)
                             historyRows.push({
                                 flagAi: 1,
-                                content: item.answer.content,
-                                contentData: item.answer.content,
+                                content: answerContent,
+                                contentData: answerContent,
                                 time: item.answer.dotime,
                                 answerTime: item.answer.answerTime || item.answer.dotime,
                                 flagEvaluate: item.answer.flagEvaluate,
-                                reference: normalizeReference(item.answer.reference)
+                                reference: normalizeReference(item.answer.reference),
+                                answerMedia,
+                                answerSections: placeMediaAfterCitations(answerContent, answerMedia)
                             })
                         }
                     })
@@ -1588,6 +1725,8 @@ Page({
                 time: formatTime(new Date()),
                 flagEvaluate: 0,
                 reference: this.data.currentReference,
+                answerMedia: this.data.currentAnswerMedia,
+                answerSections: placeMediaAfterCitations(this.data.streamContent, this.data.currentAnswerMedia),
                 structuredCitations: this.data.currentStructuredCitations,
                 questionTrace: this.data.currentQuestionTrace
             }

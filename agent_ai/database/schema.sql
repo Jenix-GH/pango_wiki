@@ -15,6 +15,7 @@ CREATE TABLE `dto_answer` (
   `flag_evaluate` int DEFAULT '0',
   `answer_time` varchar(25) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `reference` text COLLATE utf8mb4_unicode_ci,
+  `answer_media` longtext COLLATE utf8mb4_unicode_ci COMMENT '回答关联图片，JSON数组',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
