@@ -72,8 +72,12 @@ function normalizeMarkdownBlockSpacing(md: string): string {
       && fixed[fixed.length - 1].trim().startsWith('|')
     const nextIsTable = nextTrimmed.startsWith('|')
     const currentIsHeading = /^#{1,6}(?:\s+|$)/.test(normalizedTrimmed)
-    const currentIsEmphasisHeading = /^(\*{2,3}|_{2,3})\S(?:.*\S)?\1[：:]?$/.test(normalizedTrimmed)
-    const currentStartsWithEmphasis = /^(\*{2,3}|_{2,3})\S.*?\1(?=[：:\s（(]|$)/.test(normalizedTrimmed)
+    // Treat bold section labels followed by a citation, for example
+    // "**存储接口性能**<sup>[2]</sup>", as standalone block headings too.
+    // Without blank lines CommonMark renders the source newline as a space.
+    const currentIsEmphasisHeading = /^(\*{2,3}|_{2,3})\S(?:.*?\S)?\1(?:<sup\b[^>]*>.*?<\/sup>)?[：:]?$/.test(normalizedTrimmed)
+    const currentEndsWithCitation = /<sup\b[^>]*>\s*\[[^\]]+\]\s*<\/sup>\s*[。！？.!?；;：:]?$/.test(normalizedTrimmed)
+    const currentStartsWithEmphasis = /^(\*{2,3}|_{2,3})\S.*?\1(?=<sup\b|[：:\s（(]|$)/.test(normalizedTrimmed)
     const currentIsThematicBreak = /^(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(normalizedTrimmed)
     const currentNeedsLeadingSpacing = currentIsTable
       || currentIsHeading
@@ -89,7 +93,9 @@ function normalizeMarkdownBlockSpacing(md: string): string {
       if (previous.trim() !== '' && !(currentIsTable && previousIsTable)) fixed.push('')
     }
 
-    fixed.push(current)
+    // A normal Markdown newline is only a space in HTML. Preserve the visual
+    // line break emitted by the model after a citation marker.
+    fixed.push(currentEndsWithCitation && nextTrimmed !== '' ? `${current.trimEnd()}  ` : current)
 
     if (
       currentNeedsTrailingSpacing

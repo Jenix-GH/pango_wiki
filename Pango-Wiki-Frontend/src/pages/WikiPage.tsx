@@ -389,8 +389,9 @@ export default function WikiPage() {
 
         <main ref={wikiMainRef} className="wiki-main">
           {navigationError ? <div className="wiki-navigation-error" role="alert">{navigationError}</div> : null}
-          <div className="wiki-main-heading">
-            <div className="wiki-main-title">
+          <section className="wiki-hero">
+            <div className="wiki-main-heading">
+              <div className="wiki-main-title">
               <button
                 type="button"
                 className="wiki-mobile-directory-toggle"
@@ -403,23 +404,30 @@ export default function WikiPage() {
                 </svg>
                 目录
               </button>
-              <h1>{selectedTitle}</h1>
+                <div>
+                  <div className="wiki-eyebrow">PANGO TECHNICAL LIBRARY</div>
+                  <h1>{selectedDirectory === 'all' ? '器件技术文档中心' : selectedTitle}</h1>
+                  <p>查找并获取 Pango FPGA、CPLD 与 SoC 官方技术资料</p>
+                </div>
+              </div>
+              <div className="wiki-hero-meta">
+                <span>{allGroups.length} 份文档</span><i />
+                <span>{directories.length} 个文档类型</span><i />
+                <span>最近同步：{catalog ? formatSyncTime(catalog.generated_at) : '—'}</span>
+                <b className="wiki-online-dot" />
+              </div>
             </div>
-            <button type="button" className="wiki-refresh" onClick={refreshCatalog} disabled={refreshing}>
-              <RefreshIcon className={refreshing ? 'is-spinning' : ''} />
-              {refreshing ? '正在刷新' : '刷新目录'}
-            </button>
-          </div>
 
-          <label className="wiki-search">
-            <SearchIcon />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={searchPlaceholder}
-            />
-          </label>
+            <label className="wiki-search">
+              <SearchIcon />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={searchPlaceholder}
+              />
+            </label>
+          </section>
 
           <div className="wiki-toolbar">
             <div className="wiki-kind-tabs" role="tablist" aria-label="文档筛选">
@@ -436,15 +444,21 @@ export default function WikiPage() {
                 </button>
               ))}
             </div>
-            <label className="wiki-sort">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                <path d="M8 4v16M4 8l4-4 4 4M16 20V4M12 16l4 4 4-4" />
-              </svg>
-              <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
-                <option value="code">{softwareScope ? '文档名称' : '文档编号'}</option>
-                <option value="updated">最近更新</option>
-              </select>
-            </label>
+            <div className="wiki-toolbar-actions">
+              <button type="button" className="wiki-refresh" onClick={refreshCatalog} disabled={refreshing}>
+                <RefreshIcon className={refreshing ? 'is-spinning' : ''} />
+                {refreshing ? '正在刷新' : '刷新目录'}
+              </button>
+              <label className="wiki-sort">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <path d="M8 4v16M4 8l4-4 4 4M16 20V4M12 16l4 4 4-4" />
+                </svg>
+                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
+                  <option value="code">{softwareScope ? '文档名称' : '文档编号'}</option>
+                  <option value="updated">最近更新</option>
+                </select>
+              </label>
+            </div>
           </div>
 
           <div className="wiki-current-row">

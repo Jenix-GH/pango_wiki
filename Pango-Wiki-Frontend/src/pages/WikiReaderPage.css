@@ -27,6 +27,14 @@
   overflow: hidden;
 }
 
+.wiki-reader-frame {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 0;
+  background: #f3f5f7;
+}
+
 .wiki-reader-loading {
   position: absolute;
   inset: 0;

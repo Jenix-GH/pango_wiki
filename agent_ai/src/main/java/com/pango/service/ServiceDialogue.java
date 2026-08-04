@@ -2,6 +2,7 @@ package com.pango.service;
 
 import com.alibaba.fastjson.JSONObject;
 import com.pango.rs.R;
+import com.pango.exception.MyException;
 import com.pango.utils.UtilsValue;
 import com.pango.vo.VoDialogueSession;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,6 +13,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import javax.annotation.Resource;
+import java.util.Map;
 
 /**
  * Created by Pango on 09/05/2018.
@@ -132,6 +134,32 @@ public class ServiceDialogue {
         } catch (Exception e) {
             return "[DONE]";
         }
+    }
+
+    public Flux<String> proxyStream(Map<String, Object> requestBody) {
+        Object rawSessionId = requestBody.get("session_id");
+        String sessionId = rawSessionId == null ? "" : String.valueOf(rawSessionId).trim();
+        if (sessionId.isEmpty()) {
+            throw new MyException("会话ID不能为空");
+        }
+        if (!sessionId.matches("^[A-Za-z0-9_-]{8,100}$")) {
+            throw new MyException("会话ID格式不正确");
+        }
+
+        JSONObject body = new JSONObject(requestBody);
+        body.putIfAbsent("quote", dialogueQuote);
+        body.putIfAbsent("conversation_id", dialogueConversationId);
+        return webClient.post()
+                .uri(dialogueUrl)
+                .header("authorization", dialogueAuthorization)
+                // Nginx uses this trusted header for consistent-hash routing.
+                // It is derived from the validated JSON body, not forwarded from the client.
+                .header("X-Session-Id", sessionId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .bodyValue(body.toString())
+                .retrieve()
+                .bodyToFlux(String.class);
     }
 
 }

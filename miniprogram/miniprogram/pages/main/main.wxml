@@ -15,7 +15,7 @@
                 <view class="tip-item" bind:tap="fastSearch" data-content="{{item.content}}">{{item.content}}</view>
             </view>
         </view>
-        <view wx:for="{{sessionList}}" wx:key="index">
+        <view wx:for="{{sessionList}}" wx:for-index="messageIndex" wx:key="index">
             <!--左侧内容-->
             <view wx:if="{{item.flagAi === 1}}" class="main-session main-session-left">
                 <view class="main-session-icon">
@@ -26,7 +26,18 @@
                 </view>
                 <view class="show-answer">
                     <view class="show-content">
-                        <mp-html content="{{item.content}}"  markdown latex highlight tag-style="{{tagStyle}}" />
+                        <block wx:for="{{item.answerSections}}" wx:for-item="section" wx:key="section_key">
+                            <mp-html wx:if="{{section.content}}" content="{{section.content}}" markdown latex highlight tag-style="{{tagStyle}}" />
+                            <view wx:if="{{section.media && section.media.length}}" class="answer-figure-panel">
+                                <block wx:for="{{section.media}}" wx:for-item="media" wx:key="asset_id">
+                                    <view class="answer-figure-item">
+                                        <image class="answer-figure-image" src="{{media.absoluteUrl}}" mode="widthFix" lazy-load bind:tap="previewReferenceFigure" data-message-index="{{messageIndex}}" data-url="{{media.absoluteUrl}}" />
+                                        <view wx:if="{{media.caption || media.citation_label}}" class="answer-figure-caption">{{media.caption}} {{media.citation_label}}</view>
+                                        <view wx:if="{{media.document_page_url && media.page}}" class="answer-figure-source" catch:tap="openPageReference" data-url="{{media.document_page_url}}">查看原文第{{media.page}}页</view>
+                                    </view>
+                                </block>
+                            </view>
+                        </block>
                         <view wx:if="{{item.reference && item.reference.total > 0}}" class="reference-panel">
                             <view class="reference-title">参考资料 · {{item.reference.total}}篇</view>
                             <block wx:for="{{item.reference.chunks}}" wx:for-item="ref" wx:key="reference_key">
@@ -67,13 +78,13 @@
                     <view class="bottom-menu-item" bind:tap="doCopy" data-contentData="{{item.contentData}}">
                         <view class="fuzhi"></view>
                     </view>
-                    <view class="bottom-menu-item" bind:tap="doEvaluate" data-evaluate="1" data-index="{{index}}" data-dotime="{{item.time}}">
+                    <view class="bottom-menu-item" bind:tap="doEvaluate" data-evaluate="1" data-index="{{messageIndex}}" data-dotime="{{item.time}}">
                         <view class="{{item.flagEvaluate==='1' ? 'zan1' : 'zan'}}"></view>
                     </view>
-                    <view class="bottom-menu-item" bind:tap="doEvaluate" data-evaluate="-1" data-index="{{index}}" data-dotime="{{item.time}}">
+                    <view class="bottom-menu-item" bind:tap="doEvaluate" data-evaluate="-1" data-index="{{messageIndex}}" data-dotime="{{item.time}}">
                         <view class="{{item.flagEvaluate==='-1'? 'cai1' : 'cai'}}"></view>
                     </view>
-                    <view class="bottom-menu-item feedback-entry" bind:tap="openFeedback" data-index="{{index}}">反馈</view>
+                    <view class="bottom-menu-item feedback-entry" bind:tap="openFeedback" data-index="{{messageIndex}}">反馈</view>
                 </view>
             </view>
             <!--右侧内容-->

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { ChatMessage, UploadImage } from '../api/types'
+import type { AnswerMedia, ChatMessage, UploadImage } from '../api/types'
 import { primaryReferenceUrl } from '../utils/referenceUrl'
 import MarkdownContent from './MarkdownContent'
 import ImageLightbox from './ImageLightbox'
@@ -53,7 +53,14 @@ export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQ
         <span className="bubble-ai-name">智能助手</span>
       </div>
       <div className="bubble-ai-content">
-        <MarkdownContent content={message.contentData || message.content} />
+        {placeMediaAfterCitations(message.contentData || message.content, message.answerMedia || []).map((section, sectionIndex) => (
+          <div className="answer-content-section" key={`${sectionIndex}-${section.media.map((item) => item.asset_id).join('-')}`}>
+            {section.content ? <MarkdownContent content={section.content} /> : null}
+            {section.media.length ? (
+              <AnswerMediaPanel media={section.media} onPreview={setPreviewSrc} onOpenReference={onOpenReference} />
+            ) : null}
+          </div>
+        ))}
 
         {hasReferences && (
           <div className="reference-panel">
@@ -160,6 +167,92 @@ export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQ
           <span>反馈</span>
         </button>
       </div>
+      <ImageLightbox src={previewSrc} onClose={() => setPreviewSrc(null)} />
     </div>
   )
+}
+
+function AnswerMediaPanel({ media, onPreview, onOpenReference }: {
+  media: AnswerMedia[]
+  onPreview: (url: string) => void
+  onOpenReference: (url: string) => void
+}) {
+  return (
+    <div className="answer-media-panel">
+      {media.map((item) => (
+        <figure className="answer-media-item" key={item.asset_id}>
+          <button type="button" className="answer-media-preview" onClick={() => onPreview(item.absoluteUrl)}>
+            <img src={item.absoluteUrl} alt={item.caption || '回答配图'} loading="lazy" />
+          </button>
+          {(item.caption || item.citation_label) && (
+            <figcaption>
+              {item.caption}{item.caption && item.citation_label ? ' ' : ''}{item.citation_label}
+            </figcaption>
+          )}
+          {item.document_page_url && item.page ? (
+            <button type="button" className="answer-media-source" onClick={() => onOpenReference(item.document_page_url!)}>
+              查看原文第{item.page}页
+            </button>
+          ) : null}
+        </figure>
+      ))}
+    </div>
+  )
+}
+
+function placeMediaAfterCitations(content: string, media: AnswerMedia[]): Array<{ content: string; media: AnswerMedia[] }> {
+  if (media.length === 0) return [{ content, media: [] }]
+
+  const mediaByOffset = new Map<number, AnswerMedia[]>()
+  const unplaced: AnswerMedia[] = []
+
+  media.forEach((item) => {
+    const label = item.citation_label?.trim()
+    const bracketLabel = label?.match(/\[[^\]]+\]/)?.[0]
+    const candidates = [...new Set([label, bracketLabel].filter((value): value is string => Boolean(value)))]
+    let matchIndex = -1
+    let matchedLabel = ''
+
+    for (const candidate of candidates) {
+      matchIndex = content.indexOf(candidate)
+      if (matchIndex >= 0) {
+        matchedLabel = candidate
+        break
+      }
+    }
+
+    if (matchIndex < 0) {
+      unplaced.push(item)
+      return
+    }
+
+    let insertionOffset = matchIndex + matchedLabel.length
+    const openingSup = content.lastIndexOf('<sup', matchIndex)
+    const closingSupBeforeLabel = content.lastIndexOf('</sup>', matchIndex)
+    const closingSupAfterLabel = content.indexOf('</sup>', insertionOffset)
+    if (openingSup > closingSupBeforeLabel && closingSupAfterLabel >= insertionOffset) {
+      insertionOffset = closingSupAfterLabel + '</sup>'.length
+      const trailingPunctuation = content.slice(insertionOffset).match(/^[ \t]*[。！？.!?；;：:]?/)
+      insertionOffset += trailingPunctuation?.[0].length || 0
+    }
+
+    mediaByOffset.set(insertionOffset, [...(mediaByOffset.get(insertionOffset) || []), item])
+  })
+
+  const sections: Array<{ content: string; media: AnswerMedia[] }> = []
+  let contentOffset = 0
+  const insertionOffsets = [...mediaByOffset.keys()].sort((a, b) => a - b)
+  insertionOffsets.forEach((insertionOffset) => {
+    sections.push({
+      content: content.slice(contentOffset, insertionOffset),
+      media: mediaByOffset.get(insertionOffset) || [],
+    })
+    contentOffset = insertionOffset
+  })
+
+  const trailingContent = content.slice(contentOffset)
+  if (trailingContent || unplaced.length || sections.length === 0) {
+    sections.push({ content: trailingContent, media: unplaced })
+  }
+  return sections
 }

@@ -13,6 +13,7 @@ interface Props {
   onSelectHistory: (sessionId: string) => void
   onOpenSettings: () => void
   onRefresh: () => void
+  onOpenGuide: () => void
 }
 
 export default function LeftDrawer({
@@ -25,6 +26,7 @@ export default function LeftDrawer({
   onSelectHistory,
   onOpenSettings,
   onRefresh,
+  onOpenGuide,
 }: Props) {
   const { user, isLoggedIn, logout } = useAuth()
 
@@ -38,6 +40,30 @@ export default function LeftDrawer({
       {open && <div className="drawer-mask" onClick={onClose} />}
       <div className={`drawer ${open ? 'drawer-open' : ''}`}>
         <div className="drawer-controls">
+          <div className="drawer-resources">
+            <button className="drawer-resource-btn" type="button" onClick={onOpenGuide} title="使用说明">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+              <span>使用说明</span>
+            </button>
+            <div className="drawer-mini-program" tabIndex={0}>
+              <button className="drawer-resource-btn" type="button" aria-label="查看小程序二维码" title="小程序">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="3" width="7" height="7" rx="1" />
+                  <rect x="3" y="14" width="7" height="7" rx="1" />
+                  <path d="M14 14h3v3h-3zM18 18h3v3h-3zM18 14h3M14 18v3" />
+                </svg>
+                <span>小程序</span>
+              </button>
+              <div className="drawer-qrcode" role="tooltip">
+                <img src="/miniprogram_qrcode.jpg" alt="Pango 慧答小程序二维码" />
+                <span>微信扫码进入小程序</span>
+              </div>
+            </div>
+          </div>
           <button className="drawer-collapse-btn" onClick={onClose} title={open ? '收起侧栏' : '展开侧栏'}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M4 5h16M4 12h16M4 19h16" />
@@ -128,7 +154,7 @@ export default function LeftDrawer({
               </span>
             </button>
           ) : (
-            <>
+            <div className="drawer-account-row">
               <div className="drawer-user">
                 <div className="drawer-avatar">
                   {user?.avatarUrl ? (
@@ -152,8 +178,16 @@ export default function LeftDrawer({
                   </svg>
                 </button>
               </div>
-            </>
+            </div>
           )}
+          <a
+            className="drawer-icp-link"
+            href="https://beian.miit.gov.cn/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            粤ICP备14029535号-1
+          </a>
         </div>
       </div>
     </>

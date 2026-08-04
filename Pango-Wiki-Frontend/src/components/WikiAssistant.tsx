@@ -1,21 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
-import { normalizeReference, type ReferencePayload, type UploadImage } from '../api/types'
+import { normalizeReference, type AnswerMedia, type ReferencePayload, type UploadImage } from '../api/types'
 import { usePseudoStream } from '../hooks/usePseudoStream'
-import { openReferenceUrl, primaryReferenceUrl } from '../utils/referenceUrl'
+import { openReferenceReaderUrl, primaryReferenceUrl } from '../utils/referenceUrl'
 import MarkdownContent from './MarkdownContent'
 import ImageLightbox from './ImageLightbox'
 import pangoLogo from '../../Logo.png'
 import './WikiAssistant.css'
+import { useAuth } from '../contexts/AuthContext'
 
 interface AssistantMessage {
   role: 'user' | 'assistant'
   content: string
   images?: UploadImage[]
   reference?: ReferencePayload
+  answerMedia?: AnswerMedia[]
 }
 
 export default function WikiAssistant() {
+  const { user, guestUserId, incrementAnswerCount } = useAuth()
+  const recordUserId = user?.id || guestUserId
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [messages, setMessages] = useState<AssistantMessage[]>([])
@@ -98,6 +102,10 @@ export default function WikiAssistant() {
   const send = () => {
     const question = text.trim()
     if ((!question && uploadImages.length === 0) || streaming) return
+    if (!recordUserId) {
+      setStatus('访客信息初始化中，请稍后重试')
+      return
+    }
     const imagesToSend = [...uploadImages]
     setText('')
     setUploadImages([])
@@ -117,7 +125,7 @@ export default function WikiAssistant() {
     let finalized = false
 
     const isCurrentRequest = () => requestId === requestIdRef.current && !finalized
-    const finalize = (content: string, reference?: ReferencePayload) => {
+    const finalize = (content: string, reference?: ReferencePayload, answerMedia: AnswerMedia[] = []) => {
       if (!isCurrentRequest()) return
       finalized = true
       setStatus('')
@@ -133,6 +141,7 @@ export default function WikiAssistant() {
             role: 'assistant',
             content: completedAnswer || '回答生成中断，请重新提问。',
             reference: normalizedReference.chunks.length ? normalizedReference : undefined,
+            answerMedia: answerMedia.length ? answerMedia : undefined,
           },
         ])
         resetStreamText()
@@ -141,6 +150,7 @@ export default function WikiAssistant() {
     }
 
     controllerRef.current = api.startStream(
+      recordUserId,
       question,
       api.createSession('wiki_guest'),
       true,
@@ -155,8 +165,9 @@ export default function WikiAssistant() {
           answerBuffer = mode === 'replace' ? chunk : answerBuffer + chunk
           pushStreamText(chunk, mode)
         },
-        onDone: (answer, reference) => {
-          finalize(answer || answerBuffer, reference)
+        onDone: (answer, reference, _citations, _trace, answerMedia) => {
+          incrementAnswerCount()
+          finalize(answer || answerBuffer, reference, answerMedia)
         },
         onError: (error) => {
           finalize(answerBuffer || `请求失败：${error.message}`)
@@ -255,6 +266,9 @@ export default function WikiAssistant() {
                   ? <MarkdownContent content={message.content} />
                   : <p>{message.content}</p>
                 : null}
+              {message.role === 'assistant' && message.answerMedia?.length ? (
+                <AssistantMedia media={message.answerMedia} onPreview={setPreviewSrc} />
+              ) : null}
               {message.role === 'assistant' && message.reference ? (
                 <AssistantReferences reference={message.reference} />
               ) : null}
@@ -339,6 +353,26 @@ export default function WikiAssistant() {
   )
 }
 
+function AssistantMedia({ media, onPreview }: { media: AnswerMedia[]; onPreview: (url: string) => void }) {
+  return (
+    <div className="wiki-assistant-answer-media">
+      {media.map((item) => (
+        <figure key={item.asset_id}>
+          <button type="button" onClick={() => onPreview(item.absoluteUrl)}>
+            <img src={item.absoluteUrl} alt={item.caption || '回答配图'} loading="lazy" />
+          </button>
+          {(item.caption || item.citation_label) ? <figcaption>{item.caption} {item.citation_label}</figcaption> : null}
+          {item.document_page_url && item.page ? (
+            <button type="button" className="wiki-assistant-media-source" onClick={() => openReferenceReaderUrl(item.document_page_url!)}>
+              查看原文第{item.page}页
+            </button>
+          ) : null}
+        </figure>
+      ))}
+    </div>
+  )
+}
+
 function AssistantReferences({ reference }: { reference: ReferencePayload }) {
   return (
     <div className="wiki-assistant-references">
@@ -359,7 +393,7 @@ function AssistantReferences({ reference }: { reference: ReferencePayload }) {
                 {displayName}
               </span>
               {wikiUrl ? (
-                <button type="button" onClick={() => openReferenceUrl(wikiUrl)}>Wiki阅读</button>
+                <button type="button" onClick={() => openReferenceReaderUrl(wikiUrl)}>Wiki阅读</button>
               ) : null}
             </div>
             {pageLinks.length ? (
@@ -369,7 +403,7 @@ function AssistantReferences({ reference }: { reference: ReferencePayload }) {
                   <button
                     type="button"
                     key={`${pageLink.page}-${index}`}
-                    onClick={() => openReferenceUrl(pageLink.document_page_url)}
+                    onClick={() => openReferenceReaderUrl(pageLink.document_page_url)}
                   >
                     第{pageLink.page}页
                   </button>

@@ -33,6 +33,6 @@ export const ENDPOINTS = {
   authResetPassword: `${DB_HOST}/auth/password/reset`,
   authMe: `${DB_HOST}/auth/me`,
   authLogout: `${DB_HOST}/auth/logout`,
-  chatCompletions: CHAT_STREAM_URL,
-  chatCompletionsChoose: CHAT_STREAM_URL,
+  chatCompletions: `${DB_HOST}/dialogue/stream-answer`,
+  chatCompletionsChoose: `${DB_HOST}/dialogue/stream-answer`,
 } as const

@@ -6,7 +6,7 @@ import { usePseudoStream } from '../hooks/usePseudoStream'
 import { api } from '../api/client'
 import { formatTime } from '../utils/formatTime'
 import { copyToClipboard } from '../utils/clipboard'
-import { openReferenceUrl } from '../utils/referenceUrl'
+import { normalizeAnswerMedia, openReferenceReaderUrl, serializeAnswerMedia } from '../utils/referenceUrl'
 import { normalizeReference } from '../api/types'
 import type { ChatMessage, FeedbackPayload, QuestionItem, UploadImage } from '../api/types'
 import TopBar from '../components/TopBar'
@@ -71,7 +71,7 @@ export default function ChatPage() {
       if (recordUserId) {
         await loadHistory()
       }
-      const id = api.createSession(recordUserId || 'guest')
+      const id = api.createSession(recordUserId || 'guest', true)
       setSessionId(id)
     }
     init()
@@ -85,15 +85,6 @@ export default function ChatPage() {
       setWeekQuestions(res.data.weekQuestion || [])
     }
   }
-
-  useEffect(() => {
-    if (isStreaming) {
-      dotsTimer.current = setInterval(() => setDotsPhase((p) => (p + 1) % 4), 100)
-    } else {
-      clearInterval(dotsTimer.current)
-    }
-    return () => clearInterval(dotsTimer.current)
-  }, [isStreaming])
 
   const clearStreamTimeout = useCallback(() => {
     if (streamTimeoutRef.current) {
@@ -211,17 +202,8 @@ export default function ChatPage() {
 
     let currentSessionId = sessionId
     if (!currentSessionId) {
-      currentSessionId = api.createSession(recordUserId || 'guest')
+      currentSessionId = api.createSession(recordUserId || 'guest', true)
       setSessionId(currentSessionId)
-    }
-    if (recordUserId && question.trim()) {
-      await api.addQuestion({
-        userinfoId: recordUserId,
-        question,
-        questionType: '1',
-        internetEnable: 0,
-        sessionId: currentSessionId,
-      }).then(() => loadHistory()).catch(() => {})
     }
     setUploadImages([])
     const textToSearch = question || ''
@@ -235,6 +217,7 @@ export default function ChatPage() {
     armStreamTimeout(runId)
 
     start(
+      recordUserId!,
       textToSearch,
       currentSessionId,
       isTestVersion,
@@ -250,7 +233,7 @@ export default function ChatPage() {
         pushStreamContent(text, mode)
         armStreamTimeout(runId)
       },
-      (finalAnswer, reference, citations, trace) => {
+      (finalAnswer, reference, citations, trace, answerMedia) => {
         if (activeRunRef.current !== runId) return
         clearStreamTimeout()
         setProgressText('')
@@ -272,6 +255,7 @@ export default function ChatPage() {
               answerTime: completedTime,
               flagEvaluate: 0,
               reference: normalizedRef.chunks.length > 0 ? normalizedRef : undefined,
+              answerMedia: answerMedia.length > 0 ? answerMedia : undefined,
               structuredCitations: citations.length > 0 ? citations : undefined,
               questionTrace: trace || undefined,
             })
@@ -282,8 +266,10 @@ export default function ChatPage() {
                 content: completedContent,
                 answerTime: completedTime,
                 reference: JSON.stringify(normalizedRef),
+                answerMedia: serializeAnswerMedia(answerMedia),
               }).catch(() => {})
             }
+            void loadHistory()
           }
           clearLiveStreamUi()
 
@@ -316,28 +302,38 @@ export default function ChatPage() {
   }
 
   const handleEvaluate = async (index: number, evaluate: number, time: string) => {
-    if (messages[index]?.flagEvaluate === evaluate) return
+    const nextEvaluate = messages[index]?.flagEvaluate === evaluate ? 0 : evaluate
     if (!recordUserId) {
       setMessages((previous) => previous.map((message, messageIndex) => (
-        messageIndex === index ? { ...message, flagEvaluate: evaluate } : message
+        messageIndex === index ? { ...message, flagEvaluate: nextEvaluate } : message
       )))
-      showToast(evaluate === 1 ? '感谢你的认可' : '感谢反馈，我们会继续改进')
+      showToast(nextEvaluate === 0 ? '已取消评价' : nextEvaluate === 1 ? '感谢你的认可' : '感谢反馈，我们会继续改进')
       return
     }
     try {
       const response = await api.evaluateAnswer({
         userinfoId: recordUserId,
-        flagEvaluate: evaluate,
+        flagEvaluate: nextEvaluate,
         answerTime: time,
       })
       if (response.code !== 2000) throw new Error(response.message || '评价失败')
       setMessages((prev) => prev.map((message, messageIndex) => (
-        messageIndex === index ? { ...message, flagEvaluate: evaluate } : message
+        messageIndex === index ? { ...message, flagEvaluate: nextEvaluate } : message
       )))
+      if (nextEvaluate === 0) showToast('已取消评价')
     } catch (error) {
       showToast(error instanceof Error ? error.message : '评价失败，请稍后重试')
     }
   }
+
+  useEffect(() => {
+    if (isStreaming) {
+      dotsTimer.current = setInterval(() => setDotsPhase((p) => (p + 1) % 3), 400)
+    } else {
+      clearInterval(dotsTimer.current)
+    }
+    return () => clearInterval(dotsTimer.current)
+  }, [isStreaming])
 
   const handleSubmitFeedback = async (form: Pick<FeedbackPayload, 'feedbackType' | 'detail' | 'contactName' | 'companyName' | 'email' | 'phone'>) => {
     if (feedbackMessageIndex === null) return
@@ -388,6 +384,7 @@ export default function ChatPage() {
           answerTime: item.answer.answerTime || item.answer.dotime,
           flagEvaluate: item.answer.flagEvaluate,
           reference: normalizeReference(item.answer.reference),
+          answerMedia: normalizeAnswerMedia(item.answer.answerMedia || item.answer.answer_media),
         }
         return [questionMessage, answerMessage]
       })
@@ -413,7 +410,7 @@ export default function ChatPage() {
   }
 
   const handleOpenReference = useCallback((relUrl: string) => {
-    if (!openReferenceUrl(relUrl)) {
+    if (!openReferenceReaderUrl(relUrl)) {
       showToast('参考文档链接无效')
     }
   }, [showToast])
@@ -457,7 +454,6 @@ export default function ChatPage() {
   const renderDots = () => {
     const dots = [
       { opacity: 0.3, scale: 0.5 },
-      { opacity: 0.5, scale: 0.7 },
       { opacity: 0.7, scale: 0.9 },
       { opacity: 1, scale: 1 },
     ]
@@ -524,6 +520,7 @@ export default function ChatPage() {
           onSelectHistory={handleSelectHistory}
           onOpenSettings={() => { if (isLoggedIn) setShowSettings(true) }}
           onRefresh={handleRefresh}
+          onOpenGuide={() => navigate('/user-guide')}
         />
 
         <div className="chat-workspace">
@@ -589,9 +586,10 @@ export default function ChatPage() {
                     <div className="stream-progress">
                       <span className="progress-emoji">{progressEmoji}</span>
                       <span>{progressText}</span>
+                      {renderDots()}
                     </div>
                   ) : null}
-                  {renderDots()}
+                  {!progressText && renderDots()}
                 </div>
               </div>
             )}

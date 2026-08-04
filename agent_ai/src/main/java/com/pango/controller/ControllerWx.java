@@ -23,6 +23,8 @@ public class ControllerWx implements MyAssert {
     private ServiceUserinfo serviceUserinfo;
     @Resource
     private ServiceAnswer serviceAnswer;
+    @Resource
+    private ServiceAuth serviceAuth;
 
     /**
      * 获取手机号
@@ -49,6 +51,7 @@ public class ControllerWx implements MyAssert {
         userinfo.setCount(serviceAnswer.getCount(userId));
         int flagCompany = serviceUserinfo.getCompany(userId);
         userinfo.setFlagCompanyInfo(flagCompany != 0); //返回用户是否有填写公司信息
+        userinfo.setAccessToken(serviceAuth.createSession(userinfo).getToken());
         return R.ok(userinfo);
     }
 

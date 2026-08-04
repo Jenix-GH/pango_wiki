@@ -1,10 +1,11 @@
 import { API_CONFIG, ENDPOINTS } from './endpoints'
-import type { ApiResponse, AuthData, FeedbackPayload, HistoryData, LicenseApplicationPayload, QuestionItem, ReferencePayload, SessionQuestion, UploadImage, UserInfo } from './types'
+import type { AnswerMedia, ApiResponse, AuthData, FeedbackPayload, HistoryData, LicenseApplicationPayload, QuestionItem, ReferencePayload, SessionQuestion, UploadImage, UserInfo } from './types'
 import { emptyReference } from './types'
 import { normalizeReference } from './types'
+import { normalizeAnswerMedia } from '../utils/referenceUrl'
 
 function getHeaders(extra?: Record<string, string>): Record<string, string> {
-  const token = localStorage.getItem('pango_auth_token')
+  const token = localStorage.getItem('pango_auth_token') || localStorage.getItem('pango_guest_token')
   return {
     'Content-Type': 'application/json',
     Authorization: token ? `Bearer ${token}` : API_CONFIG.authToken,
@@ -91,11 +92,11 @@ export const api = {
   addQuestion: (data: { userinfoId: number; question: string; questionType: string; internetEnable: number; sessionId: string }) =>
     post<{ todayQuestion: QuestionItem[] }>(ENDPOINTS.questionAdd, data),
 
-  addAnswer: (data: { userinfoId: number; think: string; content: string; answerTime: string; reference?: string }) =>
+  addAnswer: (data: { userinfoId: number; think: string; content: string; answerTime: string; reference?: string; answerMedia?: string }) =>
     post(ENDPOINTS.answerAdd, data),
 
   getAnswerByQuestionId: (data: { userinfoId: number; questionId: number }) =>
-    post<{ content: string; dotime: string; answerTime?: string; flagEvaluate: number; reference?: unknown }>(ENDPOINTS.answerByQuestionId, data),
+    post<{ content: string; dotime: string; answerTime?: string; flagEvaluate: number; reference?: unknown; answerMedia?: unknown }>(ENDPOINTS.answerByQuestionId, data),
 
   getHistory: (data: { userinfoId: number }) =>
     post<HistoryData>(ENDPOINTS.historyByUserId, data),
@@ -133,6 +134,7 @@ export const api = {
   },
 
   startStream: (
+    userinfoId: number,
     question: string,
     sessionId: string,
     isTestVersion: boolean,
@@ -140,7 +142,7 @@ export const api = {
     callbacks: {
       onProgress: (statusText: string, emoji: string) => void
       onChunk: (text: string, mode: 'append' | 'replace') => void
-      onDone: (finalAnswer: string, reference: ReferencePayload, citations: unknown[], trace: unknown) => void
+      onDone: (finalAnswer: string, reference: ReferencePayload, citations: unknown[], trace: unknown, answerMedia: AnswerMedia[]) => void
       onError: (err: Error) => void
     },
   ): AbortController => {
@@ -148,8 +150,10 @@ export const api = {
     const url = isTestVersion ? ENDPOINTS.chatCompletionsChoose : ENDPOINTS.chatCompletions
 
     const bodyObj: Record<string, unknown> = {
+      userinfoId,
       question,
       quote: true,
+      conversation_id: isTestVersion ? API_CONFIG.conversationIdChoose : API_CONFIG.conversationId,
       session_id: sessionId,
       limit: 5,
     }
@@ -165,12 +169,17 @@ export const api = {
 
     fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: getHeaders(),
       body,
       signal: controller.signal,
     }).then(async (response) => {
       if (!response.ok) {
-        callbacks.onError(new Error(`HTTP ${response.status}`))
+        let message = `HTTP ${response.status}`
+        try {
+          const errorBody = await response.json() as ApiResponse<unknown>
+          message = errorBody.message || message
+        } catch { /* response was not JSON */ }
+        callbacks.onError(new Error(message))
         return
       }
       const reader = response.body?.getReader()
@@ -197,7 +206,7 @@ export const api = {
             if (!raw) continue
 
             if (raw === '[DONE]') {
-              callbacks.onDone('', emptyReference(), [], null)
+              callbacks.onDone('', emptyReference(), [], null, [])
               return
             }
 
@@ -209,7 +218,7 @@ export const api = {
               continue
             }
 
-            const p = payload as Record<string, unknown> & { data?: unknown; answer?: string; answer_replace?: boolean; event?: string; reference?: unknown; structured_citations?: unknown[]; question_trace?: unknown }
+            const p = payload as Record<string, unknown> & { data?: unknown; answer?: string; answer_replace?: boolean; event?: string; reference?: unknown; structured_citations?: unknown[]; question_trace?: unknown; answer_media?: unknown }
             const d = (p.data as Record<string, unknown> | null) ?? {}
 
             if (d.status) {
@@ -226,7 +235,8 @@ export const api = {
               const ref = normalizeReference(rawRef)
               const citations = (p.structured_citations as unknown[]) || []
               const trace = p.question_trace || null
-              callbacks.onDone(finalAnswer, ref, citations, trace)
+              const answerMedia = normalizeAnswerMedia(p.answer_media || d.answer_media)
+              callbacks.onDone(finalAnswer, ref, citations, trace, answerMedia)
               return
             }
 
@@ -244,7 +254,7 @@ export const api = {
             }
           }
         }
-        callbacks.onDone('', emptyReference(), [], null)
+        callbacks.onDone('', emptyReference(), [], null, [])
       }
 
       readLoop().catch((err) => {

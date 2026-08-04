@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.pango.entity.DtoSet;
 import com.pango.entity.DtoUserinfo;
 import com.pango.mapper.MapperUserinfo;
+import com.pango.exception.MyException;
+import com.pango.exception.QuotaExceededException;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +22,7 @@ import java.util.Map;
 @Transactional
 @Service
 public class ServiceUserinfo extends ServiceImpl<MapperUserinfo, DtoUserinfo> implements BaseService<DtoUserinfo> {
+    public static final int GUEST_QUOTA_LIMIT = 50;
     @Override
     public LambdaQueryWrapper<DtoUserinfo> fillParams(Map<String, Object> params) {
         return null;
@@ -131,16 +134,40 @@ public class ServiceUserinfo extends ServiceImpl<MapperUserinfo, DtoUserinfo> im
     public DtoUserinfo getOrCreateGuest(String guestKey, String platform) {
         String wxCode = "guest:" + platform + ":" + guestKey;
         DtoUserinfo userinfo = getByWxCode(wxCode);
-        if (userinfo != null) return userinfo;
+        if (userinfo != null) return withQuota(userinfo);
         userinfo = new DtoUserinfo()
                 .setWxCode(wxCode)
                 .setNickName("访客")
+                .setUserType("GUEST")
+                .setQuotaUsed(0)
                 .setDotime(new java.util.Date())
                 .setUptime(new java.util.Date());
         this.save(userinfo);
         DtoSet set = new DtoSet().setUserinfoId(userinfo.getId()).setDataUseFlag(1);
         serviceSet.save(set);
-        return userinfo.setSetId(set.getId()).setFlagUseData(1);
+        return withQuota(userinfo.setSetId(set.getId()).setFlagUseData(1));
+    }
+
+    public DtoUserinfo consumeGuestQuota(long userId) {
+        DtoUserinfo user = getById(userId);
+        if (user == null) throw new MyException("用户不存在");
+        if (!"GUEST".equals(user.getUserType())) return user;
+        if (baseMapper.consumeGuestQuota(userId, GUEST_QUOTA_LIMIT) == 0) {
+            throw new QuotaExceededException(GUEST_QUOTA_LIMIT,
+                    user.getQuotaUsed() == null ? 0 : user.getQuotaUsed());
+        }
+        user.setQuotaUsed((user.getQuotaUsed() == null ? 0 : user.getQuotaUsed()) + 1);
+        return withQuota(user);
+    }
+
+    public DtoUserinfo withQuota(DtoUserinfo user) {
+        if (user == null) return null;
+        int used = user.getQuotaUsed() == null ? 0 : user.getQuotaUsed();
+        boolean guest = "GUEST".equals(user.getUserType());
+        user.setCount((long) used)
+                .setQuotaLimit(guest ? GUEST_QUOTA_LIMIT : null)
+                .setQuotaRemaining(guest ? Math.max(0, GUEST_QUOTA_LIMIT - used) : null);
+        return user;
     }
 
     /**

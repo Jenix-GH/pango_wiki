@@ -25,6 +25,7 @@ public class DtoAnswer {
     private Date uptime;
     private Integer flagEvaluate; //评价，0：未评价，1：赞，-1：踩
     private String reference;//参考资料，json格式
+    private String answerMedia;//回答关联图片，json数组
 
     @TableField(exist = false)
     private Long count; //单个用户的回答数量

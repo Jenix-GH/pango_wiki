@@ -25,8 +25,12 @@ public class R {
     }
 
     public static R error(String message, Object data) {
+        return error(4001, message, data);
+    }
+
+    public static R error(int code, String message, Object data) {
         R r = new R();
-        r.setCode(4001);
+        r.setCode(code);
         r.setMessage(message);
         r.setData(data);
         return r;

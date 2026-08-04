@@ -96,7 +96,7 @@ public class ServiceAuth {
         if (userId != null) stringRedisTemplate.opsForSet().remove(userTokensKey(Long.parseLong(userId)), token);
     }
 
-    private AuthResult createSession(DtoUserinfo user) {
+    public AuthResult createSession(DtoUserinfo user) {
         String token = UUID.randomUUID().toString().replace("-", "");
         stringRedisTemplate.opsForValue().set(TOKEN_PREFIX + token, String.valueOf(user.getId()), TOKEN_DAYS, TimeUnit.DAYS);
         stringRedisTemplate.opsForSet().add(userTokensKey(user.getId()), token);
@@ -104,11 +104,24 @@ public class ServiceAuth {
         return new AuthResult(token, user);
     }
 
+    public DtoUserinfo resolveUser(String authorization) {
+        if (authorization == null || authorization.trim().isEmpty()) {
+            throw new MyException("缺少访问令牌");
+        }
+        String token = authorization.startsWith("Bearer ")
+                ? authorization.substring(7).trim() : authorization.trim();
+        return getByToken(token);
+    }
+
     private DtoUserinfo enrich(DtoUserinfo user) {
         int userId = Math.toIntExact(user.getId());
         DtoQuestion question = serviceQuestion.findHisByUserId(userId);
         if (question != null) user.setTodayQuestionList(question.getTodayQuestion()).setWeekQuestionList(question.getWeekQuestion());
-        user.setCount(serviceAnswer.getCount(userId));
+        if ("GUEST".equals(user.getUserType())) {
+            serviceUserinfo.withQuota(user);
+        } else {
+            user.setCount(serviceAnswer.getCount(userId));
+        }
         user.setFlagCompanyInfo(serviceUserinfo.getCompany(userId) != 0);
         return user;
     }

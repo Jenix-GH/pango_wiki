@@ -1,5 +1,6 @@
 package com.pango.service;
 
+import com.alibaba.fastjson.JSONArray;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.pango.entity.DtoAnswer;
@@ -39,6 +40,7 @@ public class ServiceAnswer extends ServiceImpl<MapperAnswer, DtoAnswer> implemen
      * @param obj DtoAnswer
      */
     public void doAdd(DtoAnswer obj){
+        validateAnswerMedia(obj.getAnswerMedia());
         //先获取当前用户的最后一条问题
         DtoQuestion question = serviceQuestion.findByLast(Math.toIntExact(obj.getUserinfoId()));
         if(question != null){
@@ -62,6 +64,25 @@ public class ServiceAnswer extends ServiceImpl<MapperAnswer, DtoAnswer> implemen
             return null;
         }
         return list.get(0);
+    }
+
+    private void validateAnswerMedia(String answerMedia) {
+        if (answerMedia == null || answerMedia.trim().isEmpty()) {
+            return;
+        }
+        if (answerMedia.length() > 65535) {
+            throw new com.pango.exception.MyException("回答图片数据过大");
+        }
+        try {
+            JSONArray media = JSONArray.parseArray(answerMedia);
+            if (media.size() > 10) {
+                throw new com.pango.exception.MyException("回答图片最多保存10张");
+            }
+        } catch (com.pango.exception.MyException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new com.pango.exception.MyException("回答图片数据格式不正确");
+        }
     }
 
     public List<DtoAnswer> getByQuestionIds(List<Long> questionIds, long userinfoId) {

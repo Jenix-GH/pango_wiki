@@ -131,6 +131,63 @@
 }
 
 /* Reference panel */
+.answer-media-panel {
+  margin: 16px 0;
+  display: grid;
+  gap: 12px;
+  max-width: 520px;
+}
+
+.answer-media-item {
+  margin: 0;
+  padding: 10px;
+  overflow: hidden;
+  background: #fafafa;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+}
+
+.answer-media-preview {
+  width: 100%;
+  display: block;
+  cursor: zoom-in;
+}
+
+.answer-media-preview img {
+  width: 100%;
+  max-height: 360px;
+  display: block;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+@media (max-width: 640px) {
+  .answer-media-panel {
+    max-width: 100%;
+  }
+
+  .answer-media-preview img {
+    max-height: 280px;
+  }
+}
+
+.answer-media-item figcaption {
+  margin-top: 8px;
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.answer-media-source {
+  margin-top: 6px;
+  color: var(--bg-primary);
+  font-size: 12px;
+}
+
+.answer-media-source:hover {
+  text-decoration: underline;
+}
+
 .reference-panel {
   margin-top: 16px;
   padding-top: 12px;

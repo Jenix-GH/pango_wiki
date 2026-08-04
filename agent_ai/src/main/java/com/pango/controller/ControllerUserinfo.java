@@ -4,6 +4,7 @@ import com.pango.entity.DtoUserinfo;
 import com.pango.rs.R;
 import com.pango.exception.MyException;
 import com.pango.service.ServiceUserinfo;
+import com.pango.service.ServiceAuth;
 import com.pango.utils.MyAssert;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,6 +23,8 @@ public class ControllerUserinfo implements MyAssert {
 
     @Resource
     private ServiceUserinfo serviceUserinfo;
+    @Resource
+    private ServiceAuth serviceAuth;
 
     /**
      * 修改用户信息
@@ -52,7 +55,10 @@ public class ControllerUserinfo implements MyAssert {
         String platform = strIsNull(params.get("platform"), "访问平台").trim().toLowerCase();
         if (!guestKey.matches("^[A-Za-z0-9_-]{8,100}$")) throw new MyException("访客标识格式不正确");
         if (!"web".equals(platform) && !"miniprogram".equals(platform)) throw new MyException("访问平台不正确");
-        return R.ok(serviceUserinfo.getOrCreateGuest(guestKey, platform));
+        DtoUserinfo guest = serviceUserinfo.getOrCreateGuest(guestKey, platform);
+        ServiceAuth.AuthResult session = serviceAuth.createSession(guest);
+        guest.setAccessToken(session.getToken());
+        return R.ok(guest);
     }
 
 }

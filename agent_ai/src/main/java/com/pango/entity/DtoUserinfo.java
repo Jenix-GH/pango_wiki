@@ -27,6 +27,8 @@ public class DtoUserinfo {
     private String jobName;
     private Date dotime;
     private Date uptime;
+    private String userType;
+    private Integer quotaUsed;
 
     @TableField(exist = false)
     private Integer flagUseData;
@@ -40,5 +42,11 @@ public class DtoUserinfo {
     private Long count;
     @TableField(exist = false)
     private boolean flagCompanyInfo;
+    @TableField(exist = false)
+    private Integer quotaLimit;
+    @TableField(exist = false)
+    private Integer quotaRemaining;
+    @TableField(exist = false)
+    private String accessToken;
 
 }
