@@ -110,8 +110,11 @@ CREATE TABLE `dto_userinfo` (
   `mail_address` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '邮箱地址',
   `company_name` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '公司名',
   `job_name` varchar(25) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '职位',
+  `user_type` varchar(16) NOT NULL DEFAULT 'USER' COMMENT 'USER/GUEST',
+  `quota_used` int unsigned NOT NULL DEFAULT '0' COMMENT '访客已使用提问次数',
   `dotime` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '增加时间',
   `uptime` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_userinfo_phone_number` (`phone_number`)
+  UNIQUE KEY `uk_userinfo_phone_number` (`phone_number`),
+  KEY `idx_userinfo_type_quota` (`user_type`,`quota_used`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

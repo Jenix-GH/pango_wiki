@@ -1,4 +1,3 @@
-import pangoLogo from '../../Logo.png'
 import './TopBar.css'
 
 interface Props {
@@ -32,10 +31,7 @@ export default function TopBar({
         </button>
       ) : null}
 
-      <div className="topbar-brand">
-        <img src={pangoLogo} alt="Pango" />
-        <span>Pango Wiki</span>
-      </div>
+      <div className="topbar-brand-slot" aria-hidden="true" />
 
       <nav className="topbar-primary-nav" aria-label="主导航">
         <button

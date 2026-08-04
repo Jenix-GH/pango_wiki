@@ -673,7 +673,6 @@ Page({
         //不能为空值
         if ("" === this.data.questionContent && this.data.uploadImages.length === 0) return;
         //增加到对话列表中
-        this.addQuestion();
         //调用问答服务
         this.startStreaming(this.data.questionContent)
         //移动到最底部
@@ -916,8 +915,12 @@ Page({
       }
 
       const data: Record<string, unknown> = {
+        userinfoId: this.data.userInfo.id,
         question: content,
         quote: app.globalData.quote,
+        conversation_id: this.data.isTestVersion
+          ? app.globalData.conversationId_choose
+          : app.globalData.conversationId,
         session_id: app.globalData.sessionId,
         limit: 5
       }
@@ -926,7 +929,8 @@ Page({
       }
 
       const header = {
-        'content-type': 'application/json'
+        'content-type': 'application/json',
+        'Authorization': `Bearer ${wx.getStorageSync('pangoAccessToken') || ''}`
       }
 
       let frameCount = 0
@@ -956,6 +960,12 @@ Page({
 
           try {
             payload = JSON.parse(raw)
+            if (payload.code === 4290) {
+              resetStreamDisplayQueue()
+              this.stopStreaming()
+              showError(payload.message || '访客体验次数已用完，请登录后继续使用')
+              return
+            }
             if (payload.data?.status) {
               console.log(`[frame] #${frameCount} status: ${payload.data.status}`)
             } else if (payload.data?.answer) {
@@ -1035,6 +1045,7 @@ Page({
         },
         err => {
           console.error('流式请求异常', err)
+          showError(err?.message || '请求失败，请稍后重试')
           resetStreamDisplayQueue()
           if (this.data.timer !== null) {
             clearInterval(this.data.timer)
@@ -1357,7 +1368,7 @@ Page({
     // 判断当前用户的使用条数是否>最大免费条数
     checkAnswerLimit() {
         if (!app.globalData.flagCompanyInfo) {
-            if (this.data.answerCount > app.globalData.answerLimitMax) {
+            if (this.data.answerCount >= app.globalData.answerLimitMax) {
                 wx.showToast({ title: "体验次数已用完，请前往个人信息中心，完善公司信息获取无限对话次数", duration: 7000, icon: "none" })
                 return true;
             }
@@ -1429,7 +1440,10 @@ Page({
                 })
             })
             const result = res.data as ApiResponse<any>
-            if (result.code === 2000 && result.data?.id) return result.data
+            if (result.code === 2000 && result.data?.id) {
+                if (result.data.accessToken) wx.setStorageSync('pangoAccessToken', result.data.accessToken)
+                return result.data
+            }
         } catch (error) {
             console.error('初始化访客信息失败', error)
         }

@@ -7,6 +7,7 @@ import MarkdownContent from './MarkdownContent'
 import ImageLightbox from './ImageLightbox'
 import pangoLogo from '../../Logo.png'
 import './WikiAssistant.css'
+import { useAuth } from '../contexts/AuthContext'
 
 interface AssistantMessage {
   role: 'user' | 'assistant'
@@ -16,6 +17,8 @@ interface AssistantMessage {
 }
 
 export default function WikiAssistant() {
+  const { user, guestUserId, incrementAnswerCount } = useAuth()
+  const recordUserId = user?.id || guestUserId
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [messages, setMessages] = useState<AssistantMessage[]>([])
@@ -98,6 +101,10 @@ export default function WikiAssistant() {
   const send = () => {
     const question = text.trim()
     if ((!question && uploadImages.length === 0) || streaming) return
+    if (!recordUserId) {
+      setStatus('访客信息初始化中，请稍后重试')
+      return
+    }
     const imagesToSend = [...uploadImages]
     setText('')
     setUploadImages([])
@@ -141,6 +148,7 @@ export default function WikiAssistant() {
     }
 
     controllerRef.current = api.startStream(
+      recordUserId,
       question,
       api.createSession('wiki_guest'),
       true,
@@ -156,6 +164,7 @@ export default function WikiAssistant() {
           pushStreamText(chunk, mode)
         },
         onDone: (answer, reference) => {
+          incrementAnswerCount()
           finalize(answer || answerBuffer, reference)
         },
         onError: (error) => {

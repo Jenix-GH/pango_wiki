@@ -4,7 +4,7 @@ import { emptyReference } from './types'
 import { normalizeReference } from './types'
 
 function getHeaders(extra?: Record<string, string>): Record<string, string> {
-  const token = localStorage.getItem('pango_auth_token')
+  const token = localStorage.getItem('pango_auth_token') || localStorage.getItem('pango_guest_token')
   return {
     'Content-Type': 'application/json',
     Authorization: token ? `Bearer ${token}` : API_CONFIG.authToken,
@@ -133,6 +133,7 @@ export const api = {
   },
 
   startStream: (
+    userinfoId: number,
     question: string,
     sessionId: string,
     isTestVersion: boolean,
@@ -148,8 +149,10 @@ export const api = {
     const url = isTestVersion ? ENDPOINTS.chatCompletionsChoose : ENDPOINTS.chatCompletions
 
     const bodyObj: Record<string, unknown> = {
+      userinfoId,
       question,
       quote: true,
+      conversation_id: isTestVersion ? API_CONFIG.conversationIdChoose : API_CONFIG.conversationId,
       session_id: sessionId,
       limit: 5,
     }
@@ -165,12 +168,17 @@ export const api = {
 
     fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: getHeaders(),
       body,
       signal: controller.signal,
     }).then(async (response) => {
       if (!response.ok) {
-        callbacks.onError(new Error(`HTTP ${response.status}`))
+        let message = `HTTP ${response.status}`
+        try {
+          const errorBody = await response.json() as ApiResponse<unknown>
+          message = errorBody.message || message
+        } catch { /* response was not JSON */ }
+        callbacks.onError(new Error(message))
         return
       }
       const reader = response.body?.getReader()

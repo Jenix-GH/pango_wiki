@@ -57,7 +57,10 @@ public class ControllerQuestion implements MyAssert {
     public R findHisByUserId(@RequestBody Map<String, Object> params){
         int userId = idIsNull(params.get("userinfoId"), "用户ID");
         DtoQuestion rs = serviceQuestion.findHisByUserId(userId);
-        long count = serviceAnswer.getCount(userId);
+        com.pango.entity.DtoUserinfo historyUser = serviceUserinfo.getById(userId);
+        long count = historyUser != null && "GUEST".equals(historyUser.getUserType())
+                ? (historyUser.getQuotaUsed() == null ? 0 : historyUser.getQuotaUsed())
+                : serviceAnswer.getCount(userId);
         rs.setCount(count); //返回用户当前回答条数
         int flagCompany = serviceUserinfo.getCompany(userId);
         rs.setFlagCompanyInfo(flagCompany != 0); //返回用户是否有填写公司信息

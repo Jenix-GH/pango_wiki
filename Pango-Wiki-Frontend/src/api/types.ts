@@ -19,6 +19,11 @@ export interface UserInfo {
   mailAddress?: string
   flagUseData?: number
   phoneNumber?: string
+  userType?: 'USER' | 'GUEST'
+  quotaUsed?: number
+  quotaLimit?: number
+  quotaRemaining?: number
+  accessToken?: string
 }
 
 export interface AuthData {

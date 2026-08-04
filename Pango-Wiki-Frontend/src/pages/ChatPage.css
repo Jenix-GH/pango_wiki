@@ -181,10 +181,11 @@
 }
 
 .loading-dots {
-  display: flex;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 20px 0;
+  gap: 5px;
+  padding: 0;
 }
 
 .loading-dot {
@@ -192,7 +193,7 @@
   height: 8px;
   border-radius: 50%;
   background: var(--bg-primary);
-  transition: all 0.1s ease;
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
 .guest-banner {

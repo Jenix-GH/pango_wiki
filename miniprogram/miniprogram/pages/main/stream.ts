@@ -133,6 +133,19 @@ class StreamService {
             responseType: 'arraybuffer',
             enableChunked: true,
             data: JSON.stringify(params),
+            success: res => {
+                if (res.statusCode < 400) return
+                let message = `HTTP ${res.statusCode}`
+                try {
+                    const bytes = new Uint8Array(res.data as ArrayBuffer)
+                    const decoded = decodeUtf8Chunk(new Uint8Array(0), bytes).text
+                    const payload = JSON.parse(decoded)
+                    message = payload.message || message
+                } catch (_) {
+                    // Keep the HTTP status when the error body is not JSON.
+                }
+                onError && onError(new Error(message))
+            },
             fail: err => {
                 if (onError) onError(err)
             }

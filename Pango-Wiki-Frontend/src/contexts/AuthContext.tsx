@@ -10,6 +10,7 @@ interface GuestData {
   id: string
   count: number
   backendUserId?: number
+  accessToken?: string
 }
 
 interface AuthState {
@@ -79,7 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const response = await api.getOrCreateGuest({ guestKey: guest.id, platform: 'web' })
         if (response.code === 2000 && response.data?.id) {
           guest.backendUserId = response.data.id
-          guest.count = response.data.count || guest.count
+          guest.count = response.data.quotaUsed ?? response.data.count ?? guest.count
+          guest.accessToken = response.data.accessToken
+          if (guest.accessToken) localStorage.setItem('pango_guest_token', guest.accessToken)
           saveGuest(guest)
         }
       } catch { /* continue in local guest mode */ }
@@ -93,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(TOKEN_STORAGE_KEY, token)
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(currentUser))
     localStorage.removeItem(GUEST_STORAGE_KEY)
+    localStorage.removeItem('pango_guest_token')
     setUser(currentUser)
     setGuestData(null)
     setFlagCompanyInfo(currentUser.flagCompanyInfo || false)
@@ -132,7 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setGuestData(guest)
     void api.getOrCreateGuest({ guestKey: guest.id, platform: 'web' }).then((response) => {
       if (response.code !== 2000 || !response.data?.id) return
-      const next = { ...guest, backendUserId: response.data.id, count: response.data.count || guest.count }
+      const next = { ...guest, backendUserId: response.data.id, count: response.data.quotaUsed ?? response.data.count ?? guest.count, accessToken: response.data.accessToken }
+      if (next.accessToken) localStorage.setItem('pango_guest_token', next.accessToken)
       saveGuest(next)
       setGuestData(next)
     }).catch(() => {})
@@ -144,7 +149,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAnswerCount(guest.count)
     void api.getOrCreateGuest({ guestKey: guest.id, platform: 'web' }).then((response) => {
       if (response.code !== 2000 || !response.data?.id) return
-      const next = { ...guest, backendUserId: response.data.id, count: response.data.count || guest.count }
+      const next = { ...guest, backendUserId: response.data.id, count: response.data.quotaUsed ?? response.data.count ?? guest.count, accessToken: response.data.accessToken }
+      if (next.accessToken) localStorage.setItem('pango_guest_token', next.accessToken)
       saveGuest(next)
       setGuestData(next)
     }).catch(() => {})

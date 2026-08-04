@@ -12,7 +12,8 @@
   z-index: 15;
 }
 
-.topbar-brand {
+.topbar-brand,
+.persistent-topbar-brand {
   display: inline-flex;
   align-items: center;
   gap: 12px;
@@ -24,9 +25,25 @@
   white-space: nowrap;
 }
 
-.topbar-brand img {
+.topbar-brand-slot {
+  min-width: 0;
+}
+
+.persistent-topbar-brand {
+  position: fixed;
+  top: 10px;
+  left: 28px;
+  z-index: 16;
+  height: 48px;
+  pointer-events: none;
+}
+
+.topbar-brand img,
+.persistent-topbar-brand img {
   width: 48px;
   height: 48px;
+  min-width: 48px;
+  flex: 0 0 48px;
   padding: 4px;
   object-fit: contain;
   background: #fff;
@@ -123,13 +140,34 @@
     font-size: 14px;
   }
 
-  .topbar-brand img {
+  .topbar-brand-slot {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .persistent-topbar-brand {
+    top: 9px;
+    left: 12px;
+    height: 34px;
+    gap: 5px;
+    font-size: 14px;
+  }
+
+  .persistent-topbar-brand.is-chat {
+    left: 52px;
+  }
+
+  .topbar-brand img,
+  .persistent-topbar-brand img {
     width: 34px;
     height: 34px;
+    min-width: 34px;
+    flex-basis: 34px;
     padding: 2px;
   }
 
-  .topbar-brand span {
+  .topbar-brand span,
+  .persistent-topbar-brand span {
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;

@@ -7,6 +7,7 @@ export function useSSE() {
   const generationRef = useRef(0)
 
   const start = useCallback((
+    userinfoId: number,
     question: string,
     sessionId: string,
     isTestVersion: boolean,
@@ -20,6 +21,7 @@ export function useSSE() {
     const generation = ++generationRef.current
 
     const ctrl = api.startStream(
+      userinfoId,
       question,
       sessionId,
       isTestVersion,
