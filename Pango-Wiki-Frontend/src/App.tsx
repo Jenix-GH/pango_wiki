@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import PersistentBrand from './components/PersistentBrand'
+import AnalyticsTracker from './components/AnalyticsTracker'
 
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const ChatPage = lazy(() => import('./pages/ChatPage'))
@@ -15,6 +16,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <PersistentBrand />
+        <AnalyticsTracker />
         <Suspense fallback={<div className="app-route-loading">正在加载…</div>}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />

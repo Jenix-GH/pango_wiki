@@ -263,12 +263,9 @@ export default function WikiAssistant() {
               ) : null}
               {message.content
                 ? message.role === 'assistant'
-                  ? <MarkdownContent content={message.content} />
+                  ? <AssistantAnswer content={message.content} media={message.answerMedia || []} onPreview={setPreviewSrc} />
                   : <p>{message.content}</p>
                 : null}
-              {message.role === 'assistant' && message.answerMedia?.length ? (
-                <AssistantMedia media={message.answerMedia} onPreview={setPreviewSrc} />
-              ) : null}
               {message.role === 'assistant' && message.reference ? (
                 <AssistantReferences reference={message.reference} />
               ) : null}
@@ -353,12 +350,29 @@ export default function WikiAssistant() {
   )
 }
 
+function AssistantAnswer({ content, media, onPreview }: {
+  content: string
+  media: AnswerMedia[]
+  onPreview: (url: string) => void
+}) {
+  return placeMediaAfterCitations(content, media).map((section, index) => (
+    <div className="wiki-assistant-answer-section" key={`${index}-${section.media.map((item) => item.asset_id).join('-')}`}>
+      {section.content ? <MarkdownContent content={section.content} /> : null}
+      {section.media.length ? <AssistantMedia media={section.media} onPreview={onPreview} /> : null}
+    </div>
+  ))
+}
+
 function AssistantMedia({ media, onPreview }: { media: AnswerMedia[]; onPreview: (url: string) => void }) {
   return (
     <div className="wiki-assistant-answer-media">
       {media.map((item) => (
         <figure key={item.asset_id}>
-          <button type="button" onClick={() => onPreview(item.absoluteUrl)}>
+          <button type="button" onClick={() => {
+            const clientType = new URLSearchParams(window.location.search).get('client') === 'miniprogram' ? 'MINIPROGRAM' : 'WEB'
+            void api.trackEvent({ eventName: 'answer_image_view', pagePath: '/wiki/reader', clientType }).catch(() => {})
+            onPreview(item.absoluteUrl)
+          }}>
             <img src={item.absoluteUrl} alt={item.caption || '回答配图'} loading="lazy" />
           </button>
           {(item.caption || item.citation_label) ? <figcaption>{item.caption} {item.citation_label}</figcaption> : null}
@@ -371,6 +385,59 @@ function AssistantMedia({ media, onPreview }: { media: AnswerMedia[]; onPreview:
       ))}
     </div>
   )
+}
+
+function placeMediaAfterCitations(content: string, media: AnswerMedia[]): Array<{ content: string; media: AnswerMedia[] }> {
+  if (media.length === 0) return [{ content, media: [] }]
+
+  const mediaByOffset = new Map<number, AnswerMedia[]>()
+  const unplaced: AnswerMedia[] = []
+  media.forEach((item) => {
+    const label = item.citation_label?.trim()
+    const bracketLabel = label?.match(/\[[^\]]+\]/)?.[0]
+    const candidates = [...new Set([label, bracketLabel].filter((value): value is string => Boolean(value)))]
+    let matchIndex = -1
+    let matchedLabel = ''
+    for (const candidate of candidates) {
+      matchIndex = content.indexOf(candidate)
+      if (matchIndex >= 0) {
+        matchedLabel = candidate
+        break
+      }
+    }
+
+    if (matchIndex < 0) {
+      unplaced.push(item)
+      return
+    }
+
+    let insertionOffset = matchIndex + matchedLabel.length
+    const openingSup = content.lastIndexOf('<sup', matchIndex)
+    const closingSupBeforeLabel = content.lastIndexOf('</sup>', matchIndex)
+    const closingSupAfterLabel = content.indexOf('</sup>', insertionOffset)
+    if (openingSup > closingSupBeforeLabel && closingSupAfterLabel >= insertionOffset) {
+      insertionOffset = closingSupAfterLabel + '</sup>'.length
+      const trailingPunctuation = content.slice(insertionOffset).match(/^[ \t]*[。！？.!?；;：:]?/)
+      insertionOffset += trailingPunctuation?.[0].length || 0
+    }
+    mediaByOffset.set(insertionOffset, [...(mediaByOffset.get(insertionOffset) || []), item])
+  })
+
+  const sections: Array<{ content: string; media: AnswerMedia[] }> = []
+  let contentOffset = 0
+  ;[...mediaByOffset.keys()].sort((a, b) => a - b).forEach((insertionOffset) => {
+    sections.push({
+      content: content.slice(contentOffset, insertionOffset),
+      media: mediaByOffset.get(insertionOffset) || [],
+    })
+    contentOffset = insertionOffset
+  })
+
+  const trailingContent = content.slice(contentOffset)
+  if (trailingContent || unplaced.length || sections.length === 0) {
+    sections.push({ content: trailingContent, media: unplaced })
+  }
+  return sections
 }
 
 function AssistantReferences({ reference }: { reference: ReferencePayload }) {

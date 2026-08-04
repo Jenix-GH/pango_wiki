@@ -410,10 +410,11 @@ export default function ChatPage() {
   }
 
   const handleOpenReference = useCallback((relUrl: string) => {
+    void api.trackEvent({ eventName: 'reference_open', pagePath: '/', clientType: 'WEB', sessionId }).catch(() => {})
     if (!openReferenceReaderUrl(relUrl)) {
       showToast('参考文档链接无效')
     }
-  }, [showToast])
+  }, [sessionId, showToast])
 
   const addImageFiles = async (files: File[]) => {
     if (uploadImages.length >= 3) {

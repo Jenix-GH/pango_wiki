@@ -11,7 +11,7 @@ export default function PersistentBrand() {
   return (
     <div className={`persistent-topbar-brand ${pathname === '/' ? 'is-chat' : ''}`}>
       <img src="/Logo.png" alt="Pango" width="48" height="48" decoding="sync" />
-      <span>Pango Wiki</span>
+      <span>Pango 智能技术平台</span>
     </div>
   )
 }

@@ -3,6 +3,7 @@ import type { AnswerMedia, ChatMessage, UploadImage } from '../api/types'
 import { primaryReferenceUrl } from '../utils/referenceUrl'
 import MarkdownContent from './MarkdownContent'
 import ImageLightbox from './ImageLightbox'
+import { api } from '../api/client'
 import pangoLogo from '../../Logo.png'
 import './ChatBubble.css'
 
@@ -181,7 +182,10 @@ function AnswerMediaPanel({ media, onPreview, onOpenReference }: {
     <div className="answer-media-panel">
       {media.map((item) => (
         <figure className="answer-media-item" key={item.asset_id}>
-          <button type="button" className="answer-media-preview" onClick={() => onPreview(item.absoluteUrl)}>
+          <button type="button" className="answer-media-preview" onClick={() => {
+            void api.trackEvent({ eventName: 'answer_image_view', pagePath: '/', clientType: 'WEB' }).catch(() => {})
+            onPreview(item.absoluteUrl)
+          }}>
             <img src={item.absoluteUrl} alt={item.caption || '回答配图'} loading="lazy" />
           </button>
           {(item.caption || item.citation_label) && (

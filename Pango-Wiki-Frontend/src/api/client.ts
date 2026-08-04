@@ -122,6 +122,9 @@ export const api = {
   submitLicenseApplication: (data: LicenseApplicationPayload) =>
     post<{ id: number; status: number }>(ENDPOINTS.licenseApplicationSubmit, data),
 
+  trackEvent: (data: { eventName: string; pagePath: string; clientType: 'WEB' | 'MINIPROGRAM'; sessionId?: string; documentId?: string }) =>
+    post(ENDPOINTS.analyticsTrack, data),
+
   createSession: (userId: string | number = 'guest', forceNew = false): string => {
     const key = 'pango_session_id'
     if (!forceNew) {
@@ -155,6 +158,7 @@ export const api = {
       quote: true,
       conversation_id: isTestVersion ? API_CONFIG.conversationIdChoose : API_CONFIG.conversationId,
       session_id: sessionId,
+      client_type: 'WEB',
       limit: 5,
     }
     if (images) {

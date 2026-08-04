@@ -346,6 +346,26 @@ function openReferenceViewer(url: string) {
     })
 }
 
+function trackAnalyticsEvent(eventName: string, pagePath: string, documentId?: string) {
+    const token = wx.getStorageSync('pangoAccessToken') || ''
+    if (!token) return
+    wx.request({
+        url: app.globalData.baseHost + '/analytics/track',
+        method: 'POST',
+        header: {
+            'content-type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        data: {
+            eventName,
+            pagePath,
+            clientType: 'MINIPROGRAM',
+            sessionId: app.globalData.sessionId || undefined,
+            documentId
+        }
+    })
+}
+
 Page({
     /**
      * 页面的初始数据
@@ -450,6 +470,7 @@ Page({
     },
 
     openWiki() {
+        trackAnalyticsEvent('wiki_view', '/pages/wiki/wiki')
         wx.navigateTo({
             url: '/pages/wiki/wiki',
             fail: err => {
@@ -770,6 +791,7 @@ Page({
         });
     },
     previewReferenceFigure(e: any) {
+        trackAnalyticsEvent('answer_image_view', '/pages/main/main')
         const messageIndex = Number(e.currentTarget.dataset.messageIndex)
         const media = this.data.sessionList?.[messageIndex]?.answerMedia || []
         const urls = media.map((item: AnswerMedia) => item.absoluteUrl).filter(Boolean)
@@ -1050,6 +1072,7 @@ Page({
           ? app.globalData.conversationId_choose
           : app.globalData.conversationId,
         session_id: app.globalData.sessionId,
+        client_type: 'MINIPROGRAM',
         limit: 5
       }
       if (imagesToSend) {
@@ -1403,6 +1426,7 @@ Page({
             showError('参考文档地址未配置')
             return
         }
+        trackAnalyticsEvent('reference_open', '/pages/main/main')
         openReferenceViewer(withSessionId(baseUrl, app.globalData.sessionId))
     },
     //开始新会话
@@ -1559,6 +1583,7 @@ Page({
                 }
             })
         })
+        trackAnalyticsEvent('page_view', '/pages/main/main')
     },
     async getOrCreateGuestUser() {
         let guestKey = wx.getStorageSync("pangoGuestKey") as string

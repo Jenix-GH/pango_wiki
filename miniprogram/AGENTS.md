@@ -67,6 +67,7 @@ tests/
 - Markdown preprocessing inserts table spacing and preserves line breaks after citation markers. Do not bypass `fixMarkdownTableSpacing()` when restoring historical answers.
 - Image upload uses `wx.chooseMedia`, reads base64 data through the file-system manager, and sends it with the question.
 - Voice input uploads audio to `{baseHost}/wx/transcribe`.
+- The main page reports `page_view`, Wiki entry, reference opening, and answer-image viewing to `/analytics/track` with `clientType: MINIPROGRAM`. Chat submit/success/failure is recorded authoritatively by Java. Analytics failures must never block the primary Q&A interaction.
 - Most state lives in the page/component `data` object; components communicate with `triggerEvent`. There is no external state-management library.
 - `componentFramework` is `glass-easel`, Skyline is enabled, and TypeScript uses strict unused-variable checks.
 - `project.private.config.json` and `._*` files are machine-specific artifacts; avoid intentionally committing new ones.
