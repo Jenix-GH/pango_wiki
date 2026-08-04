@@ -1,6 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { api } from '../api/client'
 import { isMiniProgramEntry, returnToMiniProgramQa } from '../utils/miniProgramBridge'
 import { openReferenceUrl, resolveReferenceUrl } from '../utils/referenceUrl'
 import { loadWikiCatalog } from '../wiki/api'
@@ -216,6 +217,7 @@ export default function WikiPage() {
       setActionError(document.source_status || '该文件当前不可用，请刷新目录后重试。')
       return
     }
+    void api.trackEvent({ eventName: 'document_read', pagePath: '/wiki', clientType: miniProgramClient ? 'MINIPROGRAM' : 'WEB', documentId: document.key }).catch(() => {})
     if (miniProgramClient && document.action_type !== 'download') {
       navigate(`/wiki/reader?url=${encodeURIComponent(document.viewer_url)}&client=miniprogram`)
       return
@@ -248,6 +250,7 @@ export default function WikiPage() {
       setActionError(document.source_status || '该文件当前不可用，请刷新目录后重试。')
       return
     }
+    void api.trackEvent({ eventName: 'document_download', pagePath: '/wiki', clientType: miniProgramClient ? 'MINIPROGRAM' : 'WEB', documentId: document.key }).catch(() => {})
     const downloadUrl = document.download_url
       || (document.action_type === 'download' ? document.viewer_url : '')
     if (!downloadUrl || !openReferenceUrl(downloadUrl)) {

@@ -33,6 +33,14 @@
 - Wiki 在线阅读页保留统一 Banner 和“边看边问”浮窗。阅读器内部返回 `/wiki` 时由外层路由接管，避免页面和 Banner 重复嵌套。
 - 小程序通过 `/wiki?client=miniprogram` 和 `/wiki/reader?...&client=miniprogram` 复用 Web 页面，并通过 WebView 返回原生问答页。
 
+## 访问统计
+
+- Web 在路由变化后向 `/dbServ/analytics/track` 上报经过白名单校验的页面和业务事件。
+- 当前事件包括页面访问、Wiki 访问、文档阅读/下载、参考资料打开、回答图片查看和使用说明查看。
+- 请求使用当前登录用户或后端访客 Token；`userinfo_id` 和 `visitor_id` 由 Java 根据 Token 确定，前端不能指定。
+- 提问提交、模型成功和模型失败由 Java 对话代理直接记录，避免只依赖浏览器上报。
+- 统计数据保存在 `dto_analytics_event`，用户端不展示统计结果。内部查看和处理入口位于仓库根目录的 `Pango-Admin-Console/`。
+
 ## 目录结构
 
 ```text
@@ -90,6 +98,10 @@ npm run build
 
 Java 服务向模型服务发起请求时会根据已校验的 JSON `session_id` 设置 `X-Session-Id`。若部署多个模型实例，可使用 `agent_ai/deploy/nginx-chat-upstream.conf` 中的一致性哈希示例保证同一会话落到同一实例。回答图片相关代理示例见 `agent_ai/deploy/nginx-answer-media.conf`。
 
+只有模型对话上游需要基于 `X-Session-Id` 保持会话粘性。`/wiki/api/`、普通 `/references/` 和 `/references/figures/` 可以使用轮询或 `least_conn`；前提是 Wiki 实例使用一致的数据源，图片实例使用共享存储或已经同步相同文件。浏览器图片请求不会自动携带 `X-Session-Id`，因此不能依靠对话粘性寻找仅存在于单台模型机器上的图片。
+
+发布访问统计前，现有数据库需执行 `agent_ai/database/migrations/20260804_add_analytics_event.sql`。Java 服务还可配置 `ADMIN_CONSOLE_KEY`，供本地管理控制台通过 `/dbServ/admin/console/**` 查询统计、反馈和 License 申请；该密钥不得进入用户端前端代码。
+
 ## 发布检查
 
 - 执行 `npm run build`。
@@ -98,9 +110,10 @@ Java 服务向模型服务发起请求时会根据已校验的 JSON `session_id`
 - 验证在线阅读返回后不会嵌套第二个 Banner。
 - 验证 Wiki 桌面端、移动端及真实微信 WebView。
 - 新增域名或路径时同步检查 Nginx、HTTPS、CORS/CSP 和微信业务域名/下载域名配置。
+- 验证 `dto_analytics_event` 能写入 Web、小程序和 Java 自动记录的事件；管理接口必须拒绝缺失或错误的 `X-Admin-Key`。
 
 ## 系统边界
 
-- 本仓库包含 Web、小程序和 Java 业务后端；模型服务及独立 Wiki 服务不在本仓库中。
+- 本仓库包含 Web、小程序、本地管理控制台和 Java 业务后端；模型服务及独立 Wiki 服务不在本仓库中。
 - 数据库初始化和增量脚本位于 `agent_ai/database/`。已部署数据库应按顺序执行迁移脚本，不应重复执行或修改已执行的迁移。
 - 服务端是鉴权和访客额度的最终安全边界；客户端限制仅用于交互提示。

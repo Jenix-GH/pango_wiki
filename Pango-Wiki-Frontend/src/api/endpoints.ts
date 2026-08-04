@@ -27,6 +27,7 @@ export const ENDPOINTS = {
   guestUser: `${DB_HOST}/userinfo/guest`,
   feedbackSubmit: `${DB_HOST}/feedback/submit`,
   licenseApplicationSubmit: `${DB_HOST}/license/application/submit`,
+  analyticsTrack: `${DB_HOST}/analytics/track`,
   authSendSms: `${DB_HOST}/auth/sms/send`,
   authRegister: `${DB_HOST}/auth/register`,
   authLogin: `${DB_HOST}/auth/login`,

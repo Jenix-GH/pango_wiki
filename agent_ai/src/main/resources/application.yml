@@ -5,3 +5,6 @@ spring:
     active: $profiles.active$
   application:
     name: agentAi
+admin:
+  # Required for /admin/console/**. Use a random value of at least 16 characters.
+  console-key: ${ADMIN_CONSOLE_KEY:}
