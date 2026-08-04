@@ -1,8 +1,8 @@
 spring:
   servlet:
     multipart:
-      max-file-size: 2MB
-      max-request-size: 3MB
+      max-file-size: 8MB
+      max-request-size: 9MB
   datasource:
     type: com.alibaba.druid.pool.DruidDataSource
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -62,11 +62,10 @@ wx:
   appid: wxafd59b2bb3a66e06
   secret: ${WX_SECRET}
 ali_audio:
-  appkey: E72pGCTGFpgSGRJk
-  access-key-id: ${ALIYUN_AK_ID}
-  access-key-secret: ${ALIYUN_AK_SECRET}
-  token:
-  rest-url: https://nls-gateway-cn-shanghai.aliyuncs.com/stream/v1/asr
+  api-key: ${DASHSCOPE_API_KEY}
+  workspace-id: ${DASHSCOPE_WORKSPACE_ID}
+  model: qwen-audio-3.0-asr-flash
+  endpoint-template: https://%s.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
   sample-rate: 16000
 ali_sms:
   access-key-id: ${ALIYUN_AK_ID}
