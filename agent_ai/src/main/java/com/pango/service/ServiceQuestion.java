@@ -1,8 +1,10 @@
 package com.pango.service;
 
+import com.alibaba.fastjson.JSONArray;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.pango.entity.DtoQuestion;
+import com.pango.exception.MyException;
 import com.pango.mapper.MapperQuestion;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,9 +36,27 @@ public class ServiceQuestion extends ServiceImpl<MapperQuestion, DtoQuestion> im
      * @param obj DtoQuestion
      */
     public void doAdd(DtoQuestion obj){
+        validateQuestionImages(obj.getQuestionImages());
         String today = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
         obj.setDoDate(today);
         this.save(obj);
+    }
+
+    private void validateQuestionImages(String questionImages) {
+        if (questionImages == null || questionImages.trim().isEmpty()) return;
+        if (questionImages.length() > 20 * 1024 * 1024) {
+            throw new MyException("问题图片数据过大");
+        }
+        try {
+            JSONArray images = JSONArray.parseArray(questionImages);
+            if (images.size() > 3) {
+                throw new MyException("最多只能上传3张图片");
+            }
+        } catch (MyException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new MyException("问题图片数据格式错误");
+        }
     }
 
     /**

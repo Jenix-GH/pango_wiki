@@ -126,6 +126,14 @@ class StreamService {
         let utf8Carry: Uint8Array = new Uint8Array(0)
         let chunkCount = 0
         const startTime = Date.now()
+        const flushPendingFrame = () => {
+            let tail = buffer.trim()
+            buffer = ''
+            if (!tail) return
+            if (tail.startsWith('event:')) return
+            if (tail.startsWith('data:')) tail = tail.substring(5).trim()
+            if (tail) onData(tail)
+        }
         const task = wx.request({
             url,
             method: 'POST',
@@ -134,17 +142,26 @@ class StreamService {
             enableChunked: true,
             data: JSON.stringify(params),
             success: res => {
-                if (res.statusCode < 400) return
+                if (res.statusCode < 400) {
+                    // A normal JSON business error (for example an expired
+                    // login token) may be returned without a trailing newline.
+                    // Flush it instead of leaving the UI waiting forever.
+                    flushPendingFrame()
+                    return
+                }
                 let message = `HTTP ${res.statusCode}`
                 try {
+                    const bufferedBody = buffer.trim()
                     const bytes = new Uint8Array(res.data as ArrayBuffer)
-                    const decoded = decodeUtf8Chunk(new Uint8Array(0), bytes).text
+                    const decoded = bufferedBody || decodeUtf8Chunk(new Uint8Array(0), bytes).text
                     const payload = JSON.parse(decoded)
                     message = payload.message || message
                 } catch (_) {
                     // Keep the HTTP status when the error body is not JSON.
                 }
-                onError && onError(new Error(message))
+                const error = new Error(message) as Error & { statusCode?: number }
+                error.statusCode = res.statusCode
+                onError && onError(error)
             },
             fail: err => {
                 if (onError) onError(err)

@@ -6,9 +6,8 @@
 
 - `/`：智能问答。支持登录/访客、历史会话、流式回答、图片提问、回答配图、参考资料、评价和反馈。
 - `/login`：注册、登录、短信验证码及密码重置入口。
-- `/wiki`：响应式器件文档中心；桌面端使用目录栏和表格，移动端使用抽屉与卡片布局。
-- `/wiki/reader`：统一在线阅读外壳。桌面端保留站点顶部导航和“边看边问”，内部加载 Wiki 阅读器；小程序模式使用 `client=miniprogram`。
-- `/wiki/preview`：兼容旧阅读器返回地址，重定向到 `/wiki`。
+- `/docs`：响应式器件文档中心；桌面端使用目录栏和表格，移动端使用抽屉与卡片布局。
+- `/docs/reader`：统一在线阅读外壳。桌面端保留站点顶部导航和“边看边问”，内部加载 Wiki 阅读器；小程序模式使用 `client=miniprogram`。
 - `/license-application`：License 申请。
 - `/user-guide`：读取部署目录中的 `/pango_huida_user_guide.md` 并显示使用说明。
 
@@ -18,7 +17,7 @@
 - 页面首次进入或刷新会创建新的 `session_id`；主动新建会话也会生成新 ID；从历史记录进入时恢复对应会话 ID。
 - 流式内容通过双缓冲队列平滑显示，支持进度帧、增量答案和最终结果帧。
 - 问题和答案通过 Java 后端持久化。答案记录可保存参考资料 JSON 和 `answer_media`，因此重新打开历史会话后仍能显示引用和图片。
-- 参考资料跳转到 `/wiki/reader`，保留回答生成时实际引用的文档及页码，不按文件名重新匹配最新版本。
+- 参考资料跳转到 `/docs/reader`，保留回答生成时实际引用的文档及页码，不按文件名重新匹配最新版本。
 - 回答图片仅接受同源 `/references/figures/` 地址；根据 `citation_label` 插入到正文对应 `<sup>...</sup>` 脚标之后，无法匹配时在答案末尾兜底显示。
 - Markdown 渲染支持 GFM 表格、数学公式、原始 HTML、代码块，并统一处理标题/表格间距和引用脚标后的换行。
 - 访客 50 次额度以 Java 后端原子扣减结果为准，前端显示剩余额度但不是安全边界。
@@ -30,8 +29,8 @@
 - 支持后端返回的 `source_type`、`action_type`、`action_label` 和 `action_disabled`，以区分在线阅读、下载和不可用状态。
 - 桌面端可在线阅读或下载可用文档；移动端优先保留在线阅读和文档信息。
 - 在线阅读和下载只接受白名单中的同源 `/references/*` 路径，浏览器不保存 Wiki/RAGFlow/存储服务凭据。
-- Wiki 在线阅读页保留统一 Banner 和“边看边问”浮窗。阅读器内部返回 `/wiki` 时由外层路由接管，避免页面和 Banner 重复嵌套。
-- 小程序通过 `/wiki?client=miniprogram` 和 `/wiki/reader?...&client=miniprogram` 复用 Web 页面，并通过 WebView 返回原生问答页。
+- Wiki 在线阅读页保留统一 Banner 和“边看边问”浮窗。阅读器内部返回 `/docs` 时由外层路由接管，避免页面和 Banner 重复嵌套。
+- 小程序通过 `/docs?client=miniprogram` 和 `/docs/reader?...&client=miniprogram` 复用 Web 页面，并通过 WebView 返回原生问答页。
 
 ## 访问统计
 

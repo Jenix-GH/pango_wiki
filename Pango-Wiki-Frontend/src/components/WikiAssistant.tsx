@@ -79,7 +79,14 @@ export default function WikiAssistant() {
   const addImages = async (files: File[]) => {
     const imageFiles = files.filter((file) => file.type.startsWith('image/'))
     const available = 3 - uploadImages.length
-    if (!imageFiles.length || available <= 0) return
+    if (!imageFiles.length) return
+    if (available <= 0) {
+      window.alert('每次提问最多上传 3 张图片，请删除已有图片后再添加。')
+      return
+    }
+    if (imageFiles.length > available) {
+      window.alert(`每次提问最多上传 3 张图片，本次将只添加前 ${available} 张。`)
+    }
     try {
       const prepared = await Promise.all(imageFiles.slice(0, available).map(prepareImage))
       setUploadImages((current) => [...current, ...prepared].slice(0, 3))
@@ -312,8 +319,14 @@ export default function WikiAssistant() {
           <button
             type="button"
             className="wiki-assistant-upload"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={streaming || uploadImages.length >= 3}
+            onClick={() => {
+              if (uploadImages.length >= 3) {
+                window.alert('每次提问最多上传 3 张图片，请删除已有图片后再添加。')
+                return
+              }
+              fileInputRef.current?.click()
+            }}
+            disabled={streaming}
             title="上传图片（最多 3 张）"
             aria-label="上传图片"
           >
@@ -370,7 +383,7 @@ function AssistantMedia({ media, onPreview }: { media: AnswerMedia[]; onPreview:
         <figure key={item.asset_id}>
           <button type="button" onClick={() => {
             const clientType = new URLSearchParams(window.location.search).get('client') === 'miniprogram' ? 'MINIPROGRAM' : 'WEB'
-            void api.trackEvent({ eventName: 'answer_image_view', pagePath: '/wiki/reader', clientType }).catch(() => {})
+            void api.trackEvent({ eventName: 'answer_image_view', pagePath: '/docs/reader', clientType }).catch(() => {})
             onPreview(item.absoluteUrl)
           }}>
             <img src={item.absoluteUrl} alt={item.caption || '回答配图'} loading="lazy" />

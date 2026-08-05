@@ -7,7 +7,7 @@
         <view class="panel-left-icon" bind:tap="reloadSession">
             <view class="new-session"></view>
         </view>
-        <view class="panel-wiki" bind:tap="openWiki">Wiki</view>
+        <view class="panel-wiki" bind:tap="openWiki">Doc</view>
     </view>
     <view class="panel-text">{{ title }}</view>
 </view>

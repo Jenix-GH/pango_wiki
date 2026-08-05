@@ -7,7 +7,7 @@ import { api } from '../api/client'
 import { formatTime } from '../utils/formatTime'
 import { copyToClipboard } from '../utils/clipboard'
 import { normalizeAnswerMedia, openReferenceReaderUrl, serializeAnswerMedia } from '../utils/referenceUrl'
-import { normalizeReference } from '../api/types'
+import { normalizeQuestionImages, normalizeReference } from '../api/types'
 import type { ChatMessage, FeedbackPayload, QuestionItem, UploadImage } from '../api/types'
 import TopBar from '../components/TopBar'
 import LeftDrawer from '../components/LeftDrawer'
@@ -374,7 +374,12 @@ export default function ChatPage() {
       setShowTips(false)
       setSessionId(historySessionId)
       const historyMessages = res.data.flatMap<ChatMessage>((item) => {
-        const questionMessage: ChatMessage = { flagAi: 0, content: item.question, time: item.dotime || '' }
+        const questionMessage: ChatMessage = {
+          flagAi: 0,
+          content: item.question,
+          time: item.dotime || '',
+          images: normalizeQuestionImages(item.questionImages || item.question_images),
+        }
         if (!item.answer) return [questionMessage]
         const answerMessage: ChatMessage = {
           flagAi: 1,
@@ -418,7 +423,7 @@ export default function ChatPage() {
 
   const addImageFiles = async (files: File[]) => {
     if (uploadImages.length >= 3) {
-      showToast('最多上传3张图片')
+      window.alert('每次提问最多上传 3 张图片，请删除已有图片后再添加。')
       return
     }
     const imageFiles = files.filter((file) => file.type.startsWith('image/'))
@@ -428,7 +433,7 @@ export default function ChatPage() {
     }
     const available = 3 - uploadImages.length
     if (imageFiles.length > available) {
-      showToast(`最多上传3张图片，已添加前${available}张`)
+      window.alert(`每次提问最多上传 3 张图片，本次将只添加前 ${available} 张。`)
     }
     try {
       const newImages = await Promise.all(imageFiles.slice(0, available).map(prepareImage))
@@ -441,7 +446,7 @@ export default function ChatPage() {
 
   const handleImageUpload = () => {
     if (uploadImages.length >= 3) {
-      showToast('最多上传3张图片')
+      window.alert('每次提问最多上传 3 张图片，请删除已有图片后再添加。')
       return
     }
     const input = document.createElement('input')
@@ -504,7 +509,7 @@ export default function ChatPage() {
           active="chat"
           userLabel={user?.nickName || '访客'}
           onOpenChat={() => {}}
-          onOpenWiki={() => navigate('/wiki')}
+          onOpenWiki={() => navigate('/docs')}
           onOpenLicense={() => navigate('/license-application')}
           onOpenUser={() => user ? setShowSettings(true) : navigate('/login')}
           onOpenMenu={() => setShowLeft(true)}

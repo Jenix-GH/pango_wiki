@@ -14,6 +14,8 @@ export default function VoiceInput({ onResult, onCancel }: Props) {
   const [error, setError] = useState('')
   const [elapsed, setElapsed] = useState(0)
   const streamRef = useRef<MediaStream | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const encodedChunksRef = useRef<Blob[]>([])
   const contextRef = useRef<AudioContext | null>(null)
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
@@ -24,6 +26,13 @@ export default function VoiceInput({ onResult, onCancel }: Props) {
   const startingRef = useRef(false)
 
   const releaseAudio = useCallback(() => {
+    const recorder = recorderRef.current
+    recorderRef.current = null
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.ondataavailable = null
+      recorder.onstop = null
+      recorder.stop()
+    }
     if (processorRef.current) {
       processorRef.current.onaudioprocess = null
       processorRef.current.disconnect()
@@ -45,12 +54,29 @@ export default function VoiceInput({ onResult, onCancel }: Props) {
     setError('')
     setElapsed(0)
     chunksRef.current = []
+    encodedChunksRef.current = []
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
       })
       if (!mountedRef.current) {
         stream.getTracks().forEach((track) => track.stop())
+        return
+      }
+      const aacMimeType = preferredAacMimeType()
+      if (aacMimeType) {
+        const recorder = new MediaRecorder(stream, {
+          mimeType: aacMimeType,
+          audioBitsPerSecond: 48000,
+        })
+        streamRef.current = stream
+        recorderRef.current = recorder
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) encodedChunksRef.current.push(event.data)
+        }
+        recorder.start(250)
+        startedAtRef.current = Date.now()
+        setState('recording')
         return
       }
       const AudioContextClass = window.AudioContext
@@ -100,8 +126,9 @@ export default function VoiceInput({ onResult, onCancel }: Props) {
     const duration = Date.now() - startedAtRef.current
     const chunks = chunksRef.current
     const inputSampleRate = sampleRateRef.current
-    releaseAudio()
-    if (duration < 1000 || chunks.length === 0) {
+    const recorder = recorderRef.current
+    if (duration < 1000) {
+      releaseAudio()
       setError('录音时间太短，请至少录制 1 秒')
       setState('error')
       return
@@ -109,12 +136,29 @@ export default function VoiceInput({ onResult, onCancel }: Props) {
 
     setState('processing')
     try {
-      const wavBlob = encodeWav(chunks, inputSampleRate, 16000)
-      const result = await api.transcribe(wavBlob)
+      let audioBlob: Blob
+      if (recorder && recorder.state !== 'inactive') {
+        audioBlob = await new Promise<Blob>((resolve, reject) => {
+          recorder.onerror = () => reject(new Error('AAC录音编码失败'))
+          recorder.onstop = () => {
+            resolve(new Blob(encodedChunksRef.current, { type: recorder.mimeType || 'audio/mp4' }))
+          }
+          recorder.stop()
+        })
+        recorderRef.current = null
+        streamRef.current?.getTracks().forEach((track) => track.stop())
+        streamRef.current = null
+      } else {
+        if (chunks.length === 0) throw new Error('未采集到有效录音')
+        audioBlob = encodeWav(chunks, inputSampleRate, 16000)
+        releaseAudio()
+      }
+      const result = await api.transcribe(audioBlob)
       if (!mountedRef.current) return
       if (!result?.text?.trim()) throw new Error('未识别到有效语音')
       onResult(result.text.trim())
     } catch (cause) {
+      releaseAudio()
       if (!mountedRef.current) return
       setError(cause instanceof Error ? cause.message : '语音识别失败，请重试')
       setState('error')
@@ -163,6 +207,12 @@ export default function VoiceInput({ onResult, onCancel }: Props) {
       </button>
     </div>
   )
+}
+
+function preferredAacMimeType(): string {
+  if (typeof MediaRecorder === 'undefined') return ''
+  const candidates = ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/aac']
+  return candidates.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) || ''
 }
 
 function formatDuration(seconds: number): string {
