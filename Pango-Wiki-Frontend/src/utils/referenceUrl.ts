@@ -91,7 +91,7 @@ export function openReferenceUrl(rawUrl: string): boolean {
 export function openReferenceReaderUrl(rawUrl: string): boolean {
   const resolved = resolveReferenceUrl(rawUrl)
   if (!resolved) return false
-  const readerUrl = new URL('/wiki/reader', window.location.origin)
+  const readerUrl = new URL('/docs/reader', window.location.origin)
   readerUrl.searchParams.set('url', resolved)
   const opened = window.open(readerUrl.toString(), '_blank', 'noopener,noreferrer')
   if (opened) opened.opener = null

@@ -5,7 +5,7 @@ page {
 
 .viewer-error {
   min-height: 70vh;
-  padding: 48rpx;
+  padding: calc(env(safe-area-inset-top) + 96rpx) 48rpx 48rpx;
   display: flex;
   flex-direction: column;
   justify-content: center;

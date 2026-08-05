@@ -49,9 +49,16 @@ export function hasMiniProgramClientHint(search: string): boolean {
 
 export function isMiniProgramEntry(): boolean {
   if (typeof window === 'undefined') return false
+  if (currentMiniProgramApi()) return true
   if (hasMiniProgramClientHint(window.location.search)) return true
   if (window.__wxjs_environment === MINI_PROGRAM_CLIENT_VALUE) return true
   return /miniprogram/i.test(window.navigator.userAgent)
+}
+
+export async function detectMiniProgramEntry(): Promise<boolean> {
+  if (isMiniProgramEntry()) return true
+  if (typeof window === 'undefined' || !/MicroMessenger/i.test(window.navigator.userAgent)) return false
+  return Boolean(await loadMiniProgramApi(1_500))
 }
 
 async function loadMiniProgramApi(timeoutMs = 4_000): Promise<MiniProgramApi | null> {

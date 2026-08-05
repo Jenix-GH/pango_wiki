@@ -8,7 +8,9 @@ let isScrolling = false;
 let pendingScroll = false;
 let ignoreScrollUntil = 0;
 let lastChunkTime = 0; // 记录最近一次收到流式数据的时间，用于检测后台断连
-let streamTimeoutId: any = null; // 流式数据超时定时器，90s无数据则判定断连
+let streamTimeoutId: any = null;
+const FIRST_STREAM_FRAME_TIMEOUT_MS = 60000; // 首帧长时间未到通常意味着登录态或连接异常
+const STREAM_IDLE_TIMEOUT_MS = 90000; // 已开始响应后，90s无新数据判定断连
 const STREAM_RENDER_INTERVAL_MS = 32;
 const STREAM_RENDER_MAX_TAIL_MS = 6000;
 const STREAM_RENDER_MAX_BATCH = 12;
@@ -19,11 +21,11 @@ let streamDisplayCompleteRequested = false;
 let streamDisplayDeadline = 0;
 let streamDisplayGeneration = 0;
 
-function setStreamTimeout(that: any) {
+function setStreamTimeout(that: any, phase: 'first-frame' | 'idle' = 'idle') {
     if (streamTimeoutId) clearTimeout(streamTimeoutId)
     streamTimeoutId = setTimeout(() => {
-        that.handleStreamTimeout()
-    }, 90000) // 90秒无任何数据视为断连
+        that.handleStreamTimeout(phase)
+    }, phase === 'first-frame' ? FIRST_STREAM_FRAME_TIMEOUT_MS : STREAM_IDLE_TIMEOUT_MS)
 }
 
 function clearStreamTimeout() {
@@ -46,6 +48,60 @@ function resetStreamDisplayQueue() {
 }
 // 获取全局录音管理器
 const recorderManager = wx.getRecorderManager()
+let activeRecorderPage: any = null
+let recorderState: 'idle' | 'starting' | 'recording' | 'stopping' = 'idle'
+let recorderFormat: 'aac' | 'mp3' = 'aac'
+let recorderPreferredFormat: 'aac' | 'mp3' = 'aac'
+let recorderAttemptStartedAt = 0
+let recorderStopFallbackTimer: any = null
+let recorderIntentVersion = 0
+
+function clearRecorderStopFallback() {
+    if (recorderStopFallbackTimer !== null) {
+        clearTimeout(recorderStopFallbackTimer)
+        recorderStopFallbackTimer = null
+    }
+}
+
+// RecorderManager is a global singleton. Register its callbacks only once;
+// registering onStop inside startRecord would accumulate one listener per
+// recording and trigger duplicate uploads after the second recording.
+recorderManager.onStop((res: WechatMiniprogram.OnStopCallbackResult) => {
+    clearRecorderStopFallback()
+    recorderState = 'idle'
+    const page = activeRecorderPage
+    activeRecorderPage = null
+    if (page) page.handleRecorderStopped(res)
+})
+recorderManager.onError((error: any) => {
+    clearRecorderStopFallback()
+    const failedState = recorderState
+    const failedFormat = recorderFormat
+    recorderState = 'idle'
+    const page = activeRecorderPage
+    activeRecorderPage = null
+    if (!page) return
+    const failedDuringStartup = failedState === 'starting' || Date.now() - recorderAttemptStartedAt < 1500
+    if (failedDuringStartup && failedFormat === 'aac') {
+        page.retryRecordingWithMp3(error)
+        return
+    }
+    page.handleRecorderError(error)
+})
+recorderManager.onStart(() => {
+    recorderState = 'recording'
+    const page = activeRecorderPage
+    // A touch-cancel may arrive while RecorderManager is still starting.
+    // Stop immediately once the delayed onStart arrives instead of leaving
+    // an invisible recorder alive and blocking every later recording.
+    if (!page || !page.data.flagLuyuning || page.data.flagTalkOver || page.data.flagCancel) {
+        if (page) page.stopRecorderManager()
+        else {
+            recorderState = 'stopping'
+            recorderManager.stop()
+        }
+    }
+})
 const app = getApp();
 
 interface ApiResponse<T> {
@@ -114,6 +170,13 @@ interface AnswerContentSection {
     section_key: string
     content: string
     media: AnswerMedia[]
+}
+
+interface QuestionImage {
+    mime_type: string
+    data_base64: string
+    filename: string
+    local_url?: string
 }
 
 function emptyReference(): ReferencePayload {
@@ -238,6 +301,29 @@ function absoluteReferenceUrl(urlValue: unknown): string {
     const host = String(app.globalData.referenceHost || '').trim().replace(/\/$/, '')
     if (!host) return ''
     return `${host}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}`
+}
+
+function withMiniProgramClient(url: string): string {
+    if (!url || /[?&]client=miniprogram(?:&|$)/i.test(url)) return url
+    const separator = url.includes('?') ? '&' : '?'
+    return `${url}${separator}client=miniprogram`
+}
+
+function normalizeQuestionImages(value: unknown): QuestionImage[] {
+    const parsed = parseStoredJson(value)
+    if (!Array.isArray(parsed)) return []
+    return parsed.slice(0, 3).reduce((result: QuestionImage[], item: any) => {
+        if (!item || typeof item !== 'object') return result
+        const mimeType = String(item.mime_type || '').trim().toLowerCase()
+        const dataBase64 = String(item.data_base64 || '').trim()
+        if (!mimeType.startsWith('image/') || !dataBase64) return result
+        result.push({
+            mime_type: mimeType,
+            data_base64: dataBase64,
+            filename: String(item.filename || `question-image-${result.length + 1}`)
+        })
+        return result
+    }, [])
 }
 
 function normalizeAnswerMedia(value: unknown): AnswerMedia[] {
@@ -407,7 +493,7 @@ Page({
         // isTestVersion: true,
         // isWebSearchEnabled: false, //是否开启联网搜索
         userScrolledUp: false, //用户是否手动上滑打断自动滚底
-        uploadImages: [] as { mime_type: string; data_base64: string; filename: string }[],
+        uploadImages: [] as QuestionImage[],
         flagDoReady: false,     //问题内容框是否为空标识
         inputHeight: 70,     //问题框的初始化高度
 
@@ -474,8 +560,8 @@ Page({
         wx.navigateTo({
             url: '/pages/wiki/wiki',
             fail: err => {
-                console.error('打开 Wiki 页面失败', err)
-                showError('Wiki 页面打开失败')
+                console.error('打开文档中心页面失败', err)
+                showError('文档中心页面打开失败')
             }
         })
     },
@@ -567,9 +653,14 @@ Page({
         //判断是否未完善公司信息
         if (this.checkAnswerLimit()) return;
         if (!this.data.flagTalkOver) {
-            showError("正在录音中,请先等待结束")
+            showError(this.data.flagLuyuning ? "正在录音中，请先松开录音按钮" : "录音正在转文字，请稍后再试")
             return;
         }
+        if (recorderState !== 'idle') {
+            showError("录音组件正在恢复，请稍后再试")
+            return
+        }
+        const intentVersion = ++recorderIntentVersion
         this.setData({
             audioPath: '', luyunTipText: "松开 结束",
             flagLuyuning: true, flagCancel: false,
@@ -579,33 +670,82 @@ Page({
         wx.authorize({
             scope: 'scope.record',
             success: () => {
-                recorderManager.start({
-                    format: 'mp3',
-                    sampleRate: 16000,
-                    encodeBitRate: 36000,
-                    numberOfChannels: 1,
-                    frameSize: 1024
-                })
-                recorderManager.onStop(res => {
-                    if (this.data.flagCancel) {
-                        return;
-                    }
-                    this.setData({
-                        audioPath: res.tempFilePath,
-                        luyunTipText: "按住 说话",
-                        flagLuyuning: false
-                    })
-                    this.uploadAudio(res.tempFilePath)
-                })
+                // The press may already have been cancelled while waiting for
+                // the asynchronous authorization result.
+                if (intentVersion !== recorderIntentVersion || !this.data.flagLuyuning || this.data.flagTalkOver) return
+                this.startRecorderManager(recorderPreferredFormat)
             },
-            fail: () => this.showAuthModal()
+            fail: () => {
+                if (intentVersion !== recorderIntentVersion) return
+                recorderState = 'idle'
+                this.setData({
+                    luyunTipText: "按住 说话",
+                    flagLuyuning: false,
+                    flagTalkOver: true
+                })
+                this.showAuthModal()
+            }
         })
     },
+    startRecorderManager(format: 'aac' | 'mp3') {
+        activeRecorderPage = this
+        recorderState = 'starting'
+        recorderFormat = format
+        recorderAttemptStartedAt = Date.now()
+        const encodeBitRate = format === 'aac' ? 48000 : 64000
+        recorderManager.start({
+            format,
+            sampleRate: 16000,
+            encodeBitRate,
+            numberOfChannels: 1
+        })
+    },
+    retryRecordingWithMp3(error: any) {
+        console.warn('AAC录音启动失败，自动降级为MP3', error)
+        if (!this.data.flagLuyuning || this.data.flagTalkOver) {
+            this.setData({ flagCancel: false, flagTalkOver: true })
+            return
+        }
+        // Keep the same press-to-talk interaction and retry once. MP3 is used
+        // only on clients whose recorder cannot initialize AAC reliably.
+        recorderPreferredFormat = 'mp3'
+        this.startRecorderManager('mp3')
+    },
+    handleRecorderStopped(res: WechatMiniprogram.OnStopCallbackResult) {
+        if (this.data.flagCancel) {
+            this.setData({ flagCancel: false, flagTalkOver: true })
+            return
+        }
+        if (!res.tempFilePath) {
+            this.handleRecorderError({ errMsg: '未生成录音文件' })
+            return
+        }
+        this.setData({
+            audioPath: res.tempFilePath,
+            luyunTipText: "按住 说话",
+            flagLuyuning: false
+        })
+        this.uploadAudio(res.tempFilePath)
+    },
+    handleRecorderError(error: any) {
+        console.error('录音失败', error)
+        this.setData({
+            audioPath: '',
+            luyunTipText: "按住 说话",
+            flagLuyuning: false,
+            flagCancel: false,
+            flagTalkOver: true
+        })
+        showError('录音失败，请重试')
+    },
     cancelRecord(e: any) {
-        const currentY = e.touches[0].clientY
+        const touch = e.touches?.[0] || e.changedTouches?.[0]
+        if (!touch || !this.data.flagLuyuning || this.data.flagTalkOver) return
+        const currentY = touch.clientY
         const moveY = this.data.startY - currentY
         const shouldCancel = moveY > 50
-        if (this.data.flagLuyuning && shouldCancel) {
+        if (shouldCancel) {
+            recorderIntentVersion++
             showSuccess("已取消")
             this.setData({
                 luyunTipText: "按住 说话",
@@ -614,7 +754,19 @@ Page({
                 flagCancel: true,
                 flagTalkOver: true
             })
+            this.stopRecorderManager()
         }
+    },
+    cancelRecordBySystem() {
+        if (!this.data.flagLuyuning || this.data.flagTalkOver) return
+        recorderIntentVersion++
+        this.setData({
+            luyunTipText: "按住 说话",
+            flagLuyuning: false,
+            flagCancel: true,
+            flagTalkOver: true
+        })
+        this.stopRecorderManager()
     },
     uploadAudio(filePath: string) {
         wx.showLoading({ title: "转换文字中...", mask: true })
@@ -631,8 +783,11 @@ Page({
                             ? payload.data.text
                             : "";
                         if (payload.code === 2000 && text !== "") {
-                            this.setData({ questionContent: text })
-                            this.changeInMode();//切换到文字模式
+                            this.setData({
+                                questionContent: text,
+                                flagVoiceMode: false,
+                                flagDoReady: true
+                            })
                         } else if (payload.code !== 2000) {
                             const errorMessage = typeof payload.data === "string" && payload.data !== ""
                                 ? payload.data
@@ -669,8 +824,10 @@ Page({
     },
     // 停止录音
     stopRecord() {
-        const duration = Math.floor((Date.now() - this.data.startTime) / 1000);
-        if (duration < 1) {
+        if (!this.data.flagLuyuning || this.data.flagTalkOver) return
+        const duration = Date.now() - this.data.startTime
+        if (duration < 1000) {
+            recorderIntentVersion++
             showError("录音时间太短")
             this.setData({
                 luyunTipText: "按住 说话",
@@ -679,9 +836,34 @@ Page({
                 flagTalkOver: true,
                 flagCancel: true,
             })
-            recorderManager.stop()
+            this.stopRecorderManager()
             return;
         }
+        // Do not wait for onStop before dismissing the recording overlay.
+        // Keep flagTalkOver=false until transcription completes to prevent a
+        // second recording from starting during upload.
+        this.setData({
+            luyunTipText: "按住 说话",
+            flagLuyuning: false
+        })
+        this.stopRecorderManager()
+    },
+    stopRecorderManager() {
+        if (recorderState === 'idle' || recorderState === 'stopping') return
+        recorderState = 'stopping'
+        clearRecorderStopFallback()
+        recorderStopFallbackTimer = setTimeout(() => {
+            if (recorderState !== 'stopping') return
+            recorderState = 'idle'
+            const page = activeRecorderPage
+            activeRecorderPage = null
+            if (!page) return
+            if (page.data.flagCancel || page.data.flagTalkOver) {
+                page.setData({ flagCancel: false, flagTalkOver: true })
+                return
+            }
+            page.handleRecorderError({ errMsg: '停止录音超时' })
+        }, 3000)
         recorderManager.stop()
     },
     // 录音权限引导
@@ -699,6 +881,19 @@ Page({
         const leftPanel = this.selectComponent('#leftPanel');
         leftPanel.showLeftPanel();
         leftPanel.doClearChoose();
+        void this.refreshHistoryList()
+    },
+    async refreshHistoryList() {
+        if (!this.data.userInfo?.id) return
+        const data = await this.getHisData()
+        const rs: ApiResponse<questionList> | null = data ? JSON.parse(JSON.stringify(data)) : null
+        if (!rs || rs.code !== 2000) return
+        this.setData({
+            dataDayTitle: rs.data.todayQuestion || [],
+            dataHisTitle: rs.data.weekQuestion || [],
+            answerCount: rs.data.count || 0
+        })
+        app.globalData.flagCompanyInfo = rs.data.flagCompanyInfo
     },
     // 显示底部弹窗
     showSetPanel() {
@@ -723,7 +918,8 @@ Page({
             showError("正在回答中，请勿重复")
         }
         //不能为空值
-        if ("" === this.data.questionContent && this.data.uploadImages.length === 0) return;
+        const ready = this.data.questionContent.trim() !== '' || this.data.uploadImages.length > 0
+        this.setData({ flagVoiceMode: false, flagDoReady: ready })
     },
     onInputFocus() {
         this.setData({ _inputFocused: true, inputPlaceholder: '发消息...' });
@@ -741,13 +937,22 @@ Page({
         });
     },
     chooseImage() {
+        if (this.data.uploadImages.length >= 3) {
+            wx.showModal({
+                title: '图片数量已达上限',
+                content: '每次提问最多上传 3 张图片，请删除已有图片后再添加。',
+                showCancel: false,
+                confirmText: '我知道了'
+            })
+            return
+        }
         wx.chooseMedia({
             count: 3 - this.data.uploadImages.length,
             mediaType: ['image'],
             sizeType: ['compressed'],
             success: (res) => {
                 const files = res.tempFiles;
-                const newImages: { mime_type: string; data_base64: string; filename: string }[] = [];
+                const newImages: QuestionImage[] = [];
                 let loaded = 0;
                 files.forEach((file) => {
                     const fs = wx.getFileSystemManager();
@@ -756,7 +961,8 @@ Page({
                     newImages.push({
                         mime_type: mimeType,
                         data_base64: base64,
-                        filename: file.tempFilePath.split('/').pop() || 'upload.png'
+                        filename: file.tempFilePath.split('/').pop() || 'upload.png',
+                        local_url: file.tempFilePath
                     });
                     loaded++;
                     if (loaded === files.length) {
@@ -782,8 +988,8 @@ Page({
     previewChatImage(e: any) {
         const { images, index } = e.currentTarget.dataset;
         if (!images || !images.length) return;
-        const urls = images.map((img: { mime_type: string; data_base64: string }) =>
-            `data:${img.mime_type};base64,${img.data_base64}`
+        const urls = images.map((img: { mime_type: string; data_base64: string; local_url?: string }) =>
+            img.local_url || `data:${img.mime_type};base64,${img.data_base64}`
         );
         wx.previewImage({
             current: urls[index] || urls[0],
@@ -817,9 +1023,9 @@ Page({
         }
         //不能为空值
         if ("" === this.data.questionContent && this.data.uploadImages.length === 0) return;
-        //增加到对话列表中
-        //调用问答服务
-        this.startStreaming(this.data.questionContent)
+        const content = this.data.questionContent
+        this.addQuestion()
+        this.startStreaming(content)
         //移动到最底部
         this.toBottom();
     },
@@ -836,26 +1042,7 @@ Page({
         //let hisList = [his, ...this.data.dataDayTitle];
         //this.setData({ sessionList: tmpList, dataDayTitle: hisList })
         this.setData({ sessionList: tmpList })
-        // DB持久化
-        // add by csj
-        wx.request({
-            url: app.globalData.baseHost + '/question/doAdd',
-            method: 'POST',
-            data: {
-              userinfoId: this.data.userInfo.id,
-              question: content,
-              questionType: "1",
-              sessionId: app.globalData.sessionId
-              // internetEnable: this.data.isWebSearchEnabled? 1 : 2
-            },
-            success: (res) => {
-                let rs: ApiResponse<questionList> = JSON.parse(JSON.stringify(res.data));
-                if (res.errMsg === "request:ok" && rs.code === 2000) {
-                    this.setData({ dataDayTitle: rs.data.todayQuestion }) //刷新左侧的列表
-                    app.globalData.todayQuestion = rs.data.todayQuestion
-                }
-            }
-        });
+        // 问题由 /dialogue/stream-answer 在后端统一持久化，避免重复写入。
     },
 
     /**
@@ -1032,7 +1219,11 @@ Page({
     startStreaming(content: string) {
       resetStreamDisplayQueue()
       const imagesToSend = this.data.uploadImages.length > 0
-        ? [...this.data.uploadImages]
+        ? this.data.uploadImages.map(image => ({
+            mime_type: image.mime_type,
+            data_base64: image.data_base64,
+            filename: image.filename
+          }))
         : null
 
       this.setData({
@@ -1051,7 +1242,7 @@ Page({
       ignoreScrollUntil = Date.now() + 500;
 
       lastChunkTime = Date.now()
-      setStreamTimeout(this)
+      setStreamTimeout(this, 'first-frame')
       this.startAnimation()
 
       let url = app.globalData.sessionUrl
@@ -1096,7 +1287,7 @@ Page({
           if (!raw) return
 
           lastChunkTime = Date.now()
-          setStreamTimeout(this)
+          setStreamTimeout(this, 'idle')
           frameCount++
           const ts = Date.now()
           // const preview = raw.length > 80 ? raw.substring(0, 80) + '...' : raw
@@ -1115,6 +1306,12 @@ Page({
               resetStreamDisplayQueue()
               this.stopStreaming()
               showError(payload.message || '访客体验次数已用完，请登录后继续使用')
+              return
+            }
+            if (typeof payload.code === 'number' && payload.code !== 0) {
+              const message = String(payload.message || '请求失败，请稍后重试')
+              const shouldReauthenticate = /登录状态|访问令牌|身份不匹配|未登录|token/i.test(message)
+              this.handleStreamFailure(message, shouldReauthenticate ? 'reauthenticate' : null)
               return
             }
             if (payload.data?.status) {
@@ -1198,12 +1395,46 @@ Page({
         },
         err => {
           console.error('流式请求异常', err)
-          showError(err?.message || '请求失败，请稍后重试')
-          resetStreamDisplayQueue()
-          if (this.data.timer !== null) {
-            clearInterval(this.data.timer)
-          }
-          this.setData({
+          const message = String(err?.message || '请求失败，请稍后重试')
+          const shouldReauthenticate = err?.statusCode === 401 || err?.statusCode === 403 ||
+            /登录状态|访问令牌|身份不匹配|未登录|token/i.test(message)
+          this.handleStreamFailure(message, shouldReauthenticate ? 'reauthenticate' : null)
+        }
+      )
+    },
+    showReenterMiniProgramGuide(message?: string) {
+        wx.showModal({
+            title: '连接状态异常',
+            content: message || '长时间未收到服务响应，登录状态或连接可能已失效。请点击右上角“…”菜单，选择“重新进入小程序”后再试。',
+            showCancel: false,
+            confirmText: '我知道了'
+        })
+    },
+    showReauthenticateGuide(message: string) {
+        wx.showModal({
+            title: '账号状态异常',
+            content: `${message}。请打开左侧账户区域，重新授权登录后再试。`,
+            showCancel: false,
+            confirmText: '我知道了'
+        })
+    },
+    handleStreamFailure(message: string, recovery: 'reauthenticate' | null = null) {
+        if (!this.data.flagStart && !this.data.requestTask) return
+        resetStreamDisplayQueue()
+        clearStreamTimeout()
+        lastChunkTime = 0
+        const task = this.data.requestTask
+        // abort() may synchronously trigger the request fail callback. Mark the
+        // stream inactive first so cleanup and the recovery prompt only run once.
+        this.data.requestTask = null
+        this.data.flagStart = false
+        if (task) {
+            try { task.offHeadersReceived() } catch (_) {}
+            try { task.offChunkReceived() } catch (_) {}
+            try { task.abort() } catch (_) {}
+        }
+        if (this.data.timer !== null) clearInterval(this.data.timer)
+        this.setData({
             flagCai: false,
             flagZan: false,
             flagDoReady: false,
@@ -1211,16 +1442,19 @@ Page({
             flagShowAnwser: false,
             flagShowWait: false,
             userScrolledUp: false,
+            requestTask: null,
             timer: null,
-            streamThink: "",
-            streamContent: "",
-            streamContentData: "",
+            streamThink: '',
+            streamContent: '',
+            streamContentData: '',
             ...createRuntimeState()
         }, () => {
-            // this.smartScroll()
-        });
-        }
-      )
+            if (recovery === 'reauthenticate') {
+                this.showReauthenticateGuide(message)
+            } else {
+                showError(message)
+            }
+        })
     },
     // 停止接收流式数据
     stopStreaming() {
@@ -1380,10 +1614,10 @@ Page({
             showError('参考文档地址未配置')
             return
         }
-        const url = withSessionId(baseUrl, app.globalData.sessionId)
+        const url = withMiniProgramClient(withSessionId(baseUrl, app.globalData.sessionId))
         const fallbackBaseUrl = absoluteReferenceUrl(e.currentTarget.dataset.fallbackUrl)
         const fallbackUrl = fallbackBaseUrl
-            ? withSessionId(fallbackBaseUrl, app.globalData.sessionId)
+            ? withMiniProgramClient(withSessionId(fallbackBaseUrl, app.globalData.sessionId))
             : ''
 
         // Prefer the backend viewer so large PDFs support paging and continuous reading.
@@ -1427,7 +1661,7 @@ Page({
             return
         }
         trackAnalyticsEvent('reference_open', '/pages/main/main')
-        openReferenceViewer(withSessionId(baseUrl, app.globalData.sessionId))
+        openReferenceViewer(withMiniProgramClient(withSessionId(baseUrl, app.globalData.sessionId)))
     },
     //开始新会话
     reloadSession() {
@@ -1490,7 +1724,12 @@ Page({
                     app.globalData.sessionId = sessionId
                     const historyRows: any[] = []
                     ;(rs.data || []).forEach((item: any) => {
-                        historyRows.push({ flagAi: 0, content: item.question, time: item.dotime || '' })
+                        historyRows.push({
+                            flagAi: 0,
+                            content: item.question,
+                            time: item.dotime || '',
+                            images: normalizeQuestionImages(item.questionImages || item.question_images)
+                        })
                         if (item.answer) {
                             const answerContent = this.fixMarkdownTableSpacing(item.answer.content || '')
                             const answerMedia = normalizeAnswerMedia(item.answer.answerMedia || item.answer.answer_media)
@@ -1545,6 +1784,7 @@ Page({
     async onLoad() {
         //判断是否有登录授权
         let info = wx.getStorageSync("userInfo")
+        info = await this.resolveAuthenticatedUser(info)
         if (null != info && null != info.setId && info.setId > 0) {
             this.setData({userInfo: info})
             //查询历史对话
@@ -1584,6 +1824,46 @@ Page({
             })
         })
         trackAnalyticsEvent('page_view', '/pages/main/main')
+    },
+    async resolveAuthenticatedUser(localUser: any) {
+        const storedToken = String(wx.getStorageSync('pangoAccessToken') || '').trim()
+        const embeddedToken = String(localUser?.accessToken || '').trim()
+        const candidates = Array.from(new Set([storedToken, embeddedToken].filter(Boolean)))
+        if (candidates.length === 0) return localUser
+
+        let firstValid: { user: any, token: string } | null = null
+        for (const token of candidates) {
+            try {
+                const res: any = await new Promise((resolve, reject) => {
+                    wx.request({
+                        url: app.globalData.baseHost + '/auth/me',
+                        method: 'GET',
+                        header: { 'Authorization': `Bearer ${token}` },
+                        success: resolve,
+                        fail: reject
+                    })
+                })
+                const result = res.data as ApiResponse<any>
+                if (result?.code !== 2000 || !result.data?.id) continue
+                const authenticated = {
+                    ...result.data,
+                    avatarUrl: result.data.avatarUrl || localUser?.avatarUrl || '',
+                    accessToken: token
+                }
+                if (!firstValid) firstValid = { user: authenticated, token }
+                if (!localUser?.id || Number(result.data.id) === Number(localUser.id)) {
+                    firstValid = { user: authenticated, token }
+                    break
+                }
+            } catch (error) {
+                console.warn('校验登录状态失败', error)
+            }
+        }
+
+        if (!firstValid) return localUser
+        wx.setStorageSync('pangoAccessToken', firstValid.token)
+        wx.setStorageSync('userInfo', firstValid.user)
+        return firstValid.user
     },
     async getOrCreateGuestUser() {
         let guestKey = wx.getStorageSync("pangoGuestKey") as string
@@ -1714,12 +1994,14 @@ Page({
         return false
     },
     // 从后台切回或数据超时时，若流式连接已断连，安全清理状态
-    handleStreamTimeout() {
+    handleStreamTimeout(phase: 'first-frame' | 'idle' = 'idle') {
         if (!this.data.flagStart) return // 已经清理过，防止重复触发
         resetStreamDisplayQueue()
         clearStreamTimeout()
         lastChunkTime = 0
         const task = this.data.requestTask
+        this.data.requestTask = null
+        this.data.flagStart = false
         if (task) {
             try { task.offHeadersReceived() } catch (_) {}
             try { task.offChunkReceived() } catch (_) {}
@@ -1760,8 +2042,16 @@ Page({
         } else {
             updates.flagDoReady = false
         }
-        this.setData(updates)
-        wx.showToast({ title: '网络已断开，请重新发送', icon: 'none' })
+        const hasReceivedResponse = !!(
+            this.data.currentStatusText || this.data.streamContentData || this.data.streamThink
+        )
+        this.setData(updates, () => {
+            if (phase === 'first-frame' || !hasReceivedResponse) {
+                this.showReenterMiniProgramGuide()
+            } else {
+                wx.showToast({ title: '网络已断开，请重新发送', icon: 'none' })
+            }
+        })
     },
     /**
      * 生命周期函数--监听页面显示
@@ -1786,6 +2076,13 @@ Page({
      */
     onUnload() {
         resetStreamDisplayQueue()
+        // Invalidate a pending wx.authorize callback so an unloaded page can
+        // never start the global recorder later.
+        recorderIntentVersion++
+        if (activeRecorderPage === this) {
+            activeRecorderPage = null
+            try { this.stopRecorderManager() } catch (_) {}
+        }
     },
 
     /**

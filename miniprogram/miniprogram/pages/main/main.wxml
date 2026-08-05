@@ -91,7 +91,7 @@
             <view wx:if="{{item.flagAi === 0}}" class="main-session main-session-right">
                 <view class="main-session-content" bind:longpress="doCopyQuestion" data-content="{{item.content}}">
                     <view wx:if="{{item.images && item.images.length > 0}}" class="chat-image-list">
-                        <image wx:for="{{item.images}}" wx:for-item="img" wx:for-index="imgIdx" wx:key="index" class="chat-image-thumb" src="data:{{img.mime_type}};base64,{{img.data_base64}}" mode="aspectFill" style="border-radius:16rpx;overflow:hidden" bind:tap="previewChatImage" data-images="{{item.images}}" data-index="{{imgIdx}}" />
+                            <image wx:for="{{item.images}}" wx:for-item="img" wx:for-index="imgIdx" wx:key="index" class="chat-image-thumb" src="{{img.local_url || 'data:' + img.mime_type + ';base64,' + img.data_base64}}" mode="aspectFill" style="border-radius:16rpx;overflow:hidden" bind:tap="previewChatImage" data-images="{{item.images}}" data-index="{{imgIdx}}" />
                     </view>
                     <text wx:if="{{item.content}}">{{item.content}}</text>
                 </view>
@@ -148,18 +148,18 @@
             </view> -->
             <!-- 输入行：图片按钮 + 文本框 + 语音按钮 + 发送按钮 -->
             <view class="input-container">
-                <view wx:if="{{uploadImages.length < 3 && !flagLuyuning && !flagVoiceMode}}" class="image-upload-btn" bind:tap="chooseImage">
+                <view wx:if="{{!flagLuyuning && !flagVoiceMode}}" class="image-upload-btn" bind:tap="chooseImage">
                     <view class="image-icon"></view>
                 </view>
-                <view style="flex:1; min-width:0;" class="textarea-wrap" bindtouchend="stopRecord" bindtouchmove="cancelRecord">
+                <view style="flex:1; min-width:0;" class="textarea-wrap" bindtouchend="stopRecord" bindtouchmove="cancelRecord" bindtouchcancel="cancelRecordBySystem">
                     <view wx:if="{{uploadImages.length > 0 && !flagVoiceMode}}" class="image-preview-list">
                         <view wx:for="{{uploadImages}}" wx:key="index" class="image-preview-item">
-                            <image class="image-preview-thumb" src="data:{{item.mime_type}};base64,{{item.data_base64}}" mode="aspectFill" style="border-radius:10rpx;overflow:hidden" />
+                            <image class="image-preview-thumb" src="{{item.local_url || 'data:' + item.mime_type + ';base64,' + item.data_base64}}" mode="aspectFill" style="border-radius:10rpx;overflow:hidden" />
                             <view class="image-preview-remove" bind:tap="removeImage" data-index="{{index}}">×</view>
                         </view>
                     </view>
                     <textarea hidden="{{flagLuyuning || flagVoiceMode}}" auto-height placeholder="{{inputPlaceholder}}" bindinput="doReady" confirm-type="send" disable-default-padding show-confirm-bar="{{false}}" bindconfirm="doSearch" cursor-spacing="{{0}}" adjust-position="{{false}}" value="{{questionContent}}" class="textarea" id="myInput" maxlength="-1" bindlongpress="startRecord" bindfocus="onInputFocus" bindblur="onInputBlur" />
-                    <view hidden="{{!flagLuyuning && !flagVoiceMode}}" class="talkView-active" bindtouchstart="startRecord">
+                    <view hidden="{{!flagLuyuning && !flagVoiceMode}}" class="talkView-active" bindtouchstart="startRecord" catchtouchmove="cancelRecord" catchtouchend="stopRecord" catchtouchcancel="cancelRecordBySystem">
                         {{luyunTipText}}
                     </view>
                 </view>

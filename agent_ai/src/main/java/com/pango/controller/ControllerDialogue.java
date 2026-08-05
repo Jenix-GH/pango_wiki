@@ -1,5 +1,6 @@
 package com.pango.controller;
 
+import com.alibaba.fastjson.JSON;
 import com.pango.service.ServiceDialogue;
 import com.pango.service.ServiceAuth;
 import com.pango.service.ServiceQuestion;
@@ -71,13 +72,15 @@ public class ControllerDialogue implements MyAssert {
         String clientType = "MINIPROGRAM".equalsIgnoreCase(String.valueOf(params.get("client_type")))
                 ? "MINIPROGRAM" : "WEB";
         String sessionId = params.get("session_id") == null ? null : String.valueOf(params.get("session_id"));
+        Object questionImages = params.get("images");
         serviceUserinfo.consumeGuestQuota(user.getId());
 
         DtoQuestion record = new DtoQuestion()
                 .setUserinfoId(user.getId())
                 .setQuestion(question)
                 .setQuestionType("1")
-                .setSessionId(sessionId);
+                .setSessionId(sessionId)
+                .setQuestionImages(questionImages == null ? null : JSON.toJSONString(questionImages));
         serviceQuestion.doAdd(record);
         serviceAnalytics.recordQuietly("chat_submit", "/", clientType, user.getId(), sessionId, null);
 

@@ -1,7 +1,7 @@
 import { useLocation } from 'react-router-dom'
 import './TopBar.css'
 
-const visiblePaths = new Set(['/', '/wiki', '/wiki/reader', '/license-application'])
+const visiblePaths = new Set(['/', '/docs', '/docs/reader', '/license-application'])
 
 export default function PersistentBrand() {
   const { pathname } = useLocation()

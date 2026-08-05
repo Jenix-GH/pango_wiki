@@ -71,7 +71,7 @@ export default function LicenseApplicationPage() {
         active="license"
         userLabel={user?.nickName || '访客'}
         onOpenChat={() => navigate('/')}
-        onOpenWiki={() => navigate('/wiki')}
+        onOpenWiki={() => navigate('/docs')}
         onOpenLicense={() => undefined}
         onOpenUser={() => navigate(user ? '/' : '/login')}
       />

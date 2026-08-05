@@ -19,7 +19,7 @@ import java.util.Base64;
 import java.util.Locale;
 import java.util.Objects;
 
-/** 使用阿里云百炼 Qwen-Audio-3.0-ASR-Flash 进行短音频识别。 */
+/** 使用阿里云百炼 -Audio-3.0-ASR-Flash 进行短音频识别。 */
 @Service
 @Slf4j
 public class ServiceWxAudio {
@@ -33,7 +33,7 @@ public class ServiceWxAudio {
     private String workspaceId;
     @Value("${ali_audio.endpoint-template:https://%s.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation}")
     private String endpointTemplate;
-    @Value("${ali_audio.model:qwen-audio-3.0-asr-flash}")
+    @Value("${ali_audio.model:-audio-3.0-asr-flash}")
     private String model;
     @Value("${ali_audio.sample-rate:16000}")
     private int sampleRate;
@@ -49,7 +49,7 @@ public class ServiceWxAudio {
             String dataUrl = "data:" + audioFormat.mimeType + ";base64,"
                     + Base64.getEncoder().encodeToString(audioBytes);
             String endpoint = resolveEndpoint();
-            log.info("准备调用Qwen语音识别，fileName={}，contentType={}，size={}，format={}，sampleRate={}，model={}",
+            log.info("准备调用语音识别，fileName={}，contentType={}，size={}，format={}，sampleRate={}，model={}",
                     audioFile.getOriginalFilename(), audioFile.getContentType(), audioBytes.length,
                     audioFormat.format, sampleRate, model);
 
@@ -63,8 +63,8 @@ public class ServiceWxAudio {
         } catch (MyException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Qwen语音识别调用失败", e);
-            throw new MyException("调用Qwen语音识别失败：" + e.getMessage());
+            log.error("语音识别调用失败", e);
+            throw new MyException("调用语音识别服务失败：" + e.getMessage());
         }
     }
 
@@ -89,29 +89,29 @@ public class ServiceWxAudio {
             return response.getBody();
         } catch (HttpStatusCodeException e) {
             String body = e.getResponseBodyAsString();
-            log.warn("Qwen语音识别HTTP响应异常，httpStatus={}，body={}", e.getRawStatusCode(), body);
+            log.warn("语音识别HTTP响应异常，httpStatus={}，body={}", e.getRawStatusCode(), body);
             if (!isBlank(body)) {
                 JSONObject error = parseJson(body);
-                throw new MyException("Qwen语音识别失败："
+                throw new MyException("语音识别失败："
                         + error.optString("code", String.valueOf(e.getRawStatusCode())) + " - "
                         + error.optString("message", "请求失败"));
             }
-            throw new MyException("Qwen语音识别失败：HTTP " + e.getRawStatusCode());
+            throw new MyException("语音识别失败：HTTP " + e.getRawStatusCode());
         }
     }
 
     private JSONObject parseJson(String body) {
-        if (isBlank(body)) throw new MyException("Qwen语音识别未返回内容");
+        if (isBlank(body)) throw new MyException("语音识别服务未返回内容");
         try {
             return new JSONObject(body);
         } catch (Exception e) {
-            throw new MyException("Qwen语音识别返回了非JSON内容");
+            throw new MyException("语音识别服务返回了无效内容");
         }
     }
 
     private String parseResponse(JSONObject json) {
         if (json.has("code")) {
-            throw new MyException("Qwen语音识别失败：" + json.optString("code") + " - "
+            throw new MyException("语音识别失败：" + json.optString("code") + " - "
                     + json.optString("message", "未知错误"));
         }
         String requestId = json.optString("request_id", "");
@@ -121,7 +121,7 @@ public class ServiceWxAudio {
             throw new MyException("未识别到有效语音"
                     + (requestId.isEmpty() ? "" : " (requestId=" + requestId + ")"));
         }
-        log.info("Qwen语音识别完成，requestId={}", requestId);
+        log.info("语音识别完成，requestId={}", requestId);
         return result;
     }
 

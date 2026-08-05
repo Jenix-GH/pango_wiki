@@ -40,7 +40,7 @@ export default function WikiReaderPage() {
     try {
       const frameLocation = frame.contentWindow?.location
       if (!frameLocation || frameLocation.origin !== window.location.origin) return
-      if (frameLocation.pathname === '/wiki' || frameLocation.pathname === '/') {
+      if (frameLocation.pathname === '/docs' || frameLocation.pathname === '/') {
         navigate(`${frameLocation.pathname}${frameLocation.search}${frameLocation.hash}`, { replace: true })
         return
       }
@@ -146,7 +146,7 @@ export default function WikiReaderPage() {
     return (
       <main className="wiki-reader-error">
         <p>文档阅读链接无效</p>
-        <button type="button" onClick={() => navigate('/wiki?client=miniprogram')}>返回 Wiki</button>
+        <button type="button" onClick={() => navigate('/docs?client=miniprogram')}>返回 Wiki</button>
       </main>
     )
   }
@@ -158,7 +158,7 @@ export default function WikiReaderPage() {
           active="wiki"
           userLabel={user?.nickName || '访客'}
           onOpenChat={() => navigate('/')}
-          onOpenWiki={() => navigate('/wiki')}
+          onOpenWiki={() => navigate('/docs')}
           onOpenLicense={() => navigate('/license-application')}
           onOpenUser={() => navigate(user ? '/' : '/login')}
         />

@@ -12,7 +12,7 @@ export default function AnalyticsTracker() {
     const pagePath = `${location.pathname}${location.search}`
     const clientType = new URLSearchParams(location.search).get('client') === 'miniprogram' ? 'MINIPROGRAM' : 'WEB'
     const events = ['page_view']
-    if (location.pathname === '/wiki') events.push('wiki_view')
+    if (location.pathname === '/docs') events.push('wiki_view')
     if (location.pathname === '/user-guide') events.push('user_guide_view')
     events.forEach((eventName) => {
       void api.trackEvent({ eventName, pagePath, clientType }).catch(() => {})

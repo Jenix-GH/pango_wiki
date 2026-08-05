@@ -9,7 +9,8 @@ interface User {
     count: number,
     flagCompanyInfo: boolean,
     todayQuestionList: [],
-    weekQuestionList: []
+    weekQuestionList: [],
+    accessToken?: string
 }
 interface Rs {
     code: Number,
@@ -210,6 +211,9 @@ Component({
                             return;
                         }
                         user.avatarUrl = imgUrl;
+                        if (user.accessToken) {
+                            wx.setStorageSync('pangoAccessToken', user.accessToken)
+                        }
                         // 本地持久化
                         wx.setStorageSync('userInfo', user);
                         this.setData({ flagUserPhone: true, avatarUrl: user.avatarUrl, nickName: user.nickName,flagLogin: true });

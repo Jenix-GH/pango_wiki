@@ -36,6 +36,8 @@ export interface QuestionItem {
   question: string
   sessionId: string
   dotime?: string
+  questionImages?: unknown
+  question_images?: unknown
 }
 
 export interface SessionQuestion extends QuestionItem {
@@ -105,6 +107,31 @@ export interface UploadImage {
   filename: string
   /** Client-only original image used by the preview lightbox. */
   original_data_url?: string
+}
+
+export function normalizeQuestionImages(value: unknown): UploadImage[] {
+  let parsed = value
+  if (typeof parsed === 'string') {
+    try {
+      parsed = parsed.trim() ? JSON.parse(parsed) : []
+    } catch {
+      parsed = []
+    }
+  }
+  if (!Array.isArray(parsed)) return []
+
+  return parsed.slice(0, 3).flatMap((item, index) => {
+    if (!item || typeof item !== 'object') return []
+    const image = item as Record<string, unknown>
+    const mimeType = String(image.mime_type || '').trim().toLowerCase()
+    const dataBase64 = String(image.data_base64 || '').trim()
+    if (!mimeType.startsWith('image/') || !dataBase64) return []
+    return [{
+      mime_type: mimeType,
+      data_base64: dataBase64,
+      filename: String(image.filename || `question-image-${index + 1}`),
+    }]
+  })
 }
 
 export interface AnswerMedia {

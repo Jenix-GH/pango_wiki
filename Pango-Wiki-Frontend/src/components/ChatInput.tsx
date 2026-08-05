@@ -104,7 +104,7 @@ export default function ChatInput({ onSend, onStop, isStreaming, uploadImages, o
             <button
               className="input-action-btn"
               onClick={onImageUpload}
-              disabled={isStreaming || uploadImages.length >= 3}
+              disabled={isStreaming}
               title="上传图片"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

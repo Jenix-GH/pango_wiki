@@ -21,6 +21,7 @@ public class DtoQuestion {
     private Long userinfoId; //用户ID
     private String questionType; //问题类型
     private String question; //问题内容
+    private String questionImages; //用户随问题上传的图片，JSON数组
 //    private Integer internetEnable; //联网搜索
     private String doDate; //问题日期
     private Date dotime; //创建时间

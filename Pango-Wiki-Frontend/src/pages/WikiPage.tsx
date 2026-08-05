@@ -217,9 +217,9 @@ export default function WikiPage() {
       setActionError(document.source_status || '该文件当前不可用，请刷新目录后重试。')
       return
     }
-    void api.trackEvent({ eventName: 'document_read', pagePath: '/wiki', clientType: miniProgramClient ? 'MINIPROGRAM' : 'WEB', documentId: document.key }).catch(() => {})
+    void api.trackEvent({ eventName: 'document_read', pagePath: '/docs', clientType: miniProgramClient ? 'MINIPROGRAM' : 'WEB', documentId: document.key }).catch(() => {})
     if (miniProgramClient && document.action_type !== 'download') {
-      navigate(`/wiki/reader?url=${encodeURIComponent(document.viewer_url)}&client=miniprogram`)
+      navigate(`/docs/reader?url=${encodeURIComponent(document.viewer_url)}&client=miniprogram`)
       return
     }
     if (document.action_type !== 'download') {
@@ -250,7 +250,7 @@ export default function WikiPage() {
       setActionError(document.source_status || '该文件当前不可用，请刷新目录后重试。')
       return
     }
-    void api.trackEvent({ eventName: 'document_download', pagePath: '/wiki', clientType: miniProgramClient ? 'MINIPROGRAM' : 'WEB', documentId: document.key }).catch(() => {})
+    void api.trackEvent({ eventName: 'document_download', pagePath: '/docs', clientType: miniProgramClient ? 'MINIPROGRAM' : 'WEB', documentId: document.key }).catch(() => {})
     const downloadUrl = document.download_url
       || (document.action_type === 'download' ? document.viewer_url : '')
     if (!downloadUrl || !openReferenceUrl(downloadUrl)) {
@@ -263,13 +263,13 @@ export default function WikiPage() {
       const frameLocation = event.currentTarget.contentWindow?.location
       if (
         frameLocation?.origin === window.location.origin
-        && /^\/wiki\/?$/.test(frameLocation.pathname)
+        && /^\/docs\/?$/.test(frameLocation.pathname)
       ) {
         setEmbeddedDocument(null)
       }
     } catch {
       // The viewer may be hosted on another origin. Once it returns to this
-      // frontend's /wiki route, the location becomes readable and is handled.
+      // frontend's /docs route, the location becomes readable and is handled.
     }
   }, [])
 
