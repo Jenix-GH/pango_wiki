@@ -78,18 +78,22 @@ export default function WikiAssistant() {
 
   const addImages = async (files: File[]) => {
     const imageFiles = files.filter((file) => file.type.startsWith('image/'))
-    const available = 3 - uploadImages.length
     if (!imageFiles.length) return
-    if (available <= 0) {
-      window.alert('每次提问最多上传 3 张图片，请删除已有图片后再添加。')
+    if (uploadImages.length >= 1) {
+      window.alert('每次提问只能上传 1 张图片，请删除已有图片后再添加。')
       return
     }
-    if (imageFiles.length > available) {
-      window.alert(`每次提问最多上传 3 张图片，本次将只添加前 ${available} 张。`)
+    if (imageFiles.length > 1) {
+      window.alert('每次提问只能上传 1 张图片，本次将只添加第一张符合大小要求的图片。')
     }
+    const acceptableImages = imageFiles.filter((file) => file.size <= MAX_IMAGE_FILE_BYTES)
+    if (acceptableImages.length !== imageFiles.length) {
+      window.alert('单张图片不能超过 15MB，请压缩图片后重试。')
+    }
+    if (!acceptableImages.length) return
     try {
-      const prepared = await Promise.all(imageFiles.slice(0, available).map(prepareImage))
-      setUploadImages((current) => [...current, ...prepared].slice(0, 3))
+      const prepared = await prepareImage(acceptableImages[0])
+      setUploadImages([prepared])
     } catch {
       setStatus('图片读取失败，请更换图片后重试')
     }
@@ -320,14 +324,14 @@ export default function WikiAssistant() {
             type="button"
             className="wiki-assistant-upload"
             onClick={() => {
-              if (uploadImages.length >= 3) {
-                window.alert('每次提问最多上传 3 张图片，请删除已有图片后再添加。')
+              if (uploadImages.length >= 1) {
+                window.alert('每次提问只能上传 1 张图片，请删除已有图片后再添加。')
                 return
               }
               fileInputRef.current?.click()
             }}
             disabled={streaming}
-            title="上传图片（最多 3 张）"
+            title="上传图片（限 1 张，最大 15MB）"
             aria-label="上传图片"
           >
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -506,6 +510,7 @@ function AssistantReferences({ reference }: { reference: ReferencePayload }) {
 
 const MAX_IMAGE_EDGE = 1920
 const JPEG_QUALITY = 0.85
+const MAX_IMAGE_FILE_BYTES = 15 * 1024 * 1024
 
 async function prepareImage(file: File): Promise<UploadImage> {
   const dataUrl = await readFileAsDataUrl(file)

@@ -422,8 +422,8 @@ export default function ChatPage() {
   }, [sessionId, showToast])
 
   const addImageFiles = async (files: File[]) => {
-    if (uploadImages.length >= 3) {
-      window.alert('每次提问最多上传 3 张图片，请删除已有图片后再添加。')
+    if (uploadImages.length >= 1) {
+      window.alert('每次提问只能上传 1 张图片，请删除已有图片后再添加。')
       return
     }
     const imageFiles = files.filter((file) => file.type.startsWith('image/'))
@@ -431,13 +431,17 @@ export default function ChatPage() {
       showToast('请选择图片文件')
       return
     }
-    const available = 3 - uploadImages.length
-    if (imageFiles.length > available) {
-      window.alert(`每次提问最多上传 3 张图片，本次将只添加前 ${available} 张。`)
+    if (imageFiles.length > 1) {
+      window.alert('每次提问只能上传 1 张图片，本次将只添加第一张符合大小要求的图片。')
     }
+    const acceptableImages = imageFiles.filter((file) => file.size <= MAX_IMAGE_FILE_BYTES)
+    if (acceptableImages.length !== imageFiles.length) {
+      window.alert('单张图片不能超过 15MB，请压缩图片后重试。')
+    }
+    if (acceptableImages.length === 0) return
     try {
-      const newImages = await Promise.all(imageFiles.slice(0, available).map(prepareImage))
-      setUploadImages((prev) => [...prev, ...newImages].slice(0, 3))
+      const newImage = await prepareImage(acceptableImages[0])
+      setUploadImages([newImage])
     } catch (error) {
       console.error('图片处理失败', error)
       showToast('图片读取失败，请更换图片后重试')
@@ -445,8 +449,8 @@ export default function ChatPage() {
   }
 
   const handleImageUpload = () => {
-    if (uploadImages.length >= 3) {
-      window.alert('每次提问最多上传 3 张图片，请删除已有图片后再添加。')
+    if (uploadImages.length >= 1) {
+      window.alert('每次提问只能上传 1 张图片，请删除已有图片后再添加。')
       return
     }
     const input = document.createElement('input')
@@ -660,6 +664,7 @@ export default function ChatPage() {
 
 const MAX_IMAGE_EDGE = 1920
 const JPEG_QUALITY = 0.85
+const MAX_IMAGE_FILE_BYTES = 15 * 1024 * 1024
 
 async function prepareImage(file: File): Promise<UploadImage> {
   const dataUrl = await readFileAsDataUrl(file)

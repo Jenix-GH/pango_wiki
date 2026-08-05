@@ -55,6 +55,7 @@ let recorderPreferredFormat: 'aac' | 'mp3' = 'aac'
 let recorderAttemptStartedAt = 0
 let recorderStopFallbackTimer: any = null
 let recorderIntentVersion = 0
+const MAX_UPLOAD_IMAGE_BYTES = 15 * 1024 * 1024
 
 function clearRecorderStopFallback() {
     if (recorderStopFallbackTimer !== null) {
@@ -937,21 +938,30 @@ Page({
         });
     },
     chooseImage() {
-        if (this.data.uploadImages.length >= 3) {
+        if (this.data.uploadImages.length >= 1) {
             wx.showModal({
                 title: '图片数量已达上限',
-                content: '每次提问最多上传 3 张图片，请删除已有图片后再添加。',
+                content: '每次提问只能上传 1 张图片，请删除已有图片后再添加。',
                 showCancel: false,
                 confirmText: '我知道了'
             })
             return
         }
         wx.chooseMedia({
-            count: 3 - this.data.uploadImages.length,
+            count: 1,
             mediaType: ['image'],
             sizeType: ['compressed'],
             success: (res) => {
                 const files = res.tempFiles;
+                if (files.some(file => Number(file.size || 0) > MAX_UPLOAD_IMAGE_BYTES)) {
+                    wx.showModal({
+                        title: '图片过大',
+                        content: '单张图片不能超过 15MB，请压缩图片后重试。',
+                        showCancel: false,
+                        confirmText: '我知道了'
+                    })
+                    return
+                }
                 const newImages: QuestionImage[] = [];
                 let loaded = 0;
                 files.forEach((file) => {
