@@ -17,6 +17,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Collections;
+import java.text.SimpleDateFormat;
 
 /**
  * 对话的回答记录
@@ -45,8 +46,39 @@ public class ServiceAnswer extends ServiceImpl<MapperAnswer, DtoAnswer> implemen
         DtoQuestion question = serviceQuestion.findByLast(Math.toIntExact(obj.getUserinfoId()));
         if(question != null){
             obj.setQuestionId(question.getId()).setQuestionEnd(question.getDotime());
-            this.save(obj);
+            DtoAnswer existing = getByQuestionId(question.getId(), obj.getUserinfoId());
+            if (existing == null) {
+                this.save(obj);
+            } else {
+                if (obj.getThink() != null) existing.setThink(obj.getThink());
+                if (obj.getContent() != null) existing.setContent(obj.getContent());
+                if (obj.getAnswerTime() != null) existing.setAnswerTime(obj.getAnswerTime());
+                if (obj.getReference() != null) existing.setReference(obj.getReference());
+                if (obj.getAnswerMedia() != null) existing.setAnswerMedia(obj.getAnswerMedia());
+                this.updateById(existing);
+            }
         }
+    }
+
+    public void saveGeneratedAnswer(DtoQuestion question, long userinfoId,
+                                    ServiceDialogue.StreamAnswerResult result) {
+        if (question == null || result == null || !result.isTerminal()
+                || result.getContent() == null || result.getContent().trim().isEmpty()) {
+            return;
+        }
+        DtoAnswer existing = getByQuestionId(question.getId(), userinfoId);
+        if (existing != null) return;
+        DtoAnswer answer = new DtoAnswer()
+                .setUserinfoId(userinfoId)
+                .setQuestionId(question.getId())
+                .setQuestionEnd(question.getDotime())
+                .setThink("")
+                .setContent(result.getContent())
+                .setAnswerTime(new SimpleDateFormat("yyyy/MM/dd HH:mm:ss").format(new Date()))
+                .setReference(result.getReference())
+                .setAnswerMedia(result.getAnswerMedia());
+        validateAnswerMedia(answer.getAnswerMedia());
+        this.save(answer);
     }
 
     /**

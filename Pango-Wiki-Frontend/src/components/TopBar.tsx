@@ -62,14 +62,14 @@ export default function TopBar({
           type="button"
           className={active === 'license' ? 'active' : ''}
           onClick={onOpenLicense}
-          title="License申请"
-          aria-label="License申请"
+          title="PDS License申请"
+          aria-label="PDS License申请"
         >
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M7 3h8l4 4v14H7z" />
             <path d="M15 3v5h5M10 13h6M10 17h6" />
           </svg>
-          <span>License申请</span>
+          <span>PDS License申请</span>
         </button>
       </nav>
 

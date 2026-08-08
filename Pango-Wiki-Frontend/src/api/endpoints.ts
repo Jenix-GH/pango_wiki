@@ -16,7 +16,6 @@ export const ENDPOINTS = {
   getPhone: `${DB_HOST}/wx/getPhone`,
   transcribe: `${DB_HOST}/wx/transcribe`,
   questionAdd: `${DB_HOST}/question/doAdd`,
-  answerAdd: `${DB_HOST}/answer/doAdd`,
   answerByQuestionId: `${DB_HOST}/answer/getByQuestionId`,
   historyByUserId: `${DB_HOST}/question/findHisByUserId`,
   historyBySessionId: `${DB_HOST}/question/findBySessionId`,

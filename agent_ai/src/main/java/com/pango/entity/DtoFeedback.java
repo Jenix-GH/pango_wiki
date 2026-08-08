@@ -22,6 +22,7 @@ public class DtoFeedback {
     private String detail;
     private String questionContent;
     private String answerContent;
+    private String feedbackImages;
     private String contactName;
     private String companyName;
     private String email;

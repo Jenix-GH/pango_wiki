@@ -129,7 +129,10 @@ interface SessionData {
 
 interface ReferencePageLink {
     page: number
-    document_page_url: string
+    pdf_page?: number
+    document_page_url?: string
+    citation_indices?: number[]
+    citation_label?: string
     page_key?: string
 }
 
@@ -204,30 +207,35 @@ function normalizePages(values: unknown[]): number[] {
     const pages = values
         .map(toPositivePage)
         .filter((page): page is number => page !== null)
-    return Array.from(new Set(pages)).sort((a, b) => a - b)
+    return Array.from(new Set(pages))
 }
 
-function normalizePageLinks(chunk: ReferenceChunk, pages: number[]): ReferencePageLink[] {
-    const linksByPage = new Map<number, string>()
-    const addLink = (pageValue: unknown, urlValue: unknown) => {
-        const page = toPositivePage(pageValue)
-        const url = String(urlValue || '').trim()
-        if (page !== null && url && !linksByPage.has(page)) {
-            linksByPage.set(page, url)
-        }
+function normalizePageLinks(chunk: ReferenceChunk): ReferencePageLink[] {
+    const linksByPage = new Map<number, ReferencePageLink>()
+    const addLink = (value: Partial<ReferencePageLink>) => {
+        const page = toPositivePage(value.page)
+        if (page === null || linksByPage.has(page)) return
+        const documentPageUrl = String(value.document_page_url || '').trim()
+        linksByPage.set(page, {
+            ...value,
+            page,
+            document_page_url: documentPageUrl || undefined,
+            citation_indices: Array.isArray(value.citation_indices)
+                ? value.citation_indices.map(Number).filter(Number.isInteger)
+                : undefined,
+            citation_label: value.citation_label ? String(value.citation_label) : undefined,
+        })
     }
 
     if (Array.isArray(chunk.page_links)) {
-        chunk.page_links.forEach(link => addLink(link?.page, link?.document_page_url))
+        chunk.page_links.forEach(link => addLink(link || {}))
     }
-    addLink(chunk.page, chunk.document_page_url)
+    addLink({ page: toPositivePage(chunk.page) || undefined, document_page_url: chunk.document_page_url })
 
-    return Array.from(linksByPage.entries())
-        .sort(([pageA], [pageB]) => pageA - pageB)
-        .map(([page, documentPageUrl], index) => ({
-            page,
-            document_page_url: documentPageUrl,
-            page_key: `page_${page}_${index}`
+    return Array.from(linksByPage.values())
+        .map((link, index) => ({
+            ...link,
+            page_key: link.page_key || `page_${link.page}_${index}`
         }))
 }
 
@@ -273,8 +281,8 @@ function normalizeReference(reference: any, citations?: any[]): ReferencePayload
             ...(Array.isArray(chunk.pages) ? chunk.pages : []),
             ...(directPage === null ? [] : [directPage])
         ])
-        const pageLinks = normalizePageLinks(chunk, pages)
-        chunk.pages = normalizePages([...pages, ...pageLinks.map(link => link.page)])
+        const pageLinks = normalizePageLinks(chunk)
+        chunk.pages = normalizePages([...pageLinks.map(link => link.page), ...pages])
         chunk.page_links = pageLinks
         if (pageLinks.length > 0) {
             chunk.page = pageLinks[0].page
@@ -348,17 +356,6 @@ function normalizeAnswerMedia(value: unknown): AnswerMedia[] {
         })
         return result
     }, [])
-}
-
-function serializeAnswerMedia(media: AnswerMedia[]): string {
-    return JSON.stringify(media.map(item => ({
-        asset_id: item.asset_id,
-        url: item.url,
-        caption: item.caption,
-        citation_label: item.citation_label,
-        page: item.page,
-        document_page_url: item.document_page_url
-    })))
 }
 
 function placeMediaAfterCitations(content: string, media: AnswerMedia[]): AnswerContentSection[] {
@@ -522,6 +519,7 @@ Page({
         feedbackCompanyName: '',
         feedbackEmail: '',
         feedbackPhone: '',
+        feedbackImage: null as QuestionImage | null,
         tagStyle: {
             // 标题样式
             'h1': 'font-size:36rpx;line-height:1.8;margin:24rpx 0;',
@@ -576,7 +574,8 @@ Page({
             feedbackContactName: '',
             feedbackCompanyName: '',
             feedbackEmail: '',
-            feedbackPhone: ''
+            feedbackPhone: '',
+            feedbackImage: null
         })
     },
 
@@ -595,6 +594,55 @@ Page({
         const field = String(e.currentTarget.dataset.field || '')
         if (!field) return
         this.setData({ [field]: e.detail.value })
+    },
+
+    chooseFeedbackImage() {
+        if (this.data.feedbackImage) {
+            wx.showModal({ title: '图片数量已达上限', content: '问题反馈最多上传 1 张图片。', showCancel: false })
+            return
+        }
+        wx.chooseMedia({
+            count: 1,
+            mediaType: ['image'],
+            sizeType: ['compressed'],
+            success: res => {
+                const file = res.tempFiles?.[0]
+                if (!file) return
+                if (Number(file.size || 0) > MAX_UPLOAD_IMAGE_BYTES) {
+                    wx.showModal({ title: '图片过大', content: '反馈图片不能超过 15MB，请压缩后重试。', showCancel: false })
+                    return
+                }
+                const extension = (file.tempFilePath.split('.').pop() || 'png').toLowerCase()
+                const mimeType = `image/${extension === 'jpg' ? 'jpeg' : extension}`
+                if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) {
+                    wx.showModal({ title: '图片格式不支持', content: '反馈图片仅支持 JPEG、PNG 或 WebP。', showCancel: false })
+                    return
+                }
+                try {
+                    const base64 = wx.getFileSystemManager().readFileSync(file.tempFilePath, 'base64') as string
+                    this.setData({
+                        feedbackImage: {
+                            mime_type: mimeType,
+                            data_base64: base64,
+                            filename: file.tempFilePath.split('/').pop() || `feedback.${extension}`,
+                            local_url: file.tempFilePath
+                        }
+                    })
+                } catch (_) {
+                    wx.showToast({ title: '图片读取失败，请重试', icon: 'none' })
+                }
+            }
+        })
+    },
+
+    previewFeedbackImage() {
+        const url = this.data.feedbackImage?.local_url
+        if (url) wx.previewImage({ current: url, urls: [url] })
+    },
+
+    removeFeedbackImage() {
+        if (this.data.feedbackSubmitting) return
+        this.setData({ feedbackImage: null })
     },
 
     submitFeedback() {
@@ -626,6 +674,11 @@ Page({
                 detail: this.data.feedbackDetail,
                 questionContent: question.content || '',
                 answerContent: answer.contentData || answer.content || '',
+                feedbackImages: this.data.feedbackImage ? JSON.stringify([{
+                    mime_type: this.data.feedbackImage.mime_type,
+                    data_base64: this.data.feedbackImage.data_base64,
+                    filename: this.data.feedbackImage.filename
+                }]) : null,
                 contactName: this.data.feedbackContactName,
                 companyName: this.data.feedbackCompanyName,
                 email: this.data.feedbackEmail,
@@ -634,7 +687,7 @@ Page({
             success: (res: any) => {
                 const result = res.data as { code?: number; message?: string }
                 if (result && result.code === 2000) {
-                    this.setData({ feedbackVisible: false, feedbackMessageIndex: -1 })
+                    this.setData({ feedbackVisible: false, feedbackMessageIndex: -1, feedbackImage: null })
                     wx.showToast({ title: '感谢您的反馈', icon: 'success' })
                     return
                 }
@@ -1456,11 +1509,28 @@ Page({
         })
     },
     showReauthenticateGuide(message: string) {
+        // 旧 token 与本地 userInfo 会让左侧菜单继续显示为“已登录”，从而隐藏
+        // 授权按钮。这里只清理失效的登录态，保留 pangoGuestKey 和访客额度。
+        wx.removeStorageSync('pangoAccessToken')
+        wx.removeStorageSync('userInfo')
+        app.globalData.flagLogin = false
+        this.setData({
+            userInfo: null,
+            dataDayTitle: [],
+            dataHisTitle: [],
+            answerCount: 0
+        })
+        const leftPanel = this.selectComponent('#leftPanel') as any
+        if (leftPanel?.resetAuthentication) leftPanel.resetAuthentication()
+
         wx.showModal({
             title: '账号状态异常',
-            content: `${message}。请打开左侧账户区域，重新授权登录后再试。`,
+            content: `${message}。已清除失效的登录状态，点击确定后请在左侧重新授权登录。`,
             showCancel: false,
-            confirmText: '我知道了'
+            confirmText: '重新授权',
+            success: () => {
+                if (leftPanel?.showLeftPanel) leftPanel.showLeftPanel()
+            }
         })
     },
     handleStreamFailure(message: string, recovery: 'reauthenticate' | null = null) {
@@ -1549,14 +1619,6 @@ Page({
             structuredCitations: this.data.currentStructuredCitations,
             questionTrace: this.data.currentQuestionTrace
         };
-        let dbRow = {
-            userinfoId: this.data.userInfo.id,
-            think: extractText(this.data.streamThink),
-            content: this.data.streamContentData,
-            answerTime: endTime,
-            reference: JSON.stringify(this.data.currentReference),
-            answerMedia: serializeAnswerMedia(this.data.currentAnswerMedia)
-        }
         let newList = [...this.data.sessionList, row]; // 创建新数组
         let newCount = this.data.answerCount + 1;
         this.setData({
@@ -1576,13 +1638,6 @@ Page({
             ...createRuntimeState()
         }, () => {
             // this.smartScroll() //移动到最底部
-        });
-        //DB持久化
-        wx.request({
-            url: app.globalData.baseHost + '/answer/doAdd',
-            method: 'POST',
-            data: dbRow,
-            success: () => console.log("answer")
         });
     },
     toBottom() {

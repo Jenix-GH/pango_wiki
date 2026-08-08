@@ -6,7 +6,7 @@ import { usePseudoStream } from '../hooks/usePseudoStream'
 import { api } from '../api/client'
 import { formatTime } from '../utils/formatTime'
 import { copyToClipboard } from '../utils/clipboard'
-import { normalizeAnswerMedia, openReferenceReaderUrl, serializeAnswerMedia } from '../utils/referenceUrl'
+import { normalizeAnswerMedia, openReferenceReaderUrl } from '../utils/referenceUrl'
 import { normalizeQuestionImages, normalizeReference } from '../api/types'
 import type { ChatMessage, FeedbackPayload, QuestionItem, UploadImage } from '../api/types'
 import TopBar from '../components/TopBar'
@@ -259,16 +259,6 @@ export default function ChatPage() {
               structuredCitations: citations.length > 0 ? citations : undefined,
               questionTrace: trace || undefined,
             })
-            if (recordUserId) {
-              void api.addAnswer({
-                userinfoId: recordUserId,
-                think: '',
-                content: completedContent,
-                answerTime: completedTime,
-                reference: JSON.stringify(normalizedRef),
-                answerMedia: serializeAnswerMedia(answerMedia),
-              }).catch(() => {})
-            }
             void loadHistory()
           }
           clearLiveStreamUi()
@@ -335,7 +325,7 @@ export default function ChatPage() {
     return () => clearInterval(dotsTimer.current)
   }, [isStreaming])
 
-  const handleSubmitFeedback = async (form: Pick<FeedbackPayload, 'feedbackType' | 'detail' | 'contactName' | 'companyName' | 'email' | 'phone'>) => {
+  const handleSubmitFeedback = async (form: Pick<FeedbackPayload, 'feedbackType' | 'detail' | 'feedbackImages' | 'contactName' | 'companyName' | 'email' | 'phone'>) => {
     if (feedbackMessageIndex === null) return
     const answer = messages[feedbackMessageIndex]
     const question = [...messages.slice(0, feedbackMessageIndex)].reverse().find((message) => message.flagAi === 0)

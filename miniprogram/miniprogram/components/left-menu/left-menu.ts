@@ -75,6 +75,19 @@ Component({
                 panelAnimation: panelAnim.export()
             })
         },
+        // 鉴权失败后切回未登录视图，确保重新授权入口可见。
+        resetAuthentication() {
+            this.setData({
+                flagUserInfo: false,
+                flagUserPhone: false,
+                flagLogin: false,
+                avatarUrl: '',
+                nickName: '',
+                userinfo: {} as User,
+                code: ''
+            })
+            app.globalData.flagLogin = false
+        },
         //关闭左侧面板
         hideLeftPanel() {
             const maskAnim = wx.createAnimation({

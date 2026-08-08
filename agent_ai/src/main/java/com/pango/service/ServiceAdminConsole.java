@@ -67,7 +67,15 @@ public class ServiceAdminConsole {
         String where = status == null ? " WHERE 1=1" : " WHERE status=?";
         List<Object> args = new ArrayList<>();
         if (status != null) args.add(status);
-        return page("dto_feedback", where, args, page, pageSize, "dotime DESC");
+        return feedbackPage(where, args, page, pageSize);
+    }
+
+    public String feedbackImages(long id) {
+        List<String> values = jdbcTemplate.query(
+                "SELECT feedback_images FROM dto_feedback WHERE id=?",
+                (rs, rowNum) -> rs.getString("feedback_images"), id);
+        if (values.isEmpty()) throw new IllegalArgumentException("反馈记录不存在");
+        return values.get(0);
     }
 
     public Map<String, Object> licenses(int page, int pageSize, Integer status) {
@@ -94,6 +102,26 @@ public class ServiceAdminConsole {
         recordArgs.add(offset);
         List<Map<String, Object>> records = jdbcTemplate.queryForList(
                 "SELECT * FROM " + table + where + " ORDER BY " + orderBy + " LIMIT ? OFFSET ?",
+                recordArgs.toArray());
+        Map<String, Object> result = new HashMap<>();
+        result.put("records", records);
+        result.put("total", total == null ? 0 : total);
+        result.put("page", page);
+        result.put("pageSize", pageSize);
+        return result;
+    }
+
+    private Map<String, Object> feedbackPage(String where, List<Object> args, int page, int pageSize) {
+        int offset = (page - 1) * pageSize;
+        Long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM dto_feedback" + where, args.toArray(), Long.class);
+        List<Object> recordArgs = new ArrayList<>(args);
+        recordArgs.add(pageSize);
+        recordArgs.add(offset);
+        List<Map<String, Object>> records = jdbcTemplate.queryForList(
+                "SELECT id,userinfo_id,session_id,platform,feedback_type,detail,question_content," +
+                        "answer_content,contact_name,company_name,email,phone,status,dotime,uptime," +
+                        "(feedback_images IS NOT NULL AND feedback_images<>'') has_feedback_image " +
+                        "FROM dto_feedback" + where + " ORDER BY dotime DESC LIMIT ? OFFSET ?",
                 recordArgs.toArray());
         Map<String, Object> result = new HashMap<>();
         result.put("records", records);

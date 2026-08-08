@@ -1,18 +1,15 @@
 import { defineConfig, loadEnv } from 'vite'
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, '.', '')
+  loadEnv(mode, '.', '')
   return {
     server: {
+      host: '0.0.0.0',
       port: 3100,
       proxy: {
-        '/dbServ': {
-          target: env.ADMIN_BACKEND_ORIGIN || 'https://aiapp.pangomicro.com',
-          changeOrigin: true,
-          secure: false,
-          ...(env.ADMIN_BACKEND_ORIGIN
-            ? { rewrite: (path) => path.replace(/^\/dbServ/, '') }
-            : {}),
+        '/local-api': {
+          target: 'http://127.0.0.1:3101',
+          changeOrigin: false,
         },
       },
     },
