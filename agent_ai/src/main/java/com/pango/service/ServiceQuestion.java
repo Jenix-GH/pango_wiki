@@ -45,6 +45,7 @@ public class ServiceQuestion extends ServiceImpl<MapperQuestion, DtoQuestion> im
         validateQuestionImages(obj.getQuestionImages());
         String today = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
         obj.setDoDate(today);
+        if (obj.getDotime() == null) obj.setDotime(new Date());
         this.save(obj);
     }
 

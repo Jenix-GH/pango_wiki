@@ -8,6 +8,7 @@ import ImageLightbox from './ImageLightbox'
 import pangoLogo from '../../Logo.png'
 import './WikiAssistant.css'
 import { useAuth } from '../contexts/AuthContext'
+import { placeMediaAfterCitations } from '../utils/answerRendering'
 
 interface AssistantMessage {
   role: 'user' | 'assistant'
@@ -40,6 +41,7 @@ export default function WikiAssistant() {
     getVisibleText,
   } = usePseudoStream()
   const controllerRef = useRef<AbortController | null>(null)
+  const sessionIdRef = useRef<string>('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const requestIdRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -160,10 +162,13 @@ export default function WikiAssistant() {
       })
     }
 
+    if (!sessionIdRef.current) {
+      sessionIdRef.current = api.createSession(recordUserId)
+    }
     controllerRef.current = api.startStream(
       recordUserId,
       question,
-      api.createSession('wiki_guest'),
+      sessionIdRef.current,
       true,
       imagesToSend.length ? imagesToSend : null,
       {
@@ -404,59 +409,6 @@ function AssistantMedia({ media, onPreview }: { media: AnswerMedia[]; onPreview:
   )
 }
 
-function placeMediaAfterCitations(content: string, media: AnswerMedia[]): Array<{ content: string; media: AnswerMedia[] }> {
-  if (media.length === 0) return [{ content, media: [] }]
-
-  const mediaByOffset = new Map<number, AnswerMedia[]>()
-  const unplaced: AnswerMedia[] = []
-  media.forEach((item) => {
-    const label = item.citation_label?.trim()
-    const bracketLabel = label?.match(/\[[^\]]+\]/)?.[0]
-    const candidates = [...new Set([label, bracketLabel].filter((value): value is string => Boolean(value)))]
-    let matchIndex = -1
-    let matchedLabel = ''
-    for (const candidate of candidates) {
-      matchIndex = content.indexOf(candidate)
-      if (matchIndex >= 0) {
-        matchedLabel = candidate
-        break
-      }
-    }
-
-    if (matchIndex < 0) {
-      unplaced.push(item)
-      return
-    }
-
-    let insertionOffset = matchIndex + matchedLabel.length
-    const openingSup = content.lastIndexOf('<sup', matchIndex)
-    const closingSupBeforeLabel = content.lastIndexOf('</sup>', matchIndex)
-    const closingSupAfterLabel = content.indexOf('</sup>', insertionOffset)
-    if (openingSup > closingSupBeforeLabel && closingSupAfterLabel >= insertionOffset) {
-      insertionOffset = closingSupAfterLabel + '</sup>'.length
-      const trailingPunctuation = content.slice(insertionOffset).match(/^[ \t]*[。！？.!?；;：:]?/)
-      insertionOffset += trailingPunctuation?.[0].length || 0
-    }
-    mediaByOffset.set(insertionOffset, [...(mediaByOffset.get(insertionOffset) || []), item])
-  })
-
-  const sections: Array<{ content: string; media: AnswerMedia[] }> = []
-  let contentOffset = 0
-  ;[...mediaByOffset.keys()].sort((a, b) => a - b).forEach((insertionOffset) => {
-    sections.push({
-      content: content.slice(contentOffset, insertionOffset),
-      media: mediaByOffset.get(insertionOffset) || [],
-    })
-    contentOffset = insertionOffset
-  })
-
-  const trailingContent = content.slice(contentOffset)
-  if (trailingContent || unplaced.length || sections.length === 0) {
-    sections.push({ content: trailingContent, media: unplaced })
-  }
-  return sections
-}
-
 function AssistantReferences({ reference }: { reference: ReferencePayload }) {
   return (
     <div className="wiki-assistant-references">
@@ -486,9 +438,11 @@ function AssistantReferences({ reference }: { reference: ReferencePayload }) {
                 {pageLinks.map((pageLink, index) => (
                   <button
                     type="button"
-                    key={`${pageLink.page}-${index}`}
-                    onClick={() => openReferenceReaderUrl(pageLink.document_page_url)}
+                    key={pageLink.page_key || `${pageLink.page}-${index}`}
+                    onClick={() => pageLink.document_page_url && openReferenceReaderUrl(pageLink.document_page_url)}
+                    disabled={!pageLink.document_page_url}
                   >
+                    {pageLink.citation_label ? <span>{pageLink.citation_label} </span> : null}
                     第{pageLink.page}页
                   </button>
                 ))}

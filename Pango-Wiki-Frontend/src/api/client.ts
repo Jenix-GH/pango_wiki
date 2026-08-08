@@ -92,9 +92,6 @@ export const api = {
   addQuestion: (data: { userinfoId: number; question: string; questionType: string; internetEnable: number; sessionId: string }) =>
     post<{ todayQuestion: QuestionItem[] }>(ENDPOINTS.questionAdd, data),
 
-  addAnswer: (data: { userinfoId: number; think: string; content: string; answerTime: string; reference?: string; answerMedia?: string }) =>
-    post(ENDPOINTS.answerAdd, data),
-
   getAnswerByQuestionId: (data: { userinfoId: number; questionId: number }) =>
     post<{ content: string; dotime: string; answerTime?: string; flagEvaluate: number; reference?: unknown; answerMedia?: unknown }>(ENDPOINTS.answerByQuestionId, data),
 

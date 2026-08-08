@@ -59,7 +59,7 @@ tests/
 
 ## Current behavior and important details
 
-- Questions and answers are persisted through `/question/doAdd` and `/answer/doAdd`. History is grouped and reloaded by `session_id`; reference JSON and `answer_media` are persisted with the answer.
+- Questions and answers are persisted by the Java `/dialogue/stream-answer` proxy. The question is written before the model request and the completed answer, reference JSON, and `answer_media` are written after the terminal frame; the Mini Program must not issue a separate `/answer/doAdd` request. History is grouped and reloaded by `session_id`.
 - Session IDs are generated client-side by `getSessionId()`. Starting a new conversation forces a new ID, while opening history restores that historical session ID.
 - Guest identity is initialized through `/userinfo/guest`. The authoritative 50-question guest quota is enforced by the Java backend, not by client state alone.
 - Answer media URLs must resolve under the configured HTTPS `referenceHost` and `/references/figures/`. Images are associated with citation labels, inserted between multiple `mp-html` fragments after the matching `<sup>...</sup>` marker, and can be previewed with `wx.previewImage`.

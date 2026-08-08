@@ -75,7 +75,11 @@ export interface SessionData {
 
 export interface ReferencePageLink {
   page: number
-  document_page_url: string
+  pdf_page?: number
+  document_page_url?: string
+  citation_indices?: number[]
+  citation_label?: string
+  page_key?: string
 }
 
 export interface ReferenceChunk {
@@ -167,6 +171,7 @@ export interface FeedbackPayload {
   detail?: string
   questionContent: string
   answerContent: string
+  feedbackImages?: string
   contactName?: string
   companyName?: string
   email?: string
@@ -212,16 +217,14 @@ export function normalizeReference(reference: unknown): ReferencePayload {
   const chunks = rawChunks
     .filter((chunk) => (chunk.page_links && chunk.page_links.length > 0) || chunk.document_page_url || chunk.document_preview_url)
     .map((chunk, index) => {
-      const sortedPageLinks = chunk.page_links
-        ? [...chunk.page_links].sort((a, b) => (a.page || 0) - (b.page || 0))
-        : []
+      const pageLinks = chunk.page_links ? [...chunk.page_links] : []
 
       return {
         ...chunk,
         reference_index: chunk.reference_index ?? index,
-        page_links: sortedPageLinks,
+        page_links: pageLinks,
         reference_key: chunk.reference_key || `ref_${chunk.reference_index ?? index}`,
-        pages: sortedPageLinks.map((l) => l.page),
+        pages: pageLinks.map((item) => item.page),
       }
     })
     .sort((a, b) => (a.reference_index || 0) - (b.reference_index || 0))

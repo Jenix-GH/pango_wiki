@@ -79,7 +79,7 @@ export default function LicenseApplicationPage() {
         <section className="license-card">
           <div className="license-heading">
             <span>软件授权服务</span>
-            <h1>License 申请</h1>
+            <h1>PDS License 申请</h1>
             <p>请准确填写软件运行环境和申请人信息，我们将在审核后与您联系。</p>
           </div>
           <form className="license-form" onSubmit={submit}>

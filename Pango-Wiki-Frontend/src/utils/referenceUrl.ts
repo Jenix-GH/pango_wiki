@@ -76,10 +76,6 @@ export function normalizeAnswerMedia(value: unknown): AnswerMedia[] {
   })
 }
 
-export function serializeAnswerMedia(media: AnswerMedia[]): string {
-  return JSON.stringify(media.map(({ absoluteUrl: _absoluteUrl, ...item }) => item))
-}
-
 export function openReferenceUrl(rawUrl: string): boolean {
   const resolved = resolveReferenceUrl(rawUrl)
   if (!resolved) return false
@@ -116,8 +112,8 @@ function viewerUrlForDocument(rawUrl: string): string {
 }
 
 export function primaryReferenceUrl(chunk: ReferenceChunk): string {
-  if (chunk.document_page_url) return chunk.document_page_url
   const pageLink = (chunk.page_links || []).find((item) => item.document_page_url)
   if (pageLink?.document_page_url) return pageLink.document_page_url
+  if (chunk.document_page_url) return chunk.document_page_url
   return viewerUrlForDocument(chunk.document_preview_url || '')
 }

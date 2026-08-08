@@ -55,6 +55,13 @@ public class ControllerAdminConsole {
         return R.ok();
     }
 
+    @GetMapping("/feedback/{id}/images")
+    public R feedbackImages(@RequestHeader(value = "X-Admin-Key", required = false) String key,
+                            @PathVariable long id) {
+        authorize(key);
+        return R.ok(serviceAdminConsole.feedbackImages(id));
+    }
+
     @GetMapping("/licenses")
     public R licenses(@RequestHeader(value = "X-Admin-Key", required = false) String key,
                       @RequestParam(defaultValue = "1") int page,

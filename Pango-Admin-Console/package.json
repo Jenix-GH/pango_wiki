@@ -4,11 +4,19 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "vite",
+    "dev:api": "node --watch server.mjs --api-only",
     "build": "vite build",
-    "preview": "vite preview"
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "dompurify": "^3.2.6",
+    "marked": "^15.0.12",
+    "mysql2": "^3.14.3"
   },
   "devDependencies": {
+    "concurrently": "^9.2.0",
     "vite": "^6.4.3"
   }
 }

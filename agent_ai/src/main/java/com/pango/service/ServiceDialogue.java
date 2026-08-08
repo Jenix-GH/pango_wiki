@@ -14,6 +14,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import javax.annotation.Resource;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Created by Pango on 09/05/2018.
@@ -137,6 +138,10 @@ public class ServiceDialogue {
     }
 
     public Flux<String> proxyStream(Map<String, Object> requestBody) {
+        return proxyStream(requestBody, ignored -> { });
+    }
+
+    public Flux<String> proxyStream(Map<String, Object> requestBody, Consumer<StreamAnswerResult> onComplete) {
         Object rawSessionId = requestBody.get("session_id");
         String sessionId = rawSessionId == null ? "" : String.valueOf(rawSessionId).trim();
         if (sessionId.isEmpty()) {
@@ -149,6 +154,7 @@ public class ServiceDialogue {
         JSONObject body = new JSONObject(requestBody);
         body.putIfAbsent("quote", dialogueQuote);
         body.putIfAbsent("conversation_id", dialogueConversationId);
+        StreamAnswerCollector collector = new StreamAnswerCollector();
         return webClient.post()
                 .uri(dialogueUrl)
                 .header("authorization", dialogueAuthorization)
@@ -159,7 +165,81 @@ public class ServiceDialogue {
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .bodyValue(body.toString())
                 .retrieve()
-                .bodyToFlux(String.class);
+                .bodyToFlux(String.class)
+                .doOnNext(collector::accept)
+                .doOnComplete(() -> onComplete.accept(collector.result()));
+    }
+
+    public static class StreamAnswerResult {
+        private final boolean terminal;
+        private final String content;
+        private final String reference;
+        private final String answerMedia;
+
+        private StreamAnswerResult(boolean terminal, String content, String reference, String answerMedia) {
+            this.terminal = terminal;
+            this.content = content;
+            this.reference = reference;
+            this.answerMedia = answerMedia;
+        }
+
+        public boolean isTerminal() { return terminal; }
+        public String getContent() { return content; }
+        public String getReference() { return reference; }
+        public String getAnswerMedia() { return answerMedia; }
+    }
+
+    private static class StreamAnswerCollector {
+        private final StringBuilder content = new StringBuilder();
+        private boolean terminal;
+        private Object reference;
+        private Object answerMedia;
+
+        private void accept(String frame) {
+            if (frame == null) return;
+            String raw = frame.trim();
+            if (raw.startsWith("data:")) raw = raw.substring(5).trim();
+            if (raw.isEmpty() || "[DONE]".equals(raw)) return;
+            try {
+                JSONObject payload = JSONObject.parseObject(raw);
+                Object dataValue = payload.get("data");
+                JSONObject data = dataValue instanceof JSONObject ? (JSONObject) dataValue : null;
+                if (Boolean.TRUE.equals(dataValue) || payload.getBooleanValue("answer_replace")) {
+                    terminal = true;
+                    String finalAnswer = payload.getString("answer");
+                    if ((finalAnswer == null || finalAnswer.isEmpty()) && data != null) {
+                        finalAnswer = data.getString("answer");
+                    }
+                    if (payload.getBooleanValue("answer_replace") && finalAnswer != null && !finalAnswer.isEmpty()) {
+                        content.setLength(0);
+                        content.append(finalAnswer);
+                    } else if (content.length() == 0 && finalAnswer != null) {
+                        content.append(finalAnswer);
+                    }
+                    reference = payload.containsKey("reference") ? payload.get("reference")
+                            : data == null ? null : data.get("reference");
+                    answerMedia = payload.containsKey("answer_media") ? payload.get("answer_media")
+                            : data == null ? null : data.get("answer_media");
+                    return;
+                }
+                if (data != null && data.get("answer") != null) {
+                    content.append(data.getString("answer"));
+                } else if ("message".equals(payload.getString("event")) && data != null) {
+                    String message = data.getString("content");
+                    if (message != null) content.append(message);
+                }
+            } catch (Exception ignored) {
+                // Only valid model protocol frames are eligible for persistence.
+            }
+        }
+
+        private StreamAnswerResult result() {
+            return new StreamAnswerResult(
+                    terminal,
+                    content.toString(),
+                    reference == null ? null : JSONObject.toJSONString(reference),
+                    answerMedia == null ? null : JSONObject.toJSONString(answerMedia));
+        }
     }
 
 }

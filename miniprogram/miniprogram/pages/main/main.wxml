@@ -55,7 +55,7 @@
                                                 data-url="{{pl.document_page_url}}"
                                                 aria-role="button"
                                                 aria-label="查看第{{pl.page}}页"
-                                            >第{{pl.page}}页</view>
+                                            ><text wx:if="{{pl.citation_label}}">{{pl.citation_label}} </text>第{{pl.page}}页</view>
                                         </block>
                                     </view>
                                     <view wx:elif="{{ref.pages && ref.pages.length > 0}}" class="reference-pages">
@@ -191,6 +191,12 @@
         </view>
         <view class="feedback-label">详细说明 <text>选填</text></view>
         <textarea class="feedback-textarea" maxlength="2000" value="{{feedbackDetail}}" bindinput="inputFeedbackField" data-field="feedbackDetail" placeholder="例如：器件参数不准确，正确值应为……" />
+        <view class="feedback-label">补充图片 <text>选填，限 1 张，最大 15MB</text></view>
+        <view wx:if="{{feedbackImage}}" class="feedback-image-preview">
+            <image src="{{feedbackImage.local_url}}" mode="aspectFit" bind:tap="previewFeedbackImage" />
+            <view class="feedback-image-remove" bind:tap="removeFeedbackImage">删除图片</view>
+        </view>
+        <view wx:else class="feedback-image-add" bind:tap="chooseFeedbackImage">上传截图或照片</view>
         <view class="feedback-label">联系方式 <text>选填，方便工程师进一步联系</text></view>
         <view class="feedback-contact-grid">
             <input maxlength="100" value="{{feedbackContactName}}" bindinput="inputFeedbackField" data-field="feedbackContactName" placeholder="姓名" />

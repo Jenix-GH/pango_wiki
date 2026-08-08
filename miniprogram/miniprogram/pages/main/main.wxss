@@ -814,3 +814,7 @@ margin-left: 0rpx !important;
 .feedback-actions button { width: auto; min-width: 180rpx; height: 74rpx; margin: 0; padding: 0 24rpx; border-radius: 10rpx; font-size: 26rpx; line-height: 74rpx; }
 .feedback-cancel { border: 1rpx solid #cfd8e3; color: #334155; background: #fff; }
 .feedback-submit { color: #fff; background: var(--bg-primary); }
+.feedback-image-add { display: flex; align-items: center; justify-content: center; min-height: 120rpx; border: 2rpx dashed #b8c5d6; border-radius: 12rpx; color: #64748b; background: #f8fafc; font-size: 25rpx; }
+.feedback-image-preview { position: relative; width: 320rpx; overflow: hidden; border: 1rpx solid #dbe3ed; border-radius: 12rpx; background: #f8fafc; }
+.feedback-image-preview image { display: block; width: 320rpx; height: 220rpx; }
+.feedback-image-remove { position: absolute; top: 12rpx; right: 12rpx; padding: 8rpx 14rpx; border-radius: 8rpx; color: #fff; background: rgba(15, 23, 42, .76); font-size: 21rpx; }

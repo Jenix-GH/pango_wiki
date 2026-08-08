@@ -6,6 +6,7 @@ import ImageLightbox from './ImageLightbox'
 import { api } from '../api/client'
 import pangoLogo from '../../Logo.png'
 import './ChatBubble.css'
+import { placeMediaAfterCitations } from '../utils/answerRendering'
 
 interface Props {
   message: ChatMessage
@@ -99,7 +100,7 @@ export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQ
                       <span className="reference-pages-label">引用页：</span>
                       {pageLinks.map((pl, i) => (
                         <span
-                          key={i}
+                          key={pl.page_key || `${pl.page}-${i}`}
                           className="reference-page-link"
                           onClick={() => {
                             if (pl.document_page_url) {
@@ -107,6 +108,7 @@ export default function ChatBubble({ message, index, onCopy, onEvaluate, onCopyQ
                             }
                           }}
                         >
+                          {pl.citation_label && <span>{pl.citation_label} </span>}
                           第{pl.page}页
                         </span>
                       ))}
@@ -202,61 +204,4 @@ function AnswerMediaPanel({ media, onPreview, onOpenReference }: {
       ))}
     </div>
   )
-}
-
-function placeMediaAfterCitations(content: string, media: AnswerMedia[]): Array<{ content: string; media: AnswerMedia[] }> {
-  if (media.length === 0) return [{ content, media: [] }]
-
-  const mediaByOffset = new Map<number, AnswerMedia[]>()
-  const unplaced: AnswerMedia[] = []
-
-  media.forEach((item) => {
-    const label = item.citation_label?.trim()
-    const bracketLabel = label?.match(/\[[^\]]+\]/)?.[0]
-    const candidates = [...new Set([label, bracketLabel].filter((value): value is string => Boolean(value)))]
-    let matchIndex = -1
-    let matchedLabel = ''
-
-    for (const candidate of candidates) {
-      matchIndex = content.indexOf(candidate)
-      if (matchIndex >= 0) {
-        matchedLabel = candidate
-        break
-      }
-    }
-
-    if (matchIndex < 0) {
-      unplaced.push(item)
-      return
-    }
-
-    let insertionOffset = matchIndex + matchedLabel.length
-    const openingSup = content.lastIndexOf('<sup', matchIndex)
-    const closingSupBeforeLabel = content.lastIndexOf('</sup>', matchIndex)
-    const closingSupAfterLabel = content.indexOf('</sup>', insertionOffset)
-    if (openingSup > closingSupBeforeLabel && closingSupAfterLabel >= insertionOffset) {
-      insertionOffset = closingSupAfterLabel + '</sup>'.length
-      const trailingPunctuation = content.slice(insertionOffset).match(/^[ \t]*[。！？.!?；;：:]?/)
-      insertionOffset += trailingPunctuation?.[0].length || 0
-    }
-
-    mediaByOffset.set(insertionOffset, [...(mediaByOffset.get(insertionOffset) || []), item])
-  })
-
-  const sections: Array<{ content: string; media: AnswerMedia[] }> = []
-  let contentOffset = 0
-  const insertionOffsets = [...mediaByOffset.keys()].sort((a, b) => a - b)
-  insertionOffsets.forEach((insertionOffset) => {
-    sections.push({
-      content: content.slice(contentOffset, insertionOffset),
-      media: mediaByOffset.get(insertionOffset) || [],
-    })
-    contentOffset = insertionOffset
-  })
-
-  const trailingContent = content.slice(contentOffset)
-  if (trailingContent || unplaced.length || sections.length === 0) {
-    sections.push({ content: trailingContent, media: unplaced })
-  }
-  return sections
 }
