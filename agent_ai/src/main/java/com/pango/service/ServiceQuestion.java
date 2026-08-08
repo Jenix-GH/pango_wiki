@@ -1,6 +1,7 @@
 package com.pango.service;
 
 import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.pango.entity.DtoQuestion;
@@ -26,6 +27,11 @@ import java.util.Set;
 @Service
 @Slf4j
 public class ServiceQuestion extends ServiceImpl<MapperQuestion, DtoQuestion> implements BaseService<DtoQuestion> {
+    private static final int MAX_QUESTION_IMAGE_COUNT = 1;
+    private static final long MAX_QUESTION_IMAGE_BYTES = 15L * 1024 * 1024;
+    // 15 MiB binary data expands to 20 MiB after Base64 encoding.
+    private static final int MAX_QUESTION_IMAGE_JSON_CHARS = 22 * 1024 * 1024;
+
     @Override
     public LambdaQueryWrapper<DtoQuestion> fillParams(Map<String, Object> params) {
         return null;
@@ -44,19 +50,61 @@ public class ServiceQuestion extends ServiceImpl<MapperQuestion, DtoQuestion> im
 
     private void validateQuestionImages(String questionImages) {
         if (questionImages == null || questionImages.trim().isEmpty()) return;
-        if (questionImages.length() > 20 * 1024 * 1024) {
+        if (questionImages.length() > MAX_QUESTION_IMAGE_JSON_CHARS) {
             throw new MyException("问题图片数据过大");
         }
         try {
             JSONArray images = JSONArray.parseArray(questionImages);
-            if (images.size() > 3) {
-                throw new MyException("最多只能上传3张图片");
+            if (images.size() > MAX_QUESTION_IMAGE_COUNT) {
+                throw new MyException("每次只能上传1张图片");
+            }
+            long totalBytes = 0;
+            for (int index = 0; index < images.size(); index++) {
+                JSONObject image = images.getJSONObject(index);
+                if (image == null) {
+                    throw new MyException("问题图片数据格式错误");
+                }
+                String mimeType = image.getString("mime_type");
+                String dataBase64 = image.getString("data_base64");
+                if (mimeType == null || !mimeType.toLowerCase().startsWith("image/")
+                        || dataBase64 == null || dataBase64.isEmpty()) {
+                    throw new MyException("问题图片数据格式错误");
+                }
+                totalBytes += decodedBase64Size(dataBase64);
+                if (totalBytes > MAX_QUESTION_IMAGE_BYTES) {
+                    throw new MyException("上传图片大小不能超过15MB");
+                }
             }
         } catch (MyException error) {
             throw error;
         } catch (Exception error) {
             throw new MyException("问题图片数据格式错误");
         }
+    }
+
+    private long decodedBase64Size(String value) {
+        int length = value.length();
+        if (length == 0 || length % 4 != 0) {
+            throw new MyException("问题图片Base64格式错误");
+        }
+        int padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+        int contentLength = length - padding;
+        for (int index = 0; index < contentLength; index++) {
+            char current = value.charAt(index);
+            boolean valid = current >= 'A' && current <= 'Z'
+                    || current >= 'a' && current <= 'z'
+                    || current >= '0' && current <= '9'
+                    || current == '+' || current == '/';
+            if (!valid) {
+                throw new MyException("问题图片Base64格式错误");
+            }
+        }
+        for (int index = contentLength; index < length; index++) {
+            if (value.charAt(index) != '=') {
+                throw new MyException("问题图片Base64格式错误");
+            }
+        }
+        return (long) length / 4 * 3 - padding;
     }
 
     /**

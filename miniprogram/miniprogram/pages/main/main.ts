@@ -55,6 +55,7 @@ let recorderPreferredFormat: 'aac' | 'mp3' = 'aac'
 let recorderAttemptStartedAt = 0
 let recorderStopFallbackTimer: any = null
 let recorderIntentVersion = 0
+const MAX_UPLOAD_IMAGE_BYTES = 15 * 1024 * 1024
 
 function clearRecorderStopFallback() {
     if (recorderStopFallbackTimer !== null) {
@@ -937,21 +938,30 @@ Page({
         });
     },
     chooseImage() {
-        if (this.data.uploadImages.length >= 3) {
+        if (this.data.uploadImages.length >= 1) {
             wx.showModal({
                 title: '图片数量已达上限',
-                content: '每次提问最多上传 3 张图片，请删除已有图片后再添加。',
+                content: '每次提问只能上传 1 张图片，请删除已有图片后再添加。',
                 showCancel: false,
                 confirmText: '我知道了'
             })
             return
         }
         wx.chooseMedia({
-            count: 3 - this.data.uploadImages.length,
+            count: 1,
             mediaType: ['image'],
             sizeType: ['compressed'],
             success: (res) => {
                 const files = res.tempFiles;
+                if (files.some(file => Number(file.size || 0) > MAX_UPLOAD_IMAGE_BYTES)) {
+                    wx.showModal({
+                        title: '图片过大',
+                        content: '单张图片不能超过 15MB，请压缩图片后重试。',
+                        showCancel: false,
+                        confirmText: '我知道了'
+                    })
+                    return
+                }
                 const newImages: QuestionImage[] = [];
                 let loaded = 0;
                 files.forEach((file) => {
@@ -1046,32 +1056,67 @@ Page({
     },
 
     /**
-     * 在表格说明和表格体之间补充空行
+     * 统一模型回答中的 Markdown 块级间距，保持与 Web 端一致。
      */
     fixMarkdownTableSpacing(md: string): string {
       const lines = md.split(/\r?\n/);
       const fixed: string[] = [];
+      let inCodeFence = false;
 
       for (let i = 0; i < lines.length; i++) {
         let current = lines[i];
-        const next = lines[i + 1] ?? "";
+        const currentTrimmed = current.trim();
 
-        const currentEndsWithCitation = /<sup\b[^>]*>\s*\[[^\]]+\]\s*<\/sup>\s*[。！？.!?；;：:]?$/.test(current.trim())
-        if (currentEndsWithCitation && next.trim() !== '') {
-          current = `${current.trimEnd()}  `
+        if (/^(```|~~~)/.test(currentTrimmed)) {
+          inCodeFence = !inCodeFence;
+          fixed.push(current);
+          continue;
         }
 
-        fixed.push(current);
-
-        // 当前行不是表格行，但下一行是表格行 → 插入空行
-        if (!current.trim().startsWith("|") && next.trim().startsWith("|")) {
-          if (current.trim() !== "") {
-            fixed.push(""); // 插入空行
-          }
+        if (inCodeFence) {
+          fixed.push(current);
+          continue;
         }
+
+        // CommonMark 标题标记后必须有空格，兼容模型返回的“###标题”。
+        current = current.replace(/^(\s{0,3}#{1,6})(?=[^\s#])/, '$1 ');
+
+        const normalizedTrimmed = current.trim();
+        const nextTrimmed = (lines[i + 1] ?? '').trim();
+        const currentIsTable = normalizedTrimmed.startsWith('|');
+        const previousIsTable = fixed.length > 0
+          && fixed[fixed.length - 1].trim().startsWith('|');
+        const nextIsTable = nextTrimmed.startsWith('|');
+        const currentIsHeading = /^#{1,6}(?:\s+|$)/.test(normalizedTrimmed);
+        const currentIsEmphasisHeading = /^(\*{2,3}|_{2,3})\S(?:.*?\S)?\1(?:<sup\b[^>]*>.*?<\/sup>)?[：:]?$/.test(normalizedTrimmed);
+        const currentEndsWithCitation = /<sup\b[^>]*>\s*\[[^\]]+\]\s*<\/sup>\s*[。！？.!?；;：:]?$/.test(normalizedTrimmed);
+        const currentStartsWithEmphasis = /^(\*{2,3}|_{2,3})\S.*?\1(?=<sup\b|[：:\s（(]|$)/.test(normalizedTrimmed);
+        const currentIsThematicBreak = /^(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(normalizedTrimmed);
+        const currentNeedsLeadingSpacing = currentIsTable
+          || currentIsHeading
+          || currentStartsWithEmphasis
+          || currentIsThematicBreak;
+        const currentNeedsTrailingSpacing = currentIsTable
+          || currentIsHeading
+          || currentIsEmphasisHeading
+          || currentIsThematicBreak;
+
+        if (currentNeedsLeadingSpacing && fixed.length > 0) {
+          const previous = fixed[fixed.length - 1] ?? '';
+          if (previous.trim() !== '' && !(currentIsTable && previousIsTable)) fixed.push('');
+        }
+
+        // 普通 Markdown 换行会折叠为空格；角标结尾时补两个空格保留视觉换行。
+        fixed.push(currentEndsWithCitation && nextTrimmed !== '' ? `${current.trimEnd()}  ` : current);
+
+        if (
+          currentNeedsTrailingSpacing
+          && nextTrimmed !== ''
+          && !(currentIsTable && nextIsTable)
+        ) fixed.push('');
       }
 
-      return fixed.join("\n");
+      return fixed.join('\n');
     },
 
     // 流式显示内容
