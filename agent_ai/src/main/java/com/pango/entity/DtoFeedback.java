@@ -28,6 +28,7 @@ public class DtoFeedback {
     private String email;
     private String phone;
     private Integer status;
+    private String processingProgress;
     private Date dotime;
     private Date uptime;
 }

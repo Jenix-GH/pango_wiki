@@ -56,6 +56,8 @@ dialogue:
   # Required in production, for example:
   # http://<nginx-private-ip>:8081/chat/ragflow-compatible
   url: ${DIALOGUE_URL}
+  # Uses context-v1 by default; DIALOGUE_CONTEXT_URL can override it when needed.
+  context-url: ${DIALOGUE_CONTEXT_URL:${dialogue.url}/context-v1}
   authorization: ${DIALOGUE_AUTHORIZATION}
   question: "你是谁？"
   conversation_id: "5cc430a85d2a11f0b56a76cc98224e2d"

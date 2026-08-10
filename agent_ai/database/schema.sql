@@ -66,6 +66,7 @@ CREATE TABLE `dto_feedback` (
   `email` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '电子邮箱',
   `phone` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '联系电话',
   `status` tinyint NOT NULL DEFAULT '0' COMMENT '处理状态：0待处理，1处理中，2已处理，3已关闭',
+  `processing_progress` text COLLATE utf8mb4_unicode_ci COMMENT '管理员填写的处理进展',
   `dotime` datetime NOT NULL COMMENT '创建时间',
   `uptime` datetime NOT NULL COMMENT '更新时间',
   PRIMARY KEY (`id`),

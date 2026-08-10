@@ -54,6 +54,7 @@ logging:
 # 对话服务相关
 dialogue:
   url: ${DIALOGUE_URL:http://8.217.177.186:881/api/v1/agentbots/afcf3258612a11f0b7ad76cc98224e2d/completions}
+  context-url: ${DIALOGUE_CONTEXT_URL:${dialogue.url}/context-v1}
   authorization: ${DIALOGUE_AUTHORIZATION}
   question: "你是谁？"
   conversation_id: "5cc430a85d2a11f0b56a76cc98224e2d"

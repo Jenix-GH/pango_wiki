@@ -70,8 +70,10 @@ async function handleApi(request, response, url) {
   if (request.method === 'GET' && path === '/conversations') return conversations(response, url.searchParams)
   if (request.method === 'GET' && path === '/conversation') return conversationDetail(response, url.searchParams)
   if (request.method === 'GET' && path === '/feedback') return feedback(response, url.searchParams)
+  if (request.method === 'GET' && path === '/feedback-export') return feedbackExport(response, url.searchParams)
   if (request.method === 'GET' && /^\/feedback\/\d+$/.test(path)) return feedbackDetail(response, Number(path.split('/')[2]))
   if (request.method === 'POST' && /^\/feedback\/\d+\/status$/.test(path)) return updateStatus(response, 'dto_feedback', Number(path.split('/')[2]), await readJson(request))
+  if (request.method === 'POST' && /^\/feedback\/\d+\/progress$/.test(path)) return updateFeedbackProgress(response, Number(path.split('/')[2]), await readJson(request))
   if (request.method === 'GET' && path === '/licenses') return licenses(response, url.searchParams)
   if (request.method === 'POST' && /^\/licenses\/\d+\/status$/.test(path)) return updateStatus(response, 'dto_license_application', Number(path.split('/')[2]), await readJson(request))
   return json(response, 404, { message: '接口不存在' })
@@ -150,8 +152,19 @@ async function dashboard(response, range) {
   const { startDate, endDate, dayCount } = range
   const [summaryRows] = await pool.query(`
     SELECT
-      COUNT(DISTINCT CASE WHEN event_name='page_view' AND event_time >= ? AND event_time < DATE_ADD(?, INTERVAL 1 DAY) THEN visitor_id END) period_uv
-    FROM dto_analytics_event`, [startDate, endDate])
+      SUM(event_name='page_view' AND event_time >= ? AND event_time < DATE_ADD(?, INTERVAL 1 DAY)
+        AND (page_path='/' OR page_path LIKE '/?%' OR page_path LIKE '/pages/main/main%' OR page_path LIKE '/docs%' OR page_path LIKE '/wiki%'
+          OR page_path LIKE '/license-application%')) period_pv,
+      SUM(event_name='page_view' AND event_time >= ? AND event_time < DATE_ADD(?, INTERVAL 1 DAY)
+        AND (page_path='/' OR page_path LIKE '/?%' OR page_path LIKE '/pages/main/main%')) pango_pv,
+      SUM(event_name='page_view' AND event_time >= ? AND event_time < DATE_ADD(?, INTERVAL 1 DAY)
+        AND (page_path LIKE '/docs%' OR page_path LIKE '/wiki%')) docs_pv,
+      SUM(event_name='page_view' AND event_time >= ? AND event_time < DATE_ADD(?, INTERVAL 1 DAY)
+        AND page_path LIKE '/license-application%') license_pv
+    FROM dto_analytics_event`, [
+      startDate, endDate, startDate, endDate,
+      startDate, endDate, startDate, endDate,
+    ])
   const [userRows] = await pool.query(`
     SELECT
       SUM(user_type='USER') total_registered,
@@ -164,15 +177,17 @@ async function dashboard(response, range) {
       SUM(dotime >= ? AND dotime < DATE_ADD(?, INTERVAL 1 DAY) AND session_id LIKE 'mini\\_%') period_miniprogram_questions
     FROM dto_question WHERE COALESCE(flag_del,0)=0`, [startDate, endDate, startDate, endDate, startDate, endDate])
   const [trend] = await pool.query(`
-    SELECT dates.stat_date, COALESCE(visits.uv,0) uv, COALESCE(users.registrations,0) registrations,
+    SELECT dates.stat_date, COALESCE(visits.pv,0) pv, COALESCE(users.registrations,0) registrations,
       COALESCE(questions.question_count,0) questions
     FROM (
       SELECT DATE_ADD(?, INTERVAL seq.n DAY) stat_date
       FROM (${sequenceSql(366)}) seq WHERE seq.n < ?
     ) dates
     LEFT JOIN (
-      SELECT DATE(event_time) stat_date, COUNT(DISTINCT visitor_id) uv
+      SELECT DATE(event_time) stat_date, COUNT(*) pv
       FROM dto_analytics_event WHERE event_name='page_view' AND event_time >= ? AND event_time < DATE_ADD(?, INTERVAL 1 DAY)
+        AND (page_path='/' OR page_path LIKE '/?%' OR page_path LIKE '/pages/main/main%' OR page_path LIKE '/docs%' OR page_path LIKE '/wiki%'
+          OR page_path LIKE '/license-application%')
       GROUP BY DATE(event_time)
     ) visits ON visits.stat_date=dates.stat_date
     LEFT JOIN (
@@ -286,10 +301,21 @@ async function feedback(response, params) {
   const [[count]] = await pool.query(`SELECT COUNT(*) total FROM dto_feedback${where}`, args)
   const [records] = await pool.query(`
     SELECT id,userinfo_id,session_id,platform,feedback_type,detail,question_content,answer_content,
-      contact_name,company_name,email,phone,status,dotime,uptime,
+      contact_name,company_name,email,phone,status,processing_progress,dotime,uptime,
       (feedback_images IS NOT NULL AND feedback_images<>'') has_feedback_image
     FROM dto_feedback${where} ORDER BY dotime DESC LIMIT ? OFFSET ?`, [...args, pageSize, offset])
   json(response, 200, { data: { records, total: count.total, page, pageSize } })
+}
+
+async function feedbackExport(response, params) {
+  const status = optionalStatus(params.get('status'))
+  const where = status === null ? '' : ' WHERE status=?'
+  const args = status === null ? [] : [status]
+  const [records] = await pool.query(`
+    SELECT id,dotime,platform,feedback_type,question_content,answer_content,detail,
+      contact_name,company_name,email,phone,status,processing_progress,uptime
+    FROM dto_feedback${where} ORDER BY dotime DESC`, args)
+  json(response, 200, { data: { records } })
 }
 
 async function feedbackDetail(response, id) {
@@ -328,6 +354,16 @@ async function updateStatus(response, table, id, body) {
   if (!Number.isInteger(status) || status < 0 || status > 3) return json(response, 400, { message: '状态参数不正确' })
   const [result] = await pool.query(`UPDATE ${table} SET status=?,uptime=NOW() WHERE id=?`, [status, id])
   if (result.affectedRows !== 1) return json(response, 404, { message: '记录不存在' })
+  json(response, 200, { data: true })
+}
+
+async function updateFeedbackProgress(response, id, body) {
+  const progress = String(body.processingProgress || '').trim()
+  if (progress.length > 5000) return json(response, 400, { message: '处理进展不能超过5000字' })
+  const [result] = await pool.query(
+    'UPDATE dto_feedback SET processing_progress=?,uptime=NOW() WHERE id=?',
+    [progress || null, id])
+  if (result.affectedRows !== 1) return json(response, 404, { message: '反馈记录不存在' })
   json(response, 200, { data: true })
 }
 

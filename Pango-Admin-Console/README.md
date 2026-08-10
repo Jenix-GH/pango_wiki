@@ -9,7 +9,7 @@
 ```sql
 CREATE USER 'pango_console'@'控制台电脑IP' IDENTIFIED BY '替换为随机长密码';
 GRANT SELECT ON agent_db.* TO 'pango_console'@'控制台电脑IP';
-GRANT UPDATE (`status`, `uptime`) ON agent_db.dto_feedback TO 'pango_console'@'控制台电脑IP';
+GRANT UPDATE (`status`, `processing_progress`, `uptime`) ON agent_db.dto_feedback TO 'pango_console'@'控制台电脑IP';
 GRANT UPDATE (`status`, `uptime`) ON agent_db.dto_license_application TO 'pango_console'@'控制台电脑IP';
 FLUSH PRIVILEGES;
 ```

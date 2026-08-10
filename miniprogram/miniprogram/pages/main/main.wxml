@@ -27,7 +27,7 @@
                 <view class="show-answer">
                     <view class="show-content">
                         <block wx:for="{{item.answerSections}}" wx:for-item="section" wx:key="section_key">
-                            <mp-html wx:if="{{section.content}}" content="{{section.content}}" markdown latex highlight tag-style="{{tagStyle}}" />
+                            <mp-html wx:if="{{section.content}}" content="{{section.content}}" markdown latex highlight selectable="force" tag-style="{{tagStyle}}" />
                             <view wx:if="{{section.media && section.media.length}}" class="answer-figure-panel">
                                 <block wx:for="{{section.media}}" wx:for-item="media" wx:key="asset_id">
                                     <view class="answer-figure-item">
@@ -121,7 +121,7 @@
             </view>
             <view class="show-answer">
                 <view class="show-content">
-                    <mp-html content="{{streamContent}}" markdown latex highlight class="mp-html contenttow" id="markdownContent" tag-tyle="{{tagStyle}}" />
+                    <mp-html content="{{streamContent}}" markdown latex highlight selectable="force" class="mp-html contenttow" id="markdownContent" tag-tyle="{{tagStyle}}" />
                 </view>
             </view>
         </view>
@@ -189,17 +189,17 @@
         <view class="feedback-types">
             <view wx:for="{{feedbackTypeOptions}}" wx:key="*this" class="feedback-type {{feedbackType === item ? 'selected' : ''}}" bind:tap="chooseFeedbackType" data-type="{{item}}">{{item}}</view>
         </view>
-        <view class="feedback-label">详细说明 <text>选填</text></view>
-        <textarea class="feedback-textarea" maxlength="2000" value="{{feedbackDetail}}" bindinput="inputFeedbackField" data-field="feedbackDetail" placeholder="例如：器件参数不准确，正确值应为……" />
+        <view class="feedback-label">补充说明 <text>必填</text></view>
+        <textarea class="feedback-textarea" maxlength="2000" value="{{feedbackDetail}}" bindinput="inputFeedbackField" data-field="feedbackDetail" placeholder="请说明具体问题，例如：器件参数不准确，正确值应为……" />
         <view class="feedback-label">补充图片 <text>选填，限 1 张，最大 15MB</text></view>
         <view wx:if="{{feedbackImage}}" class="feedback-image-preview">
             <image src="{{feedbackImage.local_url}}" mode="aspectFit" bind:tap="previewFeedbackImage" />
             <view class="feedback-image-remove" bind:tap="removeFeedbackImage">删除图片</view>
         </view>
         <view wx:else class="feedback-image-add" bind:tap="chooseFeedbackImage">上传截图或照片</view>
-        <view class="feedback-label">联系方式 <text>选填，方便工程师进一步联系</text></view>
+        <view class="feedback-label">联系方式 <text>联系人必填，方便工程师进一步联系</text></view>
         <view class="feedback-contact-grid">
-            <input maxlength="100" value="{{feedbackContactName}}" bindinput="inputFeedbackField" data-field="feedbackContactName" placeholder="姓名" />
+            <input maxlength="100" value="{{feedbackContactName}}" bindinput="inputFeedbackField" data-field="feedbackContactName" placeholder="联系人（必填）" />
             <input maxlength="200" value="{{feedbackCompanyName}}" bindinput="inputFeedbackField" data-field="feedbackCompanyName" placeholder="公司名称" />
             <input maxlength="200" value="{{feedbackEmail}}" bindinput="inputFeedbackField" data-field="feedbackEmail" placeholder="电子邮箱" />
             <input maxlength="50" value="{{feedbackPhone}}" bindinput="inputFeedbackField" data-field="feedbackPhone" placeholder="联系电话" />

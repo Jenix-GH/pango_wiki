@@ -15,16 +15,21 @@ import reactor.core.publisher.Flux;
 import javax.annotation.Resource;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicBoolean;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Created by Pango on 09/05/2018.
  * ServiceDialogue
  */
 @Service
+@Slf4j
 public class ServiceDialogue {
 
     @Value("${dialogue.url}")
     private String dialogueUrl;
+    @Value("${dialogue.context-url}")
+    private String dialogueContextUrl;
     @Value("${dialogue.authorization}")
     private String dialogueAuthorization;
     @Value("${dialogue.question}")
@@ -142,6 +147,24 @@ public class ServiceDialogue {
     }
 
     public Flux<String> proxyStream(Map<String, Object> requestBody, Consumer<StreamAnswerResult> onComplete) {
+        return proxyStreamTo(requestBody, null, dialogueUrl, false, onComplete);
+    }
+
+    /**
+     * Calls the explicit-context endpoint while retaining every existing request field.
+     * When that endpoint cannot produce even its first frame, the legacy endpoint is used.
+     */
+    public Flux<String> proxyStreamWithContext(Map<String, Object> requestBody,
+                                               JSONObject conversationContext,
+                                               Consumer<StreamAnswerResult> onComplete) {
+        return proxyStreamTo(requestBody, conversationContext, dialogueContextUrl, true, onComplete);
+    }
+
+    private Flux<String> proxyStreamTo(Map<String, Object> requestBody,
+                                       JSONObject conversationContext,
+                                       String upstreamUrl,
+                                       boolean allowLegacyFallback,
+                                       Consumer<StreamAnswerResult> onComplete) {
         Object rawSessionId = requestBody.get("session_id");
         String sessionId = rawSessionId == null ? "" : String.valueOf(rawSessionId).trim();
         if (sessionId.isEmpty()) {
@@ -154,9 +177,29 @@ public class ServiceDialogue {
         JSONObject body = new JSONObject(requestBody);
         body.putIfAbsent("quote", dialogueQuote);
         body.putIfAbsent("conversation_id", dialogueConversationId);
+        if (conversationContext != null) body.put("conversation_context", conversationContext);
         StreamAnswerCollector collector = new StreamAnswerCollector();
+        AtomicBoolean emitted = new AtomicBoolean(false);
+        Flux<String> upstream = requestStream(upstreamUrl, sessionId, body)
+                .doOnNext(ignored -> emitted.set(true));
+        if (allowLegacyFallback) {
+            upstream = upstream.onErrorResume(error -> {
+                if (emitted.get()) return Flux.error(error);
+                log.warn("Context dialogue endpoint failed before the first frame; falling back to legacy endpoint", error);
+                JSONObject legacyBody = new JSONObject(requestBody);
+                legacyBody.putIfAbsent("quote", dialogueQuote);
+                legacyBody.putIfAbsent("conversation_id", dialogueConversationId);
+                return requestStream(dialogueUrl, sessionId, legacyBody);
+            });
+        }
+        return upstream
+                .doOnNext(collector::accept)
+                .doOnComplete(() -> onComplete.accept(collector.result()));
+    }
+
+    private Flux<String> requestStream(String upstreamUrl, String sessionId, JSONObject body) {
         return webClient.post()
-                .uri(dialogueUrl)
+                .uri(upstreamUrl)
                 .header("authorization", dialogueAuthorization)
                 // Nginx uses this trusted header for consistent-hash routing.
                 // It is derived from the validated JSON body, not forwarded from the client.
@@ -165,9 +208,7 @@ public class ServiceDialogue {
                 .accept(MediaType.TEXT_EVENT_STREAM)
                 .bodyValue(body.toString())
                 .retrieve()
-                .bodyToFlux(String.class)
-                .doOnNext(collector::accept)
-                .doOnComplete(() -> onComplete.accept(collector.result()));
+                .bodyToFlux(String.class);
     }
 
     public static class StreamAnswerResult {
