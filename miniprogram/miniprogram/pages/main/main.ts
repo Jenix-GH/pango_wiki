@@ -647,6 +647,16 @@ Page({
 
     submitFeedback() {
         if (this.data.feedbackSubmitting) return
+        const detail = String(this.data.feedbackDetail || '').trim()
+        if (!detail) {
+            wx.showToast({ title: '请填写补充说明', icon: 'none' })
+            return
+        }
+        const contactName = String(this.data.feedbackContactName || '').trim()
+        if (!contactName) {
+            wx.showToast({ title: '请填写联系人', icon: 'none' })
+            return
+        }
         const answerIndex = this.data.feedbackMessageIndex
         const answer = this.data.sessionList[answerIndex]
         let question: any = null
@@ -671,7 +681,7 @@ Page({
                 sessionId: app.globalData.sessionId || '',
                 platform: 'miniprogram',
                 feedbackType: this.data.feedbackType,
-                detail: this.data.feedbackDetail,
+                detail,
                 questionContent: question.content || '',
                 answerContent: answer.contentData || answer.content || '',
                 feedbackImages: this.data.feedbackImage ? JSON.stringify([{
@@ -679,7 +689,7 @@ Page({
                     data_base64: this.data.feedbackImage.data_base64,
                     filename: this.data.feedbackImage.filename
                 }]) : null,
-                contactName: this.data.feedbackContactName,
+                contactName,
                 companyName: this.data.feedbackCompanyName,
                 email: this.data.feedbackEmail,
                 phone: this.data.feedbackPhone

@@ -50,10 +50,24 @@ export default function FeedbackModal({ open, submitting, onClose, onSubmit }: P
       window.alert('反馈图片读取失败，请更换图片后重试。')
     }
   }
-  const submit = () => onSubmit({
-    ...form,
-    feedbackImages: image ? JSON.stringify([image]) : undefined,
-  })
+  const submit = () => {
+    const detail = form.detail?.trim()
+    if (!detail) {
+      window.alert('请填写补充说明')
+      return
+    }
+    const contactName = form.contactName?.trim()
+    if (!contactName) {
+      window.alert('请填写联系人')
+      return
+    }
+    onSubmit({
+      ...form,
+      detail,
+      contactName,
+      feedbackImages: image ? JSON.stringify([image]) : undefined,
+    })
+  }
   const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (window.innerWidth <= 600 || event.button !== 0 || !modalRef.current) return
     const rect = modalRef.current.getBoundingClientRect()
@@ -117,8 +131,8 @@ export default function FeedbackModal({ open, submitting, onClose, onSubmit }: P
           ))}
         </div>
 
-        <label className="feedback-label" htmlFor="feedback-detail">详细说明 <span>选填</span></label>
-        <textarea id="feedback-detail" maxLength={2000} value={form.detail} onChange={(event) => update('detail', event.target.value)} placeholder="例如：器件参数不准确，正确值应为……" />
+        <label className="feedback-label" htmlFor="feedback-detail">补充说明 <span>必填</span></label>
+        <textarea required aria-required="true" id="feedback-detail" maxLength={2000} value={form.detail} onChange={(event) => update('detail', event.target.value)} placeholder="请说明具体问题，例如：器件参数不准确，正确值应为……" />
 
         <div className="feedback-contact-title">补充图片 <span>选填，限 1 张，最大 15MB</span></div>
         <input
@@ -140,9 +154,9 @@ export default function FeedbackModal({ open, submitting, onClose, onSubmit }: P
           <button type="button" className="feedback-image-add" onClick={() => fileInputRef.current?.click()}>上传截图或照片</button>
         )}
 
-        <div className="feedback-contact-title">联系方式 <span>选填，方便工程师进一步联系</span></div>
+        <div className="feedback-contact-title">联系方式 <span>联系人必填，方便工程师进一步联系</span></div>
         <div className="feedback-grid">
-          <input maxLength={100} value={form.contactName || ''} onChange={(event) => update('contactName', event.target.value)} placeholder="姓名" />
+          <input required aria-required="true" maxLength={100} value={form.contactName || ''} onChange={(event) => update('contactName', event.target.value)} placeholder="联系人（必填）" />
           <input maxLength={200} value={form.companyName || ''} onChange={(event) => update('companyName', event.target.value)} placeholder="公司名称" />
           <input maxLength={200} type="email" value={form.email || ''} onChange={(event) => update('email', event.target.value)} placeholder="电子邮箱" />
           <input maxLength={50} type="tel" value={form.phone || ''} onChange={(event) => update('phone', event.target.value)} placeholder="联系电话" />

@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.Collections;
 
 /**
  * 对话的问题记录
@@ -194,6 +195,24 @@ public class ServiceQuestion extends ServiceImpl<MapperQuestion, DtoQuestion> im
                 .eq(DtoQuestion::getSessionId, sessionId)
                 .orderByAsc(DtoQuestion::getId);
         return this.list(qw);
+    }
+
+    /**
+     * Returns a stable history snapshot before the current question. The database id is
+     * used as the turn sequence so a concurrently inserted/newer row cannot enter it.
+     */
+    public List<DtoQuestion> findContextHistory(long userinfoId, String sessionId,
+                                                long currentQuestionId, int maxTurns) {
+        LambdaQueryWrapper<DtoQuestion> qw = loadQw();
+        qw.eq(DtoQuestion::getUserinfoId, userinfoId)
+                .eq(DtoQuestion::getSessionId, sessionId)
+                .eq(DtoQuestion::getFlagDel, 0)
+                .lt(DtoQuestion::getId, currentQuestionId)
+                .orderByDesc(DtoQuestion::getId)
+                .last("limit " + Math.max(1, Math.min(maxTurns, 100)));
+        List<DtoQuestion> questions = this.list(qw);
+        Collections.reverse(questions);
+        return questions;
     }
 
     private List<DtoQuestion> groupBySession(List<DtoQuestion> questions) {

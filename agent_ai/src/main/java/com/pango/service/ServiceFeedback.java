@@ -16,6 +16,8 @@ public class ServiceFeedback extends ServiceImpl<MapperFeedback, DtoFeedback> {
         Date now = new Date();
         feedback.setId(null)
                 .setStatus(0)
+                // Processing progress is an administrator-only field.
+                .setProcessingProgress(null)
                 .setDotime(now)
                 .setUptime(now);
         save(feedback);
