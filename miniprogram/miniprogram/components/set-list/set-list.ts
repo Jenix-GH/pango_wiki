@@ -25,6 +25,9 @@ Component({
         gotoDataManager(){
             this.triggerEvent('gotoDataManager')
         },
+        gotoLogout(){
+            this.triggerEvent('gotoLogout')
+        },
         gotoCompany(){
             this.triggerEvent('gotoCompany')
         },

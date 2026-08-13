@@ -121,7 +121,8 @@ class StreamService {
 
     fetchStream(url: string, params: any, header: any,
         onData: StreamCallback,
-        onError?: ErrorCallback): RequestTask {
+        onError?: ErrorCallback,
+        onComplete?: () => void): RequestTask {
         let buffer = ''
         let utf8Carry: Uint8Array = new Uint8Array(0)
         let chunkCount = 0
@@ -140,6 +141,9 @@ class StreamService {
             header: header,
             responseType: 'arraybuffer',
             enableChunked: true,
+            // wx.request defaults are too short for complex model questions.
+            // Keep this slightly longer than the 180s reverse-proxy timeout.
+            timeout: 200000,
             data: JSON.stringify(params),
             success: res => {
                 if (res.statusCode < 400) {
@@ -147,6 +151,7 @@ class StreamService {
                     // login token) may be returned without a trailing newline.
                     // Flush it instead of leaving the UI waiting forever.
                     flushPendingFrame()
+                    onComplete && onComplete()
                     return
                 }
                 let message = `HTTP ${res.statusCode}`

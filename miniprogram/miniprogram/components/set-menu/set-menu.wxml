@@ -9,13 +9,13 @@
         </view>
     </view>
     <view class="subpage {{showSubPage=='set' ? 'subpage-active' : 'subpage-inactive'}}">
-        <set-list wx:if="{{showSubPage === 'set'}}" bind:gotoUserinfo="gotoUserinfo" bind:gotoDataManager="gotoDataManager" bind:gotoCompany="gotoCompany" bind:gotoContactUs="gotoContactUs"></set-list>
+        <set-list wx:if="{{showSubPage === 'set'}}" bind:gotoUserinfo="gotoUserinfo" bind:gotoDataManager="gotoDataManager" bind:gotoLogout="logout" bind:gotoCompany="gotoCompany" bind:gotoContactUs="gotoContactUs"></set-list>
     </view>
     <view class="subpage {{showSubPage=='userinfo' ? 'subpage-active' : 'subpage-inactive'}}">
         <set-userinfo wx:if="{{showSubPage === 'userinfo'}}"></set-userinfo>
     </view>
     <view class="subpage {{showSubPage=='dataManager' ? 'subpage-active' : 'subpage-inactive'}}">
-        <set-data-manager wx:if="{{showSubPage === 'dataManager'}}" bind:changeDataUseFlag="changeDataUseFlag" bind:delHisData="delHisData" bind:delHisData="delHisData"></set-data-manager>
+        <set-data-manager wx:if="{{showSubPage === 'dataManager'}}" bind:changeDataUseFlag="changeDataUseFlag"></set-data-manager>
     </view>
     <view class="subpage {{showSubPage=='company' ? 'subpage-active' : 'subpage-inactive'}}">
         <set-company wx:if="{{showSubPage === 'company'}}"></set-company>

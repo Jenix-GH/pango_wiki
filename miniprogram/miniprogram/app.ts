@@ -17,7 +17,7 @@ App<IAppOption>({
         question: "你是谁？",
         quote: true,
         sessionId: '',
-        answerLimitMax: 50, //免费的最大回答条数
+        answerLimitMax: 10, //免费的最大回答条数
         flagCompanyInfo: false, //公司信息完善标识，false没有，true已完善
         flagLogin: false //授权标识
     },

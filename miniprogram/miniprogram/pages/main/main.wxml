@@ -3,7 +3,7 @@
 <!--左侧抽屉页面 -->
 <left-menu id="leftPanel" dataDayTitle="{{dataDayTitle}}" dataHisTitle="{{dataHisTitle}}" userInfo="{{userInfo}}" bind:openSetPanel="showSetPanel" bind:doSearchHisItem="doSearchHisItem" bind:refresh="handleRefresh" />
 <!--底部设置页面-->
-<set-menu id="setPanel" bind:delHisData="delHisData"></set-menu>
+<set-menu id="setPanel" bind:logout="logout"></set-menu>
 <!--主页-->
 <view class="main-container" style="padding-bottom:{{keyboardPadding}}px">
     <!-- <scroll-view class="scrollarea" scroll-y scroll-with-animation scroll-into-view="{{scrollToId}}"> -->
@@ -158,7 +158,7 @@
                             <view class="image-preview-remove" bind:tap="removeImage" data-index="{{index}}">×</view>
                         </view>
                     </view>
-                    <textarea hidden="{{flagLuyuning || flagVoiceMode}}" auto-height placeholder="{{inputPlaceholder}}" bindinput="doReady" confirm-type="send" disable-default-padding show-confirm-bar="{{false}}" bindconfirm="doSearch" cursor-spacing="{{0}}" adjust-position="{{false}}" value="{{questionContent}}" class="textarea" id="myInput" maxlength="-1" bindlongpress="startRecord" bindfocus="onInputFocus" bindblur="onInputBlur" />
+                    <textarea wx:if="{{!flagLuyuning && !flagVoiceMode}}" auto-height placeholder="{{inputPlaceholder}}" bindinput="doReady" confirm-type="send" disable-default-padding show-confirm-bar="{{false}}" bindconfirm="doSearch" cursor-spacing="{{0}}" adjust-position="{{false}}" value="{{questionContent}}" class="textarea" id="myInput" maxlength="-1" bindlongpress="startRecord" bindfocus="onInputFocus" bindblur="onInputBlur" />
                     <view hidden="{{!flagLuyuning && !flagVoiceMode}}" class="talkView-active" bindtouchstart="startRecord" catchtouchmove="cancelRecord" catchtouchend="stopRecord" catchtouchcancel="cancelRecordBySystem">
                         {{luyunTipText}}
                     </view>

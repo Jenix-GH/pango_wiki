@@ -60,8 +60,8 @@ tests/
 ## Current behavior and important details
 
 - Questions and answers are persisted by the Java `/dialogue/stream-answer` proxy. The question is written before the model request and the completed answer, reference JSON, and `answer_media` are written after the terminal frame; the Mini Program must not issue a separate `/answer/doAdd` request. History is grouped and reloaded by `session_id`.
-- Session IDs are generated client-side by `getSessionId()`. Starting a new conversation forces a new ID, while opening history restores that historical session ID.
-- Guest identity is initialized through `/userinfo/guest`. The authoritative 50-question guest quota is enforced by the Java backend, not by client state alone.
+- Session IDs are generated client-side by `getSessionId()`. Each newly created Q&A page starts with a new ID, returning from Wiki/reference pages keeps the still-mounted page's ID, and opening history explicitly restores that historical session ID for follow-up questions.
+- Guest identity is initialized through `/userinfo/guest`. The authoritative 10-question guest quota is enforced by the Java backend, not by client state alone.
 - Answer media URLs must resolve under the configured HTTPS `referenceHost` and `/references/figures/`. Images are associated with citation labels, inserted between multiple `mp-html` fragments after the matching `<sup>...</sup>` marker, and can be previewed with `wx.previewImage`.
 - References open through `pages/reference-viewer/`; Wiki opens through `pages/wiki/`. Both depend on approved WebView/business domains and should be tested on a real device.
 - Markdown preprocessing inserts table spacing and preserves line breaks after citation markers. Do not bypass `fixMarkdownTableSpacing()` when restoring historical answers.

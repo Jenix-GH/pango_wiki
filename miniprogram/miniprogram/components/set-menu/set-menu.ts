@@ -40,16 +40,14 @@ Component({
         gotoDataManager(){
             this.setData({showSubPage: "dataManager", flagShowBackBtn: true, title: "数据管理"})
         },
+        logout(){
+            this.triggerEvent('logout')
+        },
         gotoCompany(){
             this.setData({showSubPage: "company", flagShowBackBtn: true, title: "紫光同创"})
         },
         gotoContactUs(){
             this.setData({showSubPage: "contactUs", flagShowBackBtn: true, title: "联系我们"})
         },
-        // 清除历史对话记录
-        delHisData(){
-            //TODO 向上触发让left-menu中的dataHisTitle清空
-            this.triggerEvent('delHisData')
-        }
     }
 })

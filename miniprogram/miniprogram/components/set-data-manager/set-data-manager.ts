@@ -1,6 +1,5 @@
 // components/set-data-manager/set-data-manager.ts
 let canChange = true;
-let canDelete = true;
 const app = getApp();
 import { showError, showSuccess } from "../../utils/tools";
 
@@ -59,24 +58,6 @@ Component({
                     wx.hideLoading()
                 }
             });
-        },
-        //删除历史数据
-        delHisData() {
-            //TODO 删除历史对话记录
-            wx.showLoading({title:"删除中...",mask: true})
-            wx.request({
-                url: app.globalData.baseHost + '/question/doDelHis',
-                method: 'POST',
-                data: { userinfoId: this.data.userinfoId },
-                success: () => {
-                    wx.hideLoading()
-                    // 清除小程序存储
-                    wx.setStorageSync("userInfo", null)
-                    console.log("删除完成")
-                }
-            });
-            //TODO 向上触发让left-menu中的dataHisTitle清空
-            this.triggerEvent('delHisData')
         }
     },
     attached() {
