@@ -74,12 +74,6 @@ Page({
         // 先显示隐私协议弹窗
         this.setData({ showPrivacyDialog: true, code: code });
     },
-    // 打开隐私协议页面
-    openPrivacyContract() {
-        //调用子组件的方法
-        const userProtocol = this.selectComponent('#userProtocol');
-        userProtocol.showPanel();
-    },
     // 用户拒绝隐私协议
     onPrivacyRefuse() {
         this.setData({ showPrivacyDialog: false });

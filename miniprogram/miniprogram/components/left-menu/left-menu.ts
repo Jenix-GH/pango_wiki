@@ -2,6 +2,8 @@
 import { copyToClipboard, showSuccess, showError } from '../../utils/tools'
 const app = getApp()
 
+const DEFAULT_NICKNAME = '微信用户'
+
 interface User {
     nickName: string,
     avatarUrl: string,
@@ -158,15 +160,9 @@ Component({
                 desc: '用于完善会员资料',
                 success: (res) => {
                     showSuccess("获取成功")
-                    // // 打开获取手机号的按钮
                     let user: User = JSON.parse(JSON.stringify(res.userInfo));
-                    console.log(user)
                     this.setData({ flagUserInfo: true, userinfo: user })
                     wx.setStorageSync('userImg', res.userInfo.avatarUrl);
-                    app.globalData.answerCount = user.count;
-                    app.globalData.todayQuestion = user.todayQuestionList;
-                    app.globalData.weekQuestion = user.weekQuestionList;
-                    app.globalData.flagCompanyInfo = user.flagCompanyInfo;
                 },
                 fail: (e: any) => {
                     showError("获取失败:" + e);
@@ -177,18 +173,12 @@ Component({
         // 点击获取手机号按钮
         onGetPhoneNumber(e: any) {
             if (!e.detail.code) {
-                showError("授权获取微信号失败,请重新尝试")
+                showError("授权获取手机号失败，请重新尝试")
                 return
             }
             const code = e.detail.code;
             // 先显示隐私协议弹窗
             this.setData({ showPrivacyDialog: true, code: code });
-        },
-        // 打开隐私协议页面
-        openPrivacyContract() {
-            //调用子组件的方法
-            const userProtocol = this.selectComponent('#userProtocol');
-            userProtocol.showPanel();
         },
         // 用户拒绝隐私协议
         onPrivacyRefuse() {
@@ -209,8 +199,8 @@ Component({
         getPhoneNumber() {
             wx.showLoading({ title: "授权中...", mask: true })
             const code = this.data.code;
-            const nickName = this.data.userinfo.nickName; //获取昵称，用于注册
-            const imgUrl = this.data.userinfo.avatarUrl; //获取图像信息
+            const nickName = this.data.userinfo.nickName || DEFAULT_NICKNAME;
+            const imgUrl = this.data.userinfo.avatarUrl || '';
             wx.request({
                 url: app.globalData.baseHost + '/wx/getPhone',
                 method: 'POST',
@@ -220,7 +210,7 @@ Component({
                     if (res.errMsg === "request:ok" && rs.code === 2000) {
                         const user: User = JSON.parse(JSON.stringify(rs.data));
                         if (null === user || user.wxCode === "") {
-                            showError("获取微信号失败")
+                            showError("获取手机号失败")
                             return;
                         }
                         user.avatarUrl = imgUrl;
@@ -229,7 +219,7 @@ Component({
                         }
                         // 本地持久化
                         wx.setStorageSync('userInfo', user);
-                        this.setData({ flagUserPhone: true, avatarUrl: user.avatarUrl, nickName: user.nickName,flagLogin: true });
+                        this.setData({ flagUserPhone: true, avatarUrl: user.avatarUrl, nickName: user.nickName, flagLogin: true });
                         app.globalData.flagLogin = true;
                         //重新加载父页面的onload
                         this.triggerEvent('refresh') // 触发自定义事件
@@ -253,22 +243,26 @@ Component({
         attached() {
             //判断用户信息是否获得
             let info = wx.getStorageSync("userInfo")
-            if (null == info || null == info.setId || info.setId <= 0) {
+            const isGuest = Boolean(info && String(info.userType || '').toUpperCase() === 'GUEST')
+            if (null == info || null == info.setId || info.setId <= 0 || isGuest) {
                 this.setData({
                     flagUserInfo: false,
                     flagUserPhone: false,
-                    flagLogin: false
+                    flagLogin: false,
+                    avatarUrl: '',
+                    nickName: ''
                 });
                 app.globalData.flagLogin = false
             } else {
                 this.setData({
                     flagUserInfo: true,
                     flagUserPhone: true,
-                    flagLogin: true
+                    flagLogin: true,
+                    avatarUrl: info.avatarUrl || '',
+                    nickName: info.nickName || ''
                 });
                 app.globalData.flagLogin = true
             }
-            this.setData({ avatarUrl: info.avatarUrl, nickName: info.nickName })
         }
     }
 })

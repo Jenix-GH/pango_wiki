@@ -18,7 +18,7 @@ import FeedbackModal from '../components/FeedbackModal'
 import pangoLogo from '../../Logo.png'
 import './ChatPage.css'
 
-const ANSWER_LIMIT = 50
+const ANSWER_LIMIT = 10
 
 export default function ChatPage() {
   const navigate = useNavigate()
@@ -634,7 +634,7 @@ export default function ChatPage() {
         <div className="login-overlay">
           <div className="login-prompt-card">
             <h3>访客体验次数已用完</h3>
-            <p>访客可以免费提问 50 次，注册或登录后可继续使用，并同步小程序历史记录。</p>
+            <p>访客可以免费提问 10 次，注册或登录后可继续使用，并同步小程序历史记录。</p>
             <div className="login-prompt-actions">
               <button className="prompt-btn secondary" onClick={() => setShowLoginPrompt(false)}>稍后再说</button>
               <button className="prompt-btn primary" onClick={() => navigate('/login')}>注册或登录</button>

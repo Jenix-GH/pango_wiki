@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
-import PersistentBrand from './components/PersistentBrand'
 import AnalyticsTracker from './components/AnalyticsTracker'
 import MiniProgramQaReturn from './components/MiniProgramQaReturn'
 import { detectMiniProgramEntry, isMiniProgramEntry } from './utils/miniProgramBridge'
@@ -36,7 +35,6 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <PersistentBrand />
         <AnalyticsTracker />
         <Suspense fallback={<div className="app-route-loading">正在加载…</div>}>
           <Routes>

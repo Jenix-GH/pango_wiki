@@ -15,32 +15,10 @@
             授权获取用户信息
         </button>
         <button wx:if="{{flagUserInfo && !flagUserPhone}}" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" class="btn-auth fade-button">
-            授权获取微信号
+            手机号快捷登录
         </button> -->
     </view>
 
-    <!-- 自定义隐私协议弹窗 -->
-    <!-- <view hidden="{{!showPrivacyDialog}}" class="privacy-mask">
-        <view class="privacy-dialog">
-            <view class="privacy-title">免责与隐私保护声明</view>
-            <view class="privacy-content">
-                <view>
-                    AI回答内容由大模型自动生成，仅供参考。回答内容可能存在误差或不完整，请勿完全依赖，重要决策前请务必核实。 使用本服务即表示您理解并同意自行承担相关风险。
-                </view>
-                <view>
-                    请阅读并同意<text class="privacy-link" bind:tap="openPrivacyContract">《免责与隐私保护条款》</text>以继续 ：
-                </view>
-
-            </view>
-            <view class="privacy-buttons">
-                <button class="privacy-button" style="border: 1px solid var(--text-mark); color: var(--text-mark); margin-right: 30rpx;" bindtap="onPrivacyRefuse">拒绝</button>
-                <button class="privacy-button btn-primary" bindtap="onPrivacyAgree">同意</button>
-            </view>
-        </view>
-    </view> -->
-
 </scroll-view>
 <view class="bottom">Supported by Pango Marketing Center</view>
-<!-- 自定义隐私协议弹窗 -->
-<!-- <user-protocol id="userProtocol"></user-protocol> -->
 

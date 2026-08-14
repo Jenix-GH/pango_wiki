@@ -31,7 +31,12 @@ export default function TopBar({
         </button>
       ) : null}
 
-      <div className="topbar-brand-slot" aria-hidden="true" />
+      <div className="topbar-brand-slot" aria-hidden="true">
+        <div className="topbar-brand">
+          <img src="/Logo.png" alt="" width="48" height="48" decoding="sync" />
+          <span>Pango 智能技术平台</span>
+        </div>
+      </div>
 
       <nav className="topbar-primary-nav" aria-label="主导航">
         <button

@@ -18,11 +18,10 @@ import com.pango.utils.UtilsValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -70,7 +69,14 @@ public class ControllerDialogue implements MyAssert {
     @PostMapping(value = "/stream-answer", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> streamAnswer(
             @RequestBody Map<String, Object> params,
-            @RequestHeader(value = "Authorization", required = false) String authorization) {
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            HttpServletResponse response) {
+        // This endpoint is streamed through the public /dbServ reverse proxy.
+        // Explicitly tell Nginx not to buffer progress and answer frames; without
+        // this header the model may finish and persist while the Mini Program
+        // still receives no first frame.
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
         DtoUserinfo user = serviceAuth.resolveUser(authorization);
         Object requestedUserId = params.get("userinfoId");
         if (requestedUserId != null && Long.parseLong(String.valueOf(requestedUserId)) != user.getId()) {

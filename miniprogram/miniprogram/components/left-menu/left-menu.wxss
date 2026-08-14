@@ -84,6 +84,15 @@
     border-radius: 50%;
 }
 
+.left-panel-set .userImgs .default-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #eef0f3;
+    border: 1rpx solid #d5d9de;
+    box-sizing: border-box;
+}
+
 .left-panel-set .userName {
     height: 70rpx;
     line-height: 70rpx;
@@ -121,17 +130,22 @@
 
 .privacy-dialog {
     width: 80%;
-    height: 40%;
+    max-height: 70vh;
     background: white;
     border-radius: 20rpx;
     padding: 30rpx;
     box-sizing: border-box;
     color: var(--text-dark);
+    display: flex;
+    flex-direction: column;
 }
 
 .privacy-content {
+    flex: 1;
+    overflow-y: auto;
     font-size: 28rpx;
-    line-height: 2;
+    line-height: 1.8;
+    margin-bottom: 30rpx;
 }
 
 .privacy-content view {
@@ -145,7 +159,7 @@
 .privacy-buttons {
     display: flex;
     justify-content: space-between;
-    margin-top: 30rpx;
+    flex-shrink: 0;
 }
 .privacy-title{
     text-align: center; padding: 30rpx; font-weight: bold;

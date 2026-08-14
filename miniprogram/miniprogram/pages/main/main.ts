@@ -9,11 +9,13 @@ let pendingScroll = false;
 let ignoreScrollUntil = 0;
 let lastChunkTime = 0; // 记录最近一次收到流式数据的时间，用于检测后台断连
 let streamTimeoutId: any = null;
-const FIRST_STREAM_FRAME_TIMEOUT_MS = 60000; // 首帧长时间未到通常意味着登录态或连接异常
+const FIRST_STREAM_FRAME_TIMEOUT_MS = 60000; // 第一条状态或回答分片应当很快到达
 const STREAM_IDLE_TIMEOUT_MS = 90000; // 已开始响应后，90s无新数据判定断连
 const STREAM_RENDER_INTERVAL_MS = 32;
 const STREAM_RENDER_MAX_TAIL_MS = 6000;
 const STREAM_RENDER_MAX_BATCH = 12;
+const GUEST_ANSWER_LIMIT = 10;
+const LOGIN_ANSWER_LIMIT = 50;
 let streamDisplayQueue: string[] = [];
 let streamDisplayTimer: any = null;
 let streamDisplayRendering = false;
@@ -55,6 +57,7 @@ let recorderPreferredFormat: 'aac' | 'mp3' = 'aac'
 let recorderAttemptStartedAt = 0
 let recorderStopFallbackTimer: any = null
 let recorderIntentVersion = 0
+let recordAuthorizationPending = false
 const MAX_UPLOAD_IMAGE_BYTES = 15 * 1024 * 1024
 
 function clearRecorderStopFallback() {
@@ -450,6 +453,14 @@ function trackAnalyticsEvent(eventName: string, pagePath: string, documentId?: s
     })
 }
 
+function isGuestUser(user: any): boolean {
+    return Boolean(user && String(user.userType || '').toUpperCase() === 'GUEST')
+}
+
+function isAuthenticatedUser(user: any): boolean {
+    return Boolean(user && Number(user.setId) > 0 && !isGuestUser(user))
+}
+
 Page({
     /**
      * 页面的初始数据
@@ -493,7 +504,7 @@ Page({
         userScrolledUp: false, //用户是否手动上滑打断自动滚底
         uploadImages: [] as QuestionImage[],
         flagDoReady: false,     //问题内容框是否为空标识
-        inputHeight: 70,     //问题框的初始化高度
+        inputHeight: 40,     //问题框的初始化高度
 
         keyboardPadding: 0,
         cursorPos: 0,
@@ -725,6 +736,7 @@ Page({
             return
         }
         const intentVersion = ++recorderIntentVersion
+        recordAuthorizationPending = true
         this.setData({
             audioPath: '', luyunTipText: "松开 结束",
             flagLuyuning: true, flagCancel: false,
@@ -734,13 +746,19 @@ Page({
         wx.authorize({
             scope: 'scope.record',
             success: () => {
+                if (intentVersion !== recorderIntentVersion) return
+                recordAuthorizationPending = false
                 // The press may already have been cancelled while waiting for
                 // the asynchronous authorization result.
-                if (intentVersion !== recorderIntentVersion || !this.data.flagLuyuning || this.data.flagTalkOver) return
+                if (!this.data.flagLuyuning || this.data.flagTalkOver) {
+                    this.setData({ flagLuyuning: false, flagCancel: false, flagTalkOver: true })
+                    return
+                }
                 this.startRecorderManager(recorderPreferredFormat)
             },
             fail: () => {
                 if (intentVersion !== recorderIntentVersion) return
+                recordAuthorizationPending = false
                 recorderState = 'idle'
                 this.setData({
                     luyunTipText: "按住 说话",
@@ -810,6 +828,7 @@ Page({
         const shouldCancel = moveY > 50
         if (shouldCancel) {
             recorderIntentVersion++
+            recordAuthorizationPending = false
             showSuccess("已取消")
             this.setData({
                 luyunTipText: "按住 说话",
@@ -824,6 +843,7 @@ Page({
     cancelRecordBySystem() {
         if (!this.data.flagLuyuning || this.data.flagTalkOver) return
         recorderIntentVersion++
+        recordAuthorizationPending = false
         this.setData({
             luyunTipText: "按住 说话",
             flagLuyuning: false,
@@ -850,7 +870,7 @@ Page({
                             this.setData({
                                 questionContent: text,
                                 flagVoiceMode: false,
-                                flagDoReady: true
+                                flagDoReady: text.trim() !== ''
                             })
                         } else if (payload.code !== 2000) {
                             const errorMessage = typeof payload.data === "string" && payload.data !== ""
@@ -889,6 +909,17 @@ Page({
     // 停止录音
     stopRecord() {
         if (!this.data.flagLuyuning || this.data.flagTalkOver) return
+        if (recordAuthorizationPending && recorderState === 'idle') {
+            recorderIntentVersion++
+            recordAuthorizationPending = false
+            this.setData({
+                luyunTipText: "按住 说话",
+                flagLuyuning: false,
+                flagCancel: false,
+                flagTalkOver: true
+            })
+            return
+        }
         const duration = Date.now() - this.data.startTime
         if (duration < 1000) {
             recorderIntentVersion++
@@ -965,10 +996,43 @@ Page({
         const setPanel = this.selectComponent('#setPanel');
         setPanel.showSetPanel();
     },
-    //删除left-menu中的dataHisTitle记录
-    delHisData() {
-        this.setData({ dataHisTitle: [], dataDayTitle: [] })
-        wx.showToast({ title: "操作完成", icon: "success" })
+    syncUserInfoFromStorage() {
+        const stored = wx.getStorageSync('userInfo')
+        if (stored && stored.id && Number(stored.id) !== Number(this.data.userInfo?.id)) {
+            this.setData({ userInfo: stored })
+        }
+    },
+    logout() {
+        const token = String(wx.getStorageSync('pangoAccessToken') || '').trim()
+        if (token) {
+            wx.request({
+                url: app.globalData.baseHost + '/auth/logout',
+                method: 'POST',
+                header: { 'Authorization': `Bearer ${token}` },
+                complete: () => {}
+            })
+        }
+
+        wx.removeStorageSync('pangoAccessToken')
+        wx.removeStorageSync('userInfo')
+        wx.removeStorageSync('userImg')
+        app.globalData.flagLogin = false
+
+        this.setData({
+            userInfo: null,
+            dataDayTitle: [],
+            dataHisTitle: [],
+            answerCount: 0
+        })
+
+        const leftPanel = this.selectComponent('#leftPanel') as any
+        if (leftPanel?.resetAuthentication) leftPanel.resetAuthentication()
+
+        const setPanel = this.selectComponent('#setPanel') as any
+        if (setPanel?.hideSetPanel) setPanel.hideSetPanel()
+
+        wx.showToast({ title: '已退出登录', icon: 'success' })
+        void this.refreshUserAndHistory()
     },
     //快速提问
     fastSearch(e: any) {
@@ -982,7 +1046,7 @@ Page({
             showError("正在回答中，请勿重复")
         }
         //不能为空值
-        const ready = this.data.questionContent.trim() !== '' || this.data.uploadImages.length > 0
+        const ready = this.data.questionContent.trim() !== ''
         this.setData({ flagVoiceMode: false, flagDoReady: ready })
     },
     onInputFocus() {
@@ -1040,11 +1104,14 @@ Page({
                     loaded++;
                     if (loaded === files.length) {
                         const images = [...this.data.uploadImages, ...newImages];
-                        this.setData({ uploadImages: images, flagDoReady: true });
+                        this.setData({
+                            uploadImages: images,
+                            flagDoReady: this.data.questionContent.trim() !== ''
+                        });
                     }
                 });
                 if (files.length === 0) {
-                    this.setData({ flagDoReady: this.data.questionContent !== '' });
+                    this.setData({ flagDoReady: this.data.questionContent.trim() !== '' });
                 }
             }
         });
@@ -1055,7 +1122,7 @@ Page({
         images.splice(index, 1);
         this.setData({
             uploadImages: images,
-            flagDoReady: this.data.questionContent !== '' || images.length > 0
+            flagDoReady: this.data.questionContent.trim() !== ''
         });
     },
     previewChatImage(e: any) {
@@ -1083,8 +1150,16 @@ Page({
     },
     //执行查询
     doSearch() {
+        this.syncUserInfoFromStorage()
         if (!this.data.userInfo?.id) {
             showError("访客信息初始化中，请稍后重试")
+            return
+        }
+        const content = String(this.data.questionContent || '').trim()
+        if (!content) {
+            showError(this.data.uploadImages.length > 0
+                ? "请先输入问题文字，图片需要配合文字一起发送"
+                : "请输入问题内容")
             return
         }
         //判断是否未完善公司信息
@@ -1094,9 +1169,6 @@ Page({
             showError("正在回答中，请勿重复")
             return;
         }
-        //不能为空值
-        if ("" === this.data.questionContent && this.data.uploadImages.length === 0) return;
-        const content = this.data.questionContent
         this.addQuestion()
         this.startStreaming(content)
         //移动到最底部
@@ -1363,8 +1435,9 @@ Page({
         this.getSessionId()
       }
 
+      const activeUser = wx.getStorageSync('userInfo') || this.data.userInfo
       const data: Record<string, unknown> = {
-        userinfoId: this.data.userInfo.id,
+        userinfoId: activeUser ? activeUser.id : null,
         question: content,
         quote: app.globalData.quote,
         conversation_id: this.data.isTestVersion
@@ -1384,6 +1457,7 @@ Page({
       }
 
       let frameCount = 0
+      let terminalReceived = false
       this.data.requestTask = streamUtils.fetchStream(
         url,
         data,
@@ -1397,10 +1471,10 @@ Page({
           lastChunkTime = Date.now()
           setStreamTimeout(this, 'idle')
           frameCount++
-          const ts = Date.now()
           // const preview = raw.length > 80 ? raw.substring(0, 80) + '...' : raw
 
           if (raw === '[DONE]') {
+            terminalReceived = true
             console.log(`[frame] #${frameCount} [DONE]`)
             this.requestStreamDisplayCompletion()
             return
@@ -1412,7 +1486,7 @@ Page({
             payload = JSON.parse(raw)
             if (payload.code === 4290) {
               resetStreamDisplayQueue()
-              this.stopStreaming()
+              this.stopStreaming(true)
               showError(payload.message || '访客体验次数已用完，请登录后继续使用')
               return
             }
@@ -1457,6 +1531,7 @@ Page({
           }
 
           if (payload.data === true || payload.answer_replace) {
+            terminalReceived = true
             const finalAnswer = String(payload.answer || '')
           
             if (payload.answer_replace && finalAnswer) {
@@ -1502,11 +1577,29 @@ Page({
           }
         },
         err => {
+          if (terminalReceived) {
+            // The answer is already complete. Some WeChat clients still report
+            // a transport failure while the final UI batch is being rendered.
+            this.requestStreamDisplayCompletion()
+            return
+          }
           console.error('流式请求异常', err)
           const message = String(err?.message || '请求失败，请稍后重试')
           const shouldReauthenticate = err?.statusCode === 401 || err?.statusCode === 403 ||
             /登录状态|访问令牌|身份不匹配|未登录|token/i.test(message)
           this.handleStreamFailure(message, shouldReauthenticate ? 'reauthenticate' : null)
+        },
+        () => {
+          // A transport can close cleanly without delivering the terminal frame.
+          // Finish already received plain-text content, otherwise recover the
+          // answer persisted by Java instead of leaving the UI waiting forever.
+          if (!terminalReceived && this.data.flagStart) {
+            if (this.data.streamContentData || streamDisplayQueue.length > 0) {
+              this.requestStreamDisplayCompletion()
+            } else {
+              this.handleStreamFailure('连接提前结束，正在尝试恢复回答')
+            }
+          }
         }
       )
     },
@@ -1577,23 +1670,35 @@ Page({
             if (recovery === 'reauthenticate') {
                 this.showReauthenticateGuide(message)
             } else {
-                showError(message)
+                void this.recoverCurrentSessionAnswer().then((recovered: boolean) => {
+                    if (recovered) {
+                        wx.showToast({ title: '已恢复本次回答', icon: 'success' })
+                    } else {
+                        showError(message)
+                    }
+                })
             }
         })
     },
     // 停止接收流式数据
-    stopStreaming() {
+    stopStreaming(abortRequest = false) {
         resetStreamDisplayQueue()
         lastChunkTime = 0
         clearStreamTimeout()
         if (this.data.timer !== null) {
             clearInterval(this.data.timer)
         }
-        if (this.data.requestTask) {
+        const task = this.data.requestTask
+        // Mark the request finished before aborting it. Some WeChat versions
+        // synchronously invoke the fail callback from abort(), which otherwise
+        // clears the answer that has just been appended to the conversation.
+        this.data.requestTask = null
+        this.data.flagStart = false
+        if (task) {
             try {
-                this.data.requestTask.offHeadersReceived()
-                this.data.requestTask.offChunkReceived()
-                this.data.requestTask.abort()
+                task.offHeadersReceived()
+                task.offChunkReceived()
+                if (abortRequest) task.abort()
             } catch (_) {
                 // 小程序从后台切回时 requestTask 可能已被系统回收
             }
@@ -1832,30 +1937,7 @@ Page({
                     leftPanel.hideLeftPanel();
                     //填充问题与答案
                     app.globalData.sessionId = sessionId
-                    const historyRows: any[] = []
-                    ;(rs.data || []).forEach((item: any) => {
-                        historyRows.push({
-                            flagAi: 0,
-                            content: item.question,
-                            time: item.dotime || '',
-                            images: normalizeQuestionImages(item.questionImages || item.question_images)
-                        })
-                        if (item.answer) {
-                            const answerContent = this.fixMarkdownTableSpacing(item.answer.content || '')
-                            const answerMedia = normalizeAnswerMedia(item.answer.answerMedia || item.answer.answer_media)
-                            historyRows.push({
-                                flagAi: 1,
-                                content: answerContent,
-                                contentData: answerContent,
-                                time: item.answer.dotime,
-                                answerTime: item.answer.answerTime || item.answer.dotime,
-                                flagEvaluate: item.answer.flagEvaluate,
-                                reference: normalizeReference(item.answer.reference),
-                                answerMedia,
-                                answerSections: placeMediaAfterCitations(answerContent, answerMedia)
-                            })
-                        }
-                    })
+                    const historyRows = this.buildSessionHistoryRows(rs.data || [])
                     this.setData({
                         // 历史记录是一次会话切换，不追加到当前会话。
                         sessionList: historyRows,
@@ -1877,25 +1959,33 @@ Page({
     },
     // 判断当前用户的使用条数是否>最大免费条数
     checkAnswerLimit() {
-        if (!app.globalData.flagCompanyInfo) {
-            if (this.data.answerCount >= app.globalData.answerLimitMax) {
-                wx.showToast({ title: "体验次数已用完，请前往个人信息中心，完善公司信息获取无限对话次数", duration: 7000, icon: "none" })
-                return true;
-            }
+        const isGuest = isGuestUser(this.data.userInfo)
+        const limit = isGuest ? GUEST_ANSWER_LIMIT : LOGIN_ANSWER_LIMIT
+
+        if (isGuest && this.data.answerCount >= limit) {
+            wx.showToast({
+                title: "访客体验次数已用完，请登录后继续使用",
+                duration: 5000,
+                icon: "none"
+            })
+            return true
+        }
+
+        if (!isGuest && !app.globalData.flagCompanyInfo && this.data.answerCount >= limit) {
+            wx.showToast({
+                title: "免费提问次数已用完，请完善公司信息后继续使用",
+                duration: 5000,
+                icon: "none"
+            })
+            return true
         }
         return false;
     },
-    handleRefresh(){
-        this.onLoad();
-    },
-    /**
-     * 生命周期函数--监听页面加载
-     */
-    async onLoad() {
+    async refreshUserAndHistory() {
         //判断是否有登录授权
         let info = wx.getStorageSync("userInfo")
         info = await this.resolveAuthenticatedUser(info)
-        if (null != info && null != info.setId && info.setId > 0) {
+        if (isAuthenticatedUser(info)) {
             this.setData({userInfo: info})
             //查询历史对话
             const data = await this.getHisData()
@@ -1923,6 +2013,20 @@ Page({
                 }
             }
         }
+    },
+    handleRefresh(){
+        void this.refreshUserAndHistory()
+    },
+    /**
+     * 生命周期函数--监听页面加载
+     */
+    async onLoad() {
+        // A newly created Q&A page always starts a new conversation. The page
+        // remains alive while opening Wiki/reference pages, so navigateBack()
+        // keeps the current conversation. Selecting history explicitly replaces
+        // this id in doSearchHisItem(), allowing follow-up questions there.
+        this.getSessionId(true)
+        await this.refreshUserAndHistory()
         const EXTRA_OFFSET = 0; // 键盘顶部与输入框之间的额外间距
         wx.onKeyboardHeightChange(res => {
             const newPadding = res.height > 0 ? res.height + EXTRA_OFFSET : 0
@@ -1935,7 +2039,79 @@ Page({
         })
         trackAnalyticsEvent('page_view', '/pages/main/main')
     },
+    buildSessionHistoryRows(items: any[]) {
+        const historyRows: any[] = []
+        ;(items || []).forEach((item: any) => {
+            historyRows.push({
+                flagAi: 0,
+                content: item.question,
+                time: item.dotime || '',
+                images: normalizeQuestionImages(item.questionImages || item.question_images)
+            })
+            if (item.answer) {
+                const answerContent = this.fixMarkdownTableSpacing(item.answer.content || '')
+                const answerMedia = normalizeAnswerMedia(item.answer.answerMedia || item.answer.answer_media)
+                historyRows.push({
+                    flagAi: 1,
+                    content: answerContent,
+                    contentData: answerContent,
+                    time: item.answer.dotime,
+                    answerTime: item.answer.answerTime || item.answer.dotime,
+                    flagEvaluate: item.answer.flagEvaluate,
+                    reference: normalizeReference(item.answer.reference),
+                    answerMedia,
+                    answerSections: placeMediaAfterCitations(answerContent, answerMedia)
+                })
+            }
+        })
+        return historyRows
+    },
+    async recoverCurrentSessionAnswer() {
+        const sessionId = String(app.globalData.sessionId || '')
+        const userId = this.data.userInfo?.id
+        if (!sessionId || !userId) return false
+
+        for (let attempt = 0; attempt < 5; attempt++) {
+            if (attempt > 0) {
+                await new Promise(resolve => setTimeout(resolve, attempt * 1000))
+            }
+            try {
+                const res: any = await new Promise((resolve, reject) => {
+                    wx.request({
+                        url: app.globalData.baseHost + '/question/findBySessionId',
+                        method: 'POST',
+                        data: { userinfoId: userId, sessionId },
+                        success: resolve,
+                        fail: reject
+                    })
+                })
+                const result = res.data as ApiResponse<any[]>
+                const rows = result?.code === 2000 ? (result.data || []) : []
+                const latestQuestion = rows.length > 0 ? rows[rows.length - 1] : null
+                // A multi-turn session may contain older answers. Recovery is
+                // successful only when the latest question has its own answer.
+                if (!latestQuestion?.answer) continue
+                // Do not let a late recovery overwrite a newly opened session
+                // or a new request that the user has already submitted.
+                if (String(app.globalData.sessionId || '') !== sessionId || this.data.flagStart) return false
+                const historyRows = this.buildSessionHistoryRows(rows)
+                this.setData({ sessionList: historyRows }, () => this.toBottom())
+                const history = await this.getHisData()
+                if (history?.code === 2000) {
+                    this.setData({ answerCount: history.data.count || 0 })
+                }
+                return true
+            } catch (error) {
+                console.warn('自动恢复当前会话失败', error)
+            }
+        }
+        return false
+    },
     async resolveAuthenticatedUser(localUser: any) {
+        if (isGuestUser(localUser)) {
+            wx.removeStorageSync('userInfo')
+            return null
+        }
         const storedToken = String(wx.getStorageSync('pangoAccessToken') || '').trim()
         const embeddedToken = String(localUser?.accessToken || '').trim()
         const candidates = Array.from(new Set([storedToken, embeddedToken].filter(Boolean)))
@@ -1954,7 +2130,7 @@ Page({
                     })
                 })
                 const result = res.data as ApiResponse<any>
-                if (result?.code !== 2000 || !result.data?.id) continue
+                if (result?.code !== 2000 || !result.data?.id || isGuestUser(result.data)) continue
                 const authenticated = {
                     ...result.data,
                     avatarUrl: result.data.avatarUrl || localUser?.avatarUrl || '',
@@ -2020,11 +2196,10 @@ Page({
         }
     },
     doReady(e: any) {
+        const value = String(e.detail.value || '')
         this.setData({
-            questionContent: e.detail.value
-        });
-        this.setData({
-            flagDoReady: this.data.questionContent !== '' || this.data.uploadImages.length > 0
+            questionContent: value,
+            flagDoReady: value.trim() !== ''
         });
     },
 
@@ -2032,8 +2207,8 @@ Page({
      * 生命周期函数--监听页面初次渲染完成
      */
     onReady() {
-        //获取对话的session
-        this.getSessionId()
+        // session_id is initialized in onLoad. Do not reuse the process-global
+        // value here, because it may belong to the previously opened Q&A page.
     },
     getSessionId(forceNew = false) {
         if (!forceNew && app.globalData.sessionId) {
@@ -2156,22 +2331,32 @@ Page({
             this.data.currentStatusText || this.data.streamContentData || this.data.streamThink
         )
         this.setData(updates, () => {
-            if (phase === 'first-frame' || !hasReceivedResponse) {
-                this.showReenterMiniProgramGuide()
-            } else {
-                wx.showToast({ title: '网络已断开，请重新发送', icon: 'none' })
-            }
+            void this.recoverCurrentSessionAnswer().then((recovered: boolean) => {
+                if (recovered) {
+                    wx.showToast({ title: '已恢复本次回答', icon: 'success' })
+                } else if (phase === 'first-frame' || !hasReceivedResponse) {
+                    this.showReenterMiniProgramGuide('长时间未收到服务响应，已尝试刷新当前会话。请检查网络后重试；若仍无法使用，请从右上角“…”菜单重新进入小程序。')
+                } else {
+                    wx.showToast({ title: '网络已断开，请重新发送', icon: 'none' })
+                }
+            })
         })
     },
     /**
      * 生命周期函数--监听页面显示
      */
     onShow() {
-        this.toBottom()
-        // 从后台切回时若仍处流式状态且超时，安全退出思考状态
-        if (this.data.flagStart && lastChunkTime > 0 && Date.now() - lastChunkTime > 5000) {
-            this.handleStreamTimeout()
+        if (recordAuthorizationPending && this.data.flagLuyuning) {
+            recorderIntentVersion++
+            recordAuthorizationPending = false
+            recorderState = 'idle'
+            activeRecorderPage = null
+            this.setData({ flagLuyuning: false, flagCancel: false, flagTalkOver: true })
         }
+        this.toBottom()
+        // Do not infer a broken stream merely because the Mini Program spent a
+        // few seconds in the background. The request timeout and stream idle
+        // timer own connection recovery; aborting here used to discard replies.
     },
 
     /**
@@ -2189,6 +2374,7 @@ Page({
         // Invalidate a pending wx.authorize callback so an unloaded page can
         // never start the global recorder later.
         recorderIntentVersion++
+        recordAuthorizationPending = false
         if (activeRecorderPage === this) {
             activeRecorderPage = null
             try { this.stopRecorderManager() } catch (_) {}

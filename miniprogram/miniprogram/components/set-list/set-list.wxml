@@ -14,6 +14,10 @@
                     <iconfont name="shujuguanli" size="20" color="gray" />
                 </view>
             </view>
+            <view class="item item1" bind:tap="gotoLogout">
+                <view>退出登录</view>
+                <view></view>
+            </view>
         </view>
     </view>
     <view class="setMenuBlock">

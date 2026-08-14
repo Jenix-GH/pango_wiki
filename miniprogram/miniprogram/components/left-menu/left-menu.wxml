@@ -5,12 +5,9 @@
             授权获取用户信息
         </button>
         <button wx:if="{{flagUserInfo && !flagUserPhone}}" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" class="btn-auth fade-button">
-            授权获取微信号
+            手机号快捷登录
         </button>
 
-        <!-- 自定义隐私协议弹窗 -->
-        <user-protocol id="userProtocol"></user-protocol>
-        <!-- 自定义隐私协议弹窗 -->
         <view hidden="{{!showPrivacyDialog}}" class="privacy-mask">
             <view class="privacy-dialog">
                 <view class="privacy-title">免责与隐私保护声明</view>
@@ -19,7 +16,7 @@
                         AI回答内容由大模型自动生成，仅供参考。回答内容可能存在误差或不完整，请勿完全依赖，重要决策前请务必核实。 使用本服务即表示您理解并同意自行承担相关风险。
                     </view>
                     <view>
-                        请阅读并同意<text class="privacy-link" bind:tap="openPrivacyContract">《免责与隐私保护条款》</text>以继续 ：
+                        为持续提升服务质量，我们可能会将您的问答数据用于模型优化与提升。我们承诺采取必要的安全措施，保障您的数据隐私安全。
                     </view>
 
                 </view>
@@ -56,7 +53,10 @@
         </scroll-view>
         <view class="left-panel-set" bind:tap="goto_set_page">
             <view class="userImgs">
-                <image class="imgs" src="{{avatarUrl}}" />
+                <image wx:if="{{avatarUrl}}" class="imgs" src="{{avatarUrl}}" />
+                <view wx:else class="imgs default-avatar">
+                    <iconfont name="user" size="40" color="gray" />
+                </view>
             </view>
             <view class="userName">{{nickName}}</view>
             <view class="setImgs">

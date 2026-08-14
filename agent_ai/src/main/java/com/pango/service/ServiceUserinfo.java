@@ -22,7 +22,7 @@ import java.util.Map;
 @Transactional
 @Service
 public class ServiceUserinfo extends ServiceImpl<MapperUserinfo, DtoUserinfo> implements BaseService<DtoUserinfo> {
-    public static final int GUEST_QUOTA_LIMIT = 50;
+    public static final int GUEST_QUOTA_LIMIT = 10;
     @Override
     public LambdaQueryWrapper<DtoUserinfo> fillParams(Map<String, Object> params) {
         return null;
