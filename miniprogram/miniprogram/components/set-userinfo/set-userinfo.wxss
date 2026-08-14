@@ -1,19 +1,30 @@
 /* user-info子组件样式 */
 .userForm {
     background-color: var(--bg-white);
-    height: 100%;
+    min-height: 100%;
     margin-top: 20rpx;
+    box-sizing: border-box;
 }
 
 .userForm .formItem {
     display: flex;
     padding: 30rpx;
     border-bottom: 1px solid var(--bg-light);
+    font-size: 32rpx;
+    align-items: center;
 }
 
 .ilabel {
     width: 170rpx;
-    height: 40rpx;
+    flex-shrink: 0;
+    line-height: 44rpx;
+}
+
+.userForm input {
+    flex: 1;
+    min-width: 0;
+    font-size: 32rpx;
+    line-height: 44rpx;
 }
 
 .userForm .formButton {

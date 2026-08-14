@@ -62,7 +62,11 @@
 /* 子页面切换动画 */
 .subpage {
     position: absolute;
+    top: 100rpx;
+    bottom: 0;
     width: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     transition: all 0.35s cubic-bezier(0.68, -0.55, 0.27, 1.55);
 }
 
@@ -73,4 +77,5 @@
 /* 显示状态 */
 .subpage-inactive {
     opacity: 0;
+    pointer-events: none;
 }

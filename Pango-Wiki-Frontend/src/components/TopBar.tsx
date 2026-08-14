@@ -1,5 +1,4 @@
 import './TopBar.css'
-import { isMiniProgramEntry } from '../utils/miniProgramBridge'
 
 interface Props {
   active: 'chat' | 'wiki' | 'license'
@@ -22,8 +21,6 @@ export default function TopBar({
   onOpenMenu,
   userDisabled = false,
 }: Props) {
-  const miniProgramClient = isMiniProgramEntry()
-
   return (
     <header className="topbar">
       {onOpenMenu ? (
@@ -35,12 +32,10 @@ export default function TopBar({
       ) : null}
 
       <div className="topbar-brand-slot" aria-hidden="true">
-        {miniProgramClient ? (
-          <div className="topbar-brand">
-            <img src="/Logo.png" alt="" width="48" height="48" decoding="sync" />
-            <span>Pango 智能技术平台</span>
-          </div>
-        ) : null}
+        <div className="topbar-brand">
+          <img src="/Logo.png" alt="" width="48" height="48" decoding="sync" />
+          <span>Pango 智能技术平台</span>
+        </div>
       </div>
 
       <nav className="topbar-primary-nav" aria-label="主导航">

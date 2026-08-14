@@ -14,6 +14,8 @@ const STREAM_IDLE_TIMEOUT_MS = 90000; // 已开始响应后，90s无新数据判
 const STREAM_RENDER_INTERVAL_MS = 32;
 const STREAM_RENDER_MAX_TAIL_MS = 6000;
 const STREAM_RENDER_MAX_BATCH = 12;
+const GUEST_ANSWER_LIMIT = 10;
+const LOGIN_ANSWER_LIMIT = 50;
 let streamDisplayQueue: string[] = [];
 let streamDisplayTimer: any = null;
 let streamDisplayRendering = false;
@@ -1957,11 +1959,25 @@ Page({
     },
     // 判断当前用户的使用条数是否>最大免费条数
     checkAnswerLimit() {
-        if (!app.globalData.flagCompanyInfo) {
-            if (this.data.answerCount >= app.globalData.answerLimitMax) {
-                wx.showToast({ title: "体验次数已用完，请前往个人信息中心，完善公司信息获取无限对话次数", duration: 7000, icon: "none" })
-                return true;
-            }
+        const isGuest = isGuestUser(this.data.userInfo)
+        const limit = isGuest ? GUEST_ANSWER_LIMIT : LOGIN_ANSWER_LIMIT
+
+        if (isGuest && this.data.answerCount >= limit) {
+            wx.showToast({
+                title: "访客体验次数已用完，请登录后继续使用",
+                duration: 5000,
+                icon: "none"
+            })
+            return true
+        }
+
+        if (!isGuest && !app.globalData.flagCompanyInfo && this.data.answerCount >= limit) {
+            wx.showToast({
+                title: "免费提问次数已用完，请完善公司信息后继续使用",
+                duration: 5000,
+                icon: "none"
+            })
+            return true
         }
         return false;
     },
