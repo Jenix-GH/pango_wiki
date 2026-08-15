@@ -1,5 +1,5 @@
 // components/left-menu/left-menu.ts
-import { copyToClipboard, showSuccess, showError } from '../../utils/tools'
+import { copyToClipboard, showSuccess, showError, persistUserInfo } from '../../utils/tools'
 const app = getApp()
 
 const DEFAULT_NICKNAME = '微信用户'
@@ -218,7 +218,7 @@ Component({
                             wx.setStorageSync('pangoAccessToken', user.accessToken)
                         }
                         // 本地持久化
-                        wx.setStorageSync('userInfo', user);
+                        persistUserInfo(user);
                         this.setData({ flagUserPhone: true, avatarUrl: user.avatarUrl, nickName: user.nickName, flagLogin: true });
                         app.globalData.flagLogin = true;
                         //重新加载父页面的onload

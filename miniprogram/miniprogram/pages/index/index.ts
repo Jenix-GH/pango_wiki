@@ -1,5 +1,5 @@
 // index.ts
-import { showSuccess, showError } from '../../utils/tools'
+import { showSuccess, showError, persistUserInfo } from '../../utils/tools'
 // 获取应用实例
 const app = getApp()
 
@@ -110,7 +110,7 @@ Page({
                     user.avatarUrl = imgUrl;
                     if (user.accessToken) wx.setStorageSync('pangoAccessToken', user.accessToken)
                     // 本地持久化
-                    wx.setStorageSync('userInfo', user);
+                    persistUserInfo(user);
                     this.setData({ flagUserPhone: true });
                     
                 } else {

@@ -1,7 +1,7 @@
 // pages/main/main.ts
 import { formatTime } from '../../utils/util'
 import streamUtils from "./stream"
-import { copyToClipboard, extractText, showError, showSuccess } from '../../utils/tools'
+import { copyToClipboard, extractText, showError, showSuccess, persistUserInfo } from '../../utils/tools'
 // import marked from "../../utils/marked.min.js"
 
 let isScrolling = false;
@@ -2148,7 +2148,7 @@ Page({
 
         if (!firstValid) return localUser
         wx.setStorageSync('pangoAccessToken', firstValid.token)
-        wx.setStorageSync('userInfo', firstValid.user)
+        persistUserInfo(firstValid.user)
         return firstValid.user
     },
     async getOrCreateGuestUser() {

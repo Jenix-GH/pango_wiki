@@ -1,4 +1,4 @@
-import { showError, showSuccess } from "../../utils/tools";
+import { showError, showSuccess, persistUserInfo } from "../../utils/tools";
 
 // components/set-userinfo/set-userinfo.ts
 const app = getApp();
@@ -45,7 +45,7 @@ Component({
                         }else{
                             app.globalData.flagCompanyInfo = false;
                         }
-                        wx.setStorageSync('userInfo', res.data.data);
+                        persistUserInfo(res.data.data);
                     }else{
                         showError("保存失败-2")
                     }
