@@ -180,22 +180,6 @@
   overflow-y: auto;
 }
 
-.loading-dots {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 0;
-}
-
-.loading-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--bg-primary);
-  transition: opacity 0.35s ease, transform 0.35s ease;
-}
-
 .guest-banner {
   display: flex;
   align-items: center;
@@ -304,19 +288,6 @@
 
 .prompt-btn.primary:hover {
   background: var(--bg-primary-hover);
-}
-
-.stream-progress {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  font-size: 13px;
-  color: var(--text-mark);
-}
-
-.progress-emoji {
-  font-size: 16px;
 }
 
 .pseudo-stream-text {
