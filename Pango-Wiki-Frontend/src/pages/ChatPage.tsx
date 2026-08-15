@@ -15,7 +15,10 @@ import SettingsPanel from '../components/SettingsPanel'
 import ChatBubble from '../components/ChatBubble'
 import ChatInput from '../components/ChatInput'
 import FeedbackModal from '../components/FeedbackModal'
+import AgentProgress from '../components/AgentProgress'
 import pangoLogo from '../../Logo.png'
+import { advanceAgentProgress, INITIAL_AGENT_PROGRESS } from '../utils/agentProgress'
+import type { AgentProgressState } from '../utils/agentProgress'
 import './ChatPage.css'
 
 const ANSWER_LIMIT = 10
@@ -39,8 +42,7 @@ export default function ChatPage() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
-  const [progressText, setProgressText] = useState('')
-  const [progressEmoji, setProgressEmoji] = useState('')
+  const [progress, setProgress] = useState<AgentProgressState | null>(null)
   const isTestVersion = true
   const [sessionId, setSessionId] = useState('')
   const [showLeft, setShowLeft] = useState(() => window.matchMedia('(min-width: 769px)').matches)
@@ -48,7 +50,6 @@ export default function ChatPage() {
   const [dayQuestions, setDayQuestions] = useState<QuestionItem[]>([])
   const [weekQuestions, setWeekQuestions] = useState<QuestionItem[]>([])
   const [showTips, setShowTips] = useState(true)
-  const [dotsPhase, setDotsPhase] = useState(0)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const [userScrolledUp, setUserScrolledUp] = useState(false)
   const [uploadImages, setUploadImages] = useState<UploadImage[]>([])
@@ -56,7 +57,6 @@ export default function ChatPage() {
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const dotsTimer = useRef<ReturnType<typeof setInterval>>()
   const streamTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
   const ignoreScrollUntil = useRef(0)
   const activeRunRef = useRef(0)
@@ -121,8 +121,7 @@ export default function ChatPage() {
 
   const clearLiveStreamUi = useCallback(() => {
     resetStreamContent()
-    setProgressText('')
-    setProgressEmoji('')
+    setProgress(null)
   }, [resetStreamContent])
 
   const commitAiMessage = useCallback((message: ChatMessage) => {
@@ -212,8 +211,7 @@ export default function ChatPage() {
     const runId = ++activeRunRef.current
     setStreamingActive(true)
     resetStreamContent()
-    setProgressText('')
-    setProgressEmoji('')
+    setProgress(INITIAL_AGENT_PROGRESS)
     armStreamTimeout(runId)
 
     start(
@@ -222,22 +220,21 @@ export default function ChatPage() {
       currentSessionId,
       isTestVersion,
       imagesToSend,
-      (statusText, emoji) => {
+      (nextProgress) => {
         if (activeRunRef.current !== runId) return
-        setProgressText(statusText)
-        setProgressEmoji(emoji)
+        setProgress((current) => advanceAgentProgress(current, nextProgress))
         armStreamTimeout(runId)
       },
       (text, mode) => {
         if (activeRunRef.current !== runId) return
+        setProgress(null)
         pushStreamContent(text, mode)
         armStreamTimeout(runId)
       },
       (finalAnswer, reference, citations, trace, answerMedia) => {
         if (activeRunRef.current !== runId) return
         clearStreamTimeout()
-        setProgressText('')
-        setProgressEmoji('')
+        setProgress(null)
         const answerContent = finalAnswer || getTargetText()
         const normalizedRef = normalizeReference(reference)
         void finishStreamContent(answerContent).then(() => {
@@ -315,15 +312,6 @@ export default function ChatPage() {
       showToast(error instanceof Error ? error.message : '评价失败，请稍后重试')
     }
   }
-
-  useEffect(() => {
-    if (isStreaming) {
-      dotsTimer.current = setInterval(() => setDotsPhase((p) => (p + 1) % 3), 400)
-    } else {
-      clearInterval(dotsTimer.current)
-    }
-    return () => clearInterval(dotsTimer.current)
-  }, [isStreaming])
 
   const handleSubmitFeedback = async (form: Pick<FeedbackPayload, 'feedbackType' | 'detail' | 'feedbackImages' | 'contactName' | 'companyName' | 'email' | 'phone'>) => {
     if (feedbackMessageIndex === null) return
@@ -451,26 +439,6 @@ export default function ChatPage() {
     input.click()
   }
 
-  const renderDots = () => {
-    const dots = [
-      { opacity: 0.3, scale: 0.5 },
-      { opacity: 0.7, scale: 0.9 },
-      { opacity: 1, scale: 1 },
-    ]
-    const shifted = [...dots.slice(dotsPhase), ...dots.slice(0, dotsPhase)]
-    return (
-      <div className="loading-dots">
-        {shifted.map((d, i) => (
-          <span
-            key={i}
-            className="loading-dot"
-            style={{ opacity: d.opacity, transform: `scale(${d.scale})` }}
-          />
-        ))}
-      </div>
-    )
-  }
-
   const tips = [
     { content: '紫光同创FPGA芯片有哪些?' },
     { content: '介绍一下PG2T390器件' },
@@ -575,21 +543,14 @@ export default function ChatPage() {
               />
             ))}
 
-            {isStreaming && !streamContent && (
+            {isStreaming && !streamContent && progress && (
               <div className="bubble bubble-ai">
                 <div className="bubble-ai-header">
                   <img className="bubble-ai-avatar" src={pangoLogo} alt="Pango" />
                   <span className="bubble-ai-name">智能助手</span>
                 </div>
                 <div className="bubble-ai-content">
-                  {progressText ? (
-                    <div className="stream-progress">
-                      <span className="progress-emoji">{progressEmoji}</span>
-                      <span>{progressText}</span>
-                      {renderDots()}
-                    </div>
-                  ) : null}
-                  {!progressText && renderDots()}
+                  <AgentProgress progress={progress} />
                 </div>
               </div>
             )}
@@ -601,12 +562,6 @@ export default function ChatPage() {
                   <span className="bubble-ai-name">智能助手</span>
                 </div>
                 <div className="bubble-ai-content">
-                  {progressText && (
-                    <div className="stream-progress">
-                      <span className="progress-emoji">{progressEmoji}</span>
-                      <span>{progressText}</span>
-                    </div>
-                  )}
                   <div className="markdown-body">
                     <p className="pseudo-stream-text">
                       {streamContent}

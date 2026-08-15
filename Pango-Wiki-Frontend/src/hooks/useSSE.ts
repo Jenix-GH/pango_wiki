@@ -1,6 +1,7 @@
 import { useRef, useCallback, useEffect } from 'react'
 import { api } from '../api/client'
 import type { AnswerMedia, ReferencePayload, UploadImage } from '../api/types'
+import type { AgentProgressState } from '../utils/agentProgress'
 
 export function useSSE() {
   const controllerRef = useRef<AbortController | null>(null)
@@ -12,7 +13,7 @@ export function useSSE() {
     sessionId: string,
     isTestVersion: boolean,
     images: UploadImage[] | null,
-    onProgress: (statusText: string, emoji: string) => void,
+    onProgress: (progress: AgentProgressState) => void,
     onChunk: (text: string, mode: 'append' | 'replace') => void,
     onDone: (finalAnswer: string, reference: ReferencePayload, citations: unknown[], trace: unknown, answerMedia: AnswerMedia[]) => void,
     onError: (err: Error) => void,
@@ -27,8 +28,8 @@ export function useSSE() {
       isTestVersion,
       images,
       {
-        onProgress: (statusText, emoji) => {
-          if (generation === generationRef.current) onProgress(statusText, emoji)
+        onProgress: (progress) => {
+          if (generation === generationRef.current) onProgress(progress)
         },
         onChunk: (text, mode) => {
           if (generation === generationRef.current) onChunk(text, mode)

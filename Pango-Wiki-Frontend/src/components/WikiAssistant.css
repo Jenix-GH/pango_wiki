@@ -186,6 +186,15 @@ body.is-resizing-wiki-assistant {
   border-bottom-left-radius: 4px;
 }
 
+.wiki-assistant-message.is-assistant.is-progress {
+  width: 100%;
+  max-width: 100%;
+  padding: 6px 2px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
 .wiki-assistant-sent-images {
   display: flex;
   flex-wrap: wrap;
@@ -319,11 +328,6 @@ body.is-resizing-wiki-assistant {
 .wiki-assistant-reference-header button:hover,
 .wiki-assistant-reference-pages button:hover {
   text-decoration: underline;
-}
-
-.wiki-assistant-status {
-  color: #777d84;
-  font-size: 13px;
 }
 
 .wiki-assistant-composer {
