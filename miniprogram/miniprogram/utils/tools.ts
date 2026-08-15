@@ -33,3 +33,17 @@ export const showError = (content: string) => {
         icon: "none"
     })
 }
+
+export const sanitizeUserInfo = (user: any) => {
+    if (!user) return user
+    const safe = { ...user }
+    delete safe.todayQuestionList
+    delete safe.weekQuestionList
+    return safe
+}
+
+export const persistUserInfo = (user: any) => {
+    const safe = sanitizeUserInfo(user)
+    wx.setStorageSync('userInfo', safe)
+    return safe
+}

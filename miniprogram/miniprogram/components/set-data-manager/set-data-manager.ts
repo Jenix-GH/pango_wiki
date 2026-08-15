@@ -1,7 +1,7 @@
 // components/set-data-manager/set-data-manager.ts
 let canChange = true;
 const app = getApp();
-import { showError, showSuccess } from "../../utils/tools";
+import { showError, showSuccess, persistUserInfo } from "../../utils/tools";
 
 Component({
 
@@ -44,7 +44,7 @@ Component({
                         showSuccess("操作完成")
                         let user = wx.getStorageSync('userInfo');
                         user.flagUseData = value;
-                        wx.setStorageSync('userInfo', user);
+                        persistUserInfo(user);
                     } else {
                         showError("设置失败-2")
                     }
