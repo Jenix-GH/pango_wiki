@@ -2,6 +2,11 @@
 import { formatTime } from '../../utils/util'
 import streamUtils from "./stream"
 import { copyToClipboard, extractText, showError, showSuccess, persistUserInfo } from '../../utils/tools'
+import {
+    advanceAgentProgress,
+    createAgentProgress,
+    INITIAL_AGENT_PROGRESS,
+} from '../../utils/agent-progress'
 // import marked from "../../utils/marked.min.js"
 
 let isScrolling = false;
@@ -192,8 +197,10 @@ function emptyReference(): ReferencePayload {
 
 function createRuntimeState() {
     return {
-        currentStatusText: "",
-        currentStatusEmoji: "",
+        currentPhase: INITIAL_AGENT_PROGRESS.phase,
+        currentStatusText: INITIAL_AGENT_PROGRESS.title,
+        currentStatusDetail: INITIAL_AGENT_PROGRESS.detail,
+        hasReceivedAgentProgress: false,
         currentReference: emptyReference(),
         currentAnswerMedia: [] as AnswerMedia[],
         currentStructuredCitations: [] as unknown[],
@@ -1224,7 +1231,6 @@ Page({
         const nextIsTable = nextTrimmed.startsWith('|');
         const currentIsHeading = /^#{1,6}(?:\s+|$)/.test(normalizedTrimmed);
         const currentIsEmphasisHeading = /^(\*{2,3}|_{2,3})\S(?:.*?\S)?\1(?:<sup\b[^>]*>.*?<\/sup>)?[：:]?$/.test(normalizedTrimmed);
-        const currentEndsWithCitation = /<sup\b[^>]*>\s*\[[^\]]+\]\s*<\/sup>\s*[。！？.!?；;：:]?$/.test(normalizedTrimmed);
         const currentStartsWithEmphasis = /^(\*{2,3}|_{2,3})\S.*?\1(?=<sup\b|[：:\s（(]|$)/.test(normalizedTrimmed);
         const currentIsThematicBreak = /^(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(normalizedTrimmed);
         const currentNeedsLeadingSpacing = currentIsTable
@@ -1241,8 +1247,11 @@ Page({
           if (previous.trim() !== '' && !(currentIsTable && previousIsTable)) fixed.push('');
         }
 
-        // 普通 Markdown 换行会折叠为空格；角标结尾时补两个空格保留视觉换行。
-        fixed.push(currentEndsWithCitation && nextTrimmed !== '' ? `${current.trimEnd()}  ` : current);
+        // 普通 Markdown 换行会折叠为空格；将代码块外的所有软换行转成硬换行。
+        const shouldForceHardBreak = i < lines.length - 1
+          && normalizedTrimmed !== ''
+          && nextTrimmed !== '';
+        fixed.push(shouldForceHardBreak ? `${current.trimEnd()}  ` : current);
 
         if (
           currentNeedsTrailingSpacing
@@ -1365,33 +1374,16 @@ Page({
         timer: null
       })
     },
-    updateProgress(statusText: string) {
+    updateProgress(statusText: string, phase?: unknown) {
       if (!statusText) return;
-      const emojiMap: Record<string, string> = {
-        DANGER: '🔍',
-        RETRIEVAL: '📚',
-        EVIDENCE: '📋',
-        ANSWER: '✍️',
-        VERIFY: '✅',
-        WAIT: '⏳',
-      };
-      let emoji = '⏳';
-      for (const [key, val] of Object.entries(emojiMap)) {
-        if (statusText.includes(key) || (key === 'WAIT' && statusText.includes('等待'))) {
-          emoji = val;
-          break;
-        }
-      }
-      if (!emoji || emoji === '⏳') {
-        if (statusText.includes('理解')) emoji = '💭';
-        else if (statusText.includes('检索') || statusText.includes('查')) emoji = '📚';
-        else if (statusText.includes('整理') || statusText.includes('依据')) emoji = '📋';
-        else if (statusText.includes('生成') || statusText.includes('回答')) emoji = '✍️';
-        else if (statusText.includes('核') || statusText.includes('来源')) emoji = '🔍';
-      }
+      const incoming = createAgentProgress(statusText, phase)
+      const current = createAgentProgress(this.data.currentStatusText, this.data.currentPhase)
+      const next = advanceAgentProgress(current, incoming)
       this.setData({
-        currentStatusText: statusText,
-        currentStatusEmoji: emoji,
+        currentPhase: next.phase,
+        currentStatusText: next.title,
+        currentStatusDetail: next.detail,
+        hasReceivedAgentProgress: true,
       }, () => {
         this.smartScroll()
       });
@@ -1423,7 +1415,6 @@ Page({
 
       lastChunkTime = Date.now()
       setStreamTimeout(this, 'first-frame')
-      this.startAnimation()
 
       let url = app.globalData.sessionUrl
 
@@ -1517,14 +1508,14 @@ Page({
 
           if (payload.data?.status) {
             this.hideWaitingForAnswer()
-            this.updateProgress(payload.data.status)
+            this.updateProgress(payload.data.status, payload.data.phase)
             return
           }
 
           if (payload.data?.answer) {
             this.hideWaitingForAnswer()
-            if (this.data.currentStatusText !== "正在生成回答...") {
-              this.updateProgress("正在生成回答...")
+            if (this.data.currentPhase !== 'answer') {
+              this.updateProgress("正在生成回答...", 'answer')
             }
             this.enqueueStreamChunk(String(payload.data.answer))
             return
@@ -1569,8 +1560,8 @@ Page({
           if (payload.event === 'message') {
             const text = payload.data?.content || ''
             this.hideWaitingForAnswer()
-            if (this.data.currentStatusText !== '正在生成回答...') {
-              this.updateProgress('正在生成回答...')
+            if (this.data.currentPhase !== 'answer') {
+              this.updateProgress('正在生成回答...', 'answer')
             }
             this.enqueueStreamChunk(String(text))
             return
@@ -2328,7 +2319,7 @@ Page({
             updates.flagDoReady = false
         }
         const hasReceivedResponse = !!(
-            this.data.currentStatusText || this.data.streamContentData || this.data.streamThink
+            this.data.hasReceivedAgentProgress || this.data.streamContentData || this.data.streamThink
         )
         this.setData(updates, () => {
             void this.recoverCurrentSessionAnswer().then((recovered: boolean) => {

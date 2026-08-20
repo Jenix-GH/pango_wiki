@@ -106,19 +106,12 @@
                 </view>
                 <view class="username">{{aiName}}</view>
             </view>
-            <view wx:if="{{flagShowWait}}" class="loading-container">
-                <block wx:for="{{dots}}" wx:key="index">
-                    <view class="dot" style="opacity: {{item.opacity}}; transform: scale({{item.scale}});">.</view>
-                </block>
-            </view>
-            <view wx:if="{{flagStart && currentStatusText}}" class="progress-panel">
-                <view class="progress-current">
-                    <text class="progress-emoji">{{currentStatusEmoji}}</text>
-                    <text class="progress-text">{{currentStatusText}}</text>
-                    <text class="progress-dots"><text class="dot1">.</text><text class="dot2">.</text><text class="dot3">.</text></text>
-                </view>
-                <view class="progress-shimmer"></view>
-            </view>
+            <agent-progress
+                wx:if="{{flagStart && !streamContent}}"
+                phase="{{currentPhase}}"
+                title="{{currentStatusText}}"
+                detail="{{currentStatusDetail}}"
+            />
             <view class="show-answer">
                 <view class="show-content">
                     <mp-html content="{{streamContent}}" markdown latex highlight selectable="force" class="mp-html contenttow" id="markdownContent" tag-tyle="{{tagStyle}}" />

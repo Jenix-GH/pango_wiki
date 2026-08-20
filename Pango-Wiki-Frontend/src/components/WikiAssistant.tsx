@@ -9,6 +9,9 @@ import pangoLogo from '../../Logo.png'
 import './WikiAssistant.css'
 import { useAuth } from '../contexts/AuthContext'
 import { placeMediaAfterCitations } from '../utils/answerRendering'
+import AgentProgress from './AgentProgress'
+import { advanceAgentProgress, INITIAL_AGENT_PROGRESS } from '../utils/agentProgress'
+import type { AgentProgressState } from '../utils/agentProgress'
 
 interface AssistantMessage {
   role: 'user' | 'assistant'
@@ -25,6 +28,7 @@ export default function WikiAssistant() {
   const [text, setText] = useState('')
   const [messages, setMessages] = useState<AssistantMessage[]>([])
   const [status, setStatus] = useState('')
+  const [progress, setProgress] = useState<AgentProgressState | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [uploadImages, setUploadImages] = useState<UploadImage[]>([])
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
@@ -52,7 +56,7 @@ export default function WikiAssistant() {
     requestAnimationFrame(() => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     })
-  }, [messages, open, status, streamText])
+  }, [messages, open, progress, status, streamText])
 
   useEffect(() => () => controllerRef.current?.abort(), [])
 
@@ -131,7 +135,8 @@ export default function WikiAssistant() {
       },
     ])
     resetStreamText()
-    setStatus('正在理解问题…')
+    setStatus('')
+    setProgress(INITIAL_AGENT_PROGRESS)
     setStreaming(true)
     const requestId = ++requestIdRef.current
     let answerBuffer = ''
@@ -142,6 +147,7 @@ export default function WikiAssistant() {
       if (!isCurrentRequest()) return
       finalized = true
       setStatus('')
+      setProgress(null)
       controllerRef.current = null
       const authoritativeAnswer = content.trim()
       const normalizedReference = normalizeReference(reference)
@@ -172,12 +178,15 @@ export default function WikiAssistant() {
       true,
       imagesToSend.length ? imagesToSend : null,
       {
-        onProgress: (nextStatus) => {
-          if (isCurrentRequest()) setStatus(nextStatus)
+        onProgress: (nextProgress) => {
+          if (isCurrentRequest()) {
+            setProgress((current) => advanceAgentProgress(current, nextProgress))
+          }
         },
         onChunk: (chunk, mode) => {
           if (!isCurrentRequest()) return
           setStatus('')
+          setProgress(null)
           answerBuffer = mode === 'replace' ? chunk : answerBuffer + chunk
           pushStreamText(chunk, mode)
         },
@@ -202,6 +211,7 @@ export default function WikiAssistant() {
     }
     resetStreamText()
     setStatus('')
+    setProgress(null)
     setStreaming(false)
   }
 
@@ -287,9 +297,11 @@ export default function WikiAssistant() {
               ) : null}
             </div>
           ))}
-          {streaming ? (
-            <div className="wiki-assistant-message is-assistant">
-              {streamText ? <MarkdownContent content={streamText} /> : <span className="wiki-assistant-status">{status || '正在生成回答…'}</span>}
+          {streaming && (streamText || progress) ? (
+            <div className={`wiki-assistant-message is-assistant${streamText ? '' : ' is-progress'}`}>
+              {streamText
+                ? <MarkdownContent content={streamText} />
+                : progress ? <AgentProgress progress={progress} compact /> : null}
             </div>
           ) : null}
         </div>

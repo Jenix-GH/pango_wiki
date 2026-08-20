@@ -3,6 +3,7 @@
       "top-menu" : "/components/top-menu/top-menu",
       "left-menu" : "/components/left-menu/left-menu",
       "set-menu" : "/components/set-menu/set-menu",
+      "agent-progress": "/components/agent-progress/agent-progress",
       "mp-html": "/components/mp-html/index"
   }
 }

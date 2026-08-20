@@ -3,6 +3,8 @@ import type { AnswerMedia, ApiResponse, AuthData, FeedbackPayload, HistoryData, 
 import { emptyReference } from './types'
 import { normalizeReference } from './types'
 import { normalizeAnswerMedia } from '../utils/referenceUrl'
+import { createAgentProgress } from '../utils/agentProgress'
+import type { AgentProgressState } from '../utils/agentProgress'
 
 function getHeaders(extra?: Record<string, string>): Record<string, string> {
   const token = localStorage.getItem('pango_auth_token') || localStorage.getItem('pango_guest_token')
@@ -140,7 +142,7 @@ export const api = {
     isTestVersion: boolean,
     images: UploadImage[] | null,
     callbacks: {
-      onProgress: (statusText: string, emoji: string) => void
+      onProgress: (progress: AgentProgressState) => void
       onChunk: (text: string, mode: 'append' | 'replace') => void
       onDone: (finalAnswer: string, reference: ReferencePayload, citations: unknown[], trace: unknown, answerMedia: AnswerMedia[]) => void
       onError: (err: Error) => void
@@ -223,7 +225,7 @@ export const api = {
             const d = (p.data as Record<string, unknown> | null) ?? {}
 
             if (d.status) {
-              callbacks.onProgress(String(d.status), getEmoji(String(d.status)))
+              callbacks.onProgress(createAgentProgress(String(d.status), d.phase))
               continue
             }
 
@@ -242,14 +244,14 @@ export const api = {
             }
 
             if (d.answer) {
-              callbacks.onProgress('正在生成回答...', '✍️')
+              callbacks.onProgress(createAgentProgress('正在生成回答...', 'answer'))
               callbacks.onChunk(String(d.answer), 'append')
               continue
             }
 
             if (p.event === 'message') {
               const text = String(d.content || '')
-              callbacks.onProgress('正在生成回答...', '✍️')
+              callbacks.onProgress(createAgentProgress('正在生成回答...', 'answer'))
               callbacks.onChunk(text, 'append')
               continue
             }
@@ -271,24 +273,4 @@ export const api = {
 
     return controller
   },
-}
-
-function getEmoji(statusText: string): string {
-  const emojiMap: Record<string, string> = {
-    DANGER: '🔍',
-    RETRIEVAL: '📚',
-    EVIDENCE: '📋',
-    ANSWER: '✍️',
-    VERIFY: '✅',
-    WAIT: '⏳',
-  }
-  for (const [key, val] of Object.entries(emojiMap)) {
-    if (statusText.includes(key) || (key === 'WAIT' && statusText.includes('等待'))) return val
-  }
-  if (statusText.includes('理解')) return '💭'
-  if (statusText.includes('检索') || statusText.includes('查')) return '📚'
-  if (statusText.includes('整理') || statusText.includes('依据')) return '📋'
-  if (statusText.includes('生成') || statusText.includes('回答')) return '✍️'
-  if (statusText.includes('核') || statusText.includes('来源')) return '🔍'
-  return '⏳'
 }

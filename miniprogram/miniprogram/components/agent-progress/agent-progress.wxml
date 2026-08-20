@@ -1,0 +1,14 @@
+<view class="agent-progress agent-progress--{{phase}}" role="status" aria-label="{{title}}，{{detail}}">
+  <canvas type="2d" id="agentParticleCanvas" class="agent-progress-particles"></canvas>
+  <view class="agent-progress-body">
+    <view class="agent-progress-copy">
+      <text class="agent-progress-title">{{title}}</text>
+      <text class="agent-progress-detail">{{detail}}</text>
+    </view>
+    <view class="agent-progress-lane" aria-hidden="true">
+      <view class="agent-progress-shuttle">
+        <view class="agent-progress-glow"></view>
+      </view>
+    </view>
+  </view>
+</view>

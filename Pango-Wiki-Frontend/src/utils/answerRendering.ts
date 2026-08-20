@@ -27,7 +27,6 @@ export function normalizeMarkdownBlockSpacing(md: string): string {
     const nextIsTable = nextTrimmed.startsWith('|')
     const currentIsHeading = /^#{1,6}(?:\s+|$)/.test(normalizedTrimmed)
     const currentIsEmphasisHeading = /^(\*{2,3}|_{2,3})\S(?:.*?\S)?\1(?:<sup\b[^>]*>.*?<\/sup>)?[：:]?$/.test(normalizedTrimmed)
-    const currentEndsWithCitation = /<sup\b[^>]*>\s*\[[^\]]+\]\s*<\/sup>\s*[。！？.!?；;：:]?$/.test(normalizedTrimmed)
     const currentStartsWithEmphasis = /^(\*{2,3}|_{2,3})\S.*?\1(?=<sup\b|[：:\s（(]|$)/.test(normalizedTrimmed)
     const currentIsThematicBreak = /^(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(normalizedTrimmed)
     const currentNeedsLeadingSpacing = currentIsTable || currentIsHeading || currentStartsWithEmphasis || currentIsThematicBreak
@@ -36,7 +35,13 @@ export function normalizeMarkdownBlockSpacing(md: string): string {
       const previous = fixed[fixed.length - 1] ?? ''
       if (previous.trim() !== '' && !(currentIsTable && previousIsTable)) fixed.push('')
     }
-    fixed.push(currentEndsWithCitation && nextTrimmed !== '' ? `${current.trimEnd()}  ` : current)
+    // Markdown folds a single newline inside a block into a space. Turn every
+    // such soft break into a hard break while leaving blank lines and code
+    // fences unchanged.
+    const shouldForceHardBreak = i < lines.length - 1
+      && normalizedTrimmed !== ''
+      && nextTrimmed !== ''
+    fixed.push(shouldForceHardBreak ? `${current.trimEnd()}  ` : current)
     if (currentNeedsTrailingSpacing && nextTrimmed !== '' && !(currentIsTable && nextIsTable)) fixed.push('')
   }
   return fixed.join('\n')

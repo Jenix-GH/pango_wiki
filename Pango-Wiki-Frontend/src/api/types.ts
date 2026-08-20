@@ -1,3 +1,5 @@
+import type { AgentProgressState } from '../utils/agentProgress'
+
 export interface ApiResponse<T = unknown> {
   code: number
   message: string
@@ -233,7 +235,7 @@ export function normalizeReference(reference: unknown): ReferencePayload {
 }
 
 export interface SSECallbacks {
-  onProgress: (statusText: string, emoji: string) => void
+  onProgress: (progress: AgentProgressState) => void
   onChunk: (text: string, mode: 'append' | 'replace') => void
   onDone: (finalAnswer: string, reference: ReferencePayload, citations: unknown[], trace: unknown, answerMedia: AnswerMedia[]) => void
   onError: (err: Error) => void
