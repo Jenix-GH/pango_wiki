@@ -1231,7 +1231,6 @@ Page({
         const nextIsTable = nextTrimmed.startsWith('|');
         const currentIsHeading = /^#{1,6}(?:\s+|$)/.test(normalizedTrimmed);
         const currentIsEmphasisHeading = /^(\*{2,3}|_{2,3})\S(?:.*?\S)?\1(?:<sup\b[^>]*>.*?<\/sup>)?[：:]?$/.test(normalizedTrimmed);
-        const currentEndsWithCitation = /<sup\b[^>]*>\s*\[[^\]]+\]\s*<\/sup>\s*[。！？.!?；;：:]?$/.test(normalizedTrimmed);
         const currentStartsWithEmphasis = /^(\*{2,3}|_{2,3})\S.*?\1(?=<sup\b|[：:\s（(]|$)/.test(normalizedTrimmed);
         const currentIsThematicBreak = /^(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(normalizedTrimmed);
         const currentNeedsLeadingSpacing = currentIsTable
@@ -1248,8 +1247,11 @@ Page({
           if (previous.trim() !== '' && !(currentIsTable && previousIsTable)) fixed.push('');
         }
 
-        // 普通 Markdown 换行会折叠为空格；角标结尾时补两个空格保留视觉换行。
-        fixed.push(currentEndsWithCitation && nextTrimmed !== '' ? `${current.trimEnd()}  ` : current);
+        // 普通 Markdown 换行会折叠为空格；将代码块外的所有软换行转成硬换行。
+        const shouldForceHardBreak = i < lines.length - 1
+          && normalizedTrimmed !== ''
+          && nextTrimmed !== '';
+        fixed.push(shouldForceHardBreak ? `${current.trimEnd()}  ` : current);
 
         if (
           currentNeedsTrailingSpacing
