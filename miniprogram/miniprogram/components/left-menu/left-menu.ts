@@ -153,6 +153,11 @@ Component({
             this.setData({ activeId: id, activeId0: -1 })
             this.triggerEvent('doSearchHisItem', { sessionId })
         },
+        doDeleteHistory(e: any) {
+            const sessionId = String(e.currentTarget.dataset.sessionId || '').trim()
+            if (!sessionId) return
+            this.triggerEvent('deleteHistoryItem', { sessionId })
+        },
         //获取用户信息
         getUserInfo() {
             wx.showLoading({ title: "授权中...", mask: true })

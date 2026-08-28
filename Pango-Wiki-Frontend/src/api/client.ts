@@ -103,14 +103,14 @@ export const api = {
   getHistoryBySessionId: (data: { userinfoId: number; sessionId: string }) =>
     post<SessionQuestion[]>(ENDPOINTS.historyBySessionId, data),
 
+  hideHistory: (data: { userinfoId: number; sessionId?: string }) =>
+    post(ENDPOINTS.hideHistory, data),
+
   evaluateAnswer: (data: { userinfoId: number; flagEvaluate: number; answerTime: string }) =>
     post(ENDPOINTS.answerEvaluate, data),
 
   updateDataFlag: (data: { id: number; flagUseData: 0 | 1 }) =>
     post(ENDPOINTS.upFlagUseData, data),
-
-  deleteHistory: (data: { userinfoId: number }) =>
-    post(ENDPOINTS.deleteHistory, data),
 
   updateUserInfo: (data: Record<string, unknown>) =>
     post<{ companyName?: string } & Record<string, unknown>>(ENDPOINTS.updateUserInfo, data),

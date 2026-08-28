@@ -8,12 +8,6 @@
                     <iconfont name="user" size="20" color="gray" />
                 </view>
             </view>
-            <view class="item item1" bind:tap="gotoDataManager">
-                <view>数据管理</view>
-                <view>
-                    <iconfont name="shujuguanli" size="20" color="gray" />
-                </view>
-            </view>
             <view class="item item1" bind:tap="gotoLogout">
                 <view>退出登录</view>
                 <view></view>

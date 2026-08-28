@@ -3,8 +3,8 @@
         <view wx:for="{{companyContactList}}" wx:key="id">
             <view class="blockClass">
                 <view class="title">{{item.title}}</view>
-                <view class="content">电话：{{item.tel}}</view>
-                <view class="content">传真：{{item.fax}}</view>
+                <view wx:if="{{item.tel}}" class="content">电话：{{item.tel}}</view>
+                <view wx:if="{{item.fax}}" class="content">传真：{{item.fax}}</view>
                 <view class="content">邮编：{{item.code}}</view>
                 <view class="content">邮箱：{{item.mail}}</view>
                 <view class="content">地址：{{item.address}}</view>

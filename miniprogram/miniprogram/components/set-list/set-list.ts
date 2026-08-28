@@ -22,9 +22,6 @@ Component({
         gotoUserinfo(){
             this.triggerEvent('gotoUserinfo')
         },
-        gotoDataManager(){
-            this.triggerEvent('gotoDataManager')
-        },
         gotoLogout(){
             this.triggerEvent('gotoLogout')
         },

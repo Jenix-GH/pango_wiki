@@ -198,14 +198,32 @@
   white-space: nowrap;
 }
 
-.drawer-copy-btn {
-  padding: 3px;
-  color: #99939b;
+.drawer-item-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
   opacity: 0;
 }
 
-.drawer-item:hover .drawer-copy-btn {
+.drawer-copy-btn,
+.drawer-delete-btn {
+  padding: 3px;
+  color: #99939b;
+}
+
+.drawer-delete-btn:hover {
+  color: #b42318;
+}
+
+.drawer-item:hover .drawer-item-actions,
+.drawer-item:focus-within .drawer-item-actions {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .drawer-item-actions {
+    opacity: 1;
+  }
 }
 
 .drawer-footer {

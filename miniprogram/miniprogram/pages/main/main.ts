@@ -978,6 +978,49 @@ Page({
             }
         })
     },
+    deleteHistoryItem(e: any) {
+        const sessionId = String(e.detail?.sessionId || '').trim()
+        const userId = this.data.userInfo?.id
+        if (!sessionId || !userId) return
+
+        wx.showModal({
+            title: '删除历史对话',
+            content: '确定删除这条历史对话吗？',
+            confirmText: '删除',
+            success: (res) => {
+                if (!res.confirm) return
+                const token = String(wx.getStorageSync('pangoAccessToken') || '').trim()
+                if (!token) {
+                    showError('登录状态已失效，请重新登录')
+                    return
+                }
+                wx.showLoading({ title: '删除中...', mask: true })
+                wx.request({
+                    url: app.globalData.baseHost + '/question/hideHistory',
+                    method: 'POST',
+                    header: {
+                        'content-type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    data: { userinfoId: userId, sessionId },
+                    success: async (response) => {
+                        const result = response.data as ApiResponse<unknown>
+                        if (response.errMsg !== 'request:ok' || result?.code !== 2000) {
+                            showError(result?.message || '删除历史记录失败')
+                            return
+                        }
+                        await this.refreshHistoryList()
+                        if (String(app.globalData.sessionId || '') === sessionId) {
+                            this.reloadSession({ silent: true })
+                        }
+                        wx.showToast({ title: '历史对话已删除', icon: 'success' })
+                    },
+                    fail: () => showError('删除历史记录失败'),
+                    complete: () => wx.hideLoading()
+                })
+            }
+        })
+    },
     showLeftPanel() {
         //调用子组件的方法
         const leftPanel = this.selectComponent('#leftPanel');
@@ -1870,7 +1913,7 @@ Page({
         openReferenceViewer(withMiniProgramClient(withSessionId(baseUrl, app.globalData.sessionId)))
     },
     //开始新会话
-    reloadSession() {
+    reloadSession(options?: { silent?: boolean }) {
         resetStreamDisplayQueue()
         lastChunkTime = 0
         clearStreamTimeout()
@@ -1900,7 +1943,7 @@ Page({
         })
         //刷新session
         this.getSessionId(true)
-        showSuccess("已切换新对话")
+        if (!options?.silent) showSuccess("已切换新对话")
     },
     //根据问题ID查询回答对象
     doSearchHisItem(e: any) {
@@ -1983,8 +2026,8 @@ Page({
             let rs: ApiResponse<questionList> = JSON.parse(JSON.stringify(data));
             if (rs.code === 2000) {
                 this.setData({
-                    dataDayTitle: rs.data.todayQuestion,
-                    dataHisTitle: rs.data.weekQuestion,
+                    dataDayTitle: rs.data.todayQuestion || [],
+                    dataHisTitle: rs.data.weekQuestion || [],
                     answerCount: rs.data.count
                 })
                 app.globalData.flagCompanyInfo = rs.data.flagCompanyInfo;

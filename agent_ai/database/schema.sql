@@ -107,9 +107,11 @@ CREATE TABLE `dto_question` (
   `dotime` datetime DEFAULT CURRENT_TIMESTAMP,
   `uptime` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   `flag_del` int DEFAULT '0',
+  `flag_hidden` tinyint(1) NOT NULL DEFAULT '0' COMMENT '历史记录隐藏标志：0显示，1隐藏',
   `internet_enable` int DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_question_user_session` (`userinfo_id`,`session_id`)
+  KEY `idx_question_user_session` (`userinfo_id`,`session_id`),
+  KEY `idx_question_user_hidden_date` (`userinfo_id`,`flag_del`,`flag_hidden`,`do_date`,`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `dto_set` (

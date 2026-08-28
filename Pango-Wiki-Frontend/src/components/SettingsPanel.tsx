@@ -3,24 +3,21 @@ import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api/client'
 import './SettingsPanel.css'
 
-type Page = 'menu' | 'userinfo' | 'dataManager' | 'company' | 'contactUs'
+type Page = 'menu' | 'userinfo' | 'company' | 'contactUs'
 
 interface Props {
   open: boolean
   onClose: () => void
-  onDeleteHistory: () => void
 }
 
-export default function SettingsPanel({ open, onClose, onDeleteHistory }: Props) {
+export default function SettingsPanel({ open, onClose }: Props) {
   const { user, updateUser, setFlagCompanyInfo } = useAuth()
   const [page, setPage] = useState<Page>('menu')
   const [nickName, setNickName] = useState('')
   const [companyName, setCompanyName] = useState('')
   const [jobName, setJobName] = useState('')
   const [mailAddress, setMailAddress] = useState('')
-  const [flagUseData, setFlagUseData] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (open) setPage('menu')
@@ -42,27 +39,6 @@ export default function SettingsPanel({ open, onClose, onDeleteHistory }: Props)
     setLoading(false)
   }
 
-  const handleChangeDataFlag = async () => {
-    if (!user) return
-    const newVal = flagUseData ? 0 : 1
-    const res = await api.updateDataFlag({ id: user.id, flagUseData: newVal as 0 | 1 })
-    if (res.code === 2000) {
-      setFlagUseData(!flagUseData)
-      toast('设置成功')
-    }
-  }
-
-  const handleDeleteHistory = async () => {
-    if (!user || !confirm('确定要删除所有历史对话吗？')) return
-    setDeleting(true)
-    const res = await api.deleteHistory({ userinfoId: user.id })
-    if (res.code === 2000) {
-      onDeleteHistory()
-      toast('已删除')
-    }
-    setDeleting(false)
-  }
-
   if (!open) return null
 
   return (
@@ -80,7 +56,6 @@ export default function SettingsPanel({ open, onClose, onDeleteHistory }: Props)
           <span className="settings-title">
             {page === 'menu' ? '设置' :
              page === 'userinfo' ? '个人信息' :
-             page === 'dataManager' ? '数据管理' :
              page === 'company' ? '紫光同创' : '联系我们'}
           </span>
         </div>
@@ -90,7 +65,6 @@ export default function SettingsPanel({ open, onClose, onDeleteHistory }: Props)
             <div className="settings-group">
               <div className="settings-label">账户</div>
               <button className="settings-item" onClick={() => { setPage('userinfo'); setNickName(user?.nickName || ''); setCompanyName(user?.companyName || ''); setJobName(user?.jobName || ''); setMailAddress(user?.mailAddress || ''); }}>个人信息</button>
-              <button className="settings-item" onClick={() => setPage('dataManager')}>数据管理</button>
             </div>
             <div className="settings-group">
               <div className="settings-label">关于</div>
@@ -124,45 +98,26 @@ export default function SettingsPanel({ open, onClose, onDeleteHistory }: Props)
           </div>
         )}
 
-        {page === 'dataManager' && (
-          <div className="settings-form">
-            <div className="data-option">
-              <div className="data-option-info">
-                <div className="data-option-title">数据用于训练优化</div>
-                <div className="data-option-desc">允许我们将您的对话内容用于大模型的优化训练</div>
-              </div>
-              <label className="toggle">
-                <input type="checkbox" checked={flagUseData} onChange={handleChangeDataFlag} />
-                <span className="toggle-slider" />
-              </label>
-            </div>
-            <button className="delete-btn" onClick={handleDeleteHistory} disabled={deleting}>
-              {deleting ? '删除中...' : '删除所有历史对话'}
-            </button>
-          </div>
-        )}
-
         {page === 'company' && (
           <div className="settings-content">
-            <h3>深圳市紫光同创电子股份有限公司</h3>
-            <p>紫光同创是中国领先的FPGA芯片及解决方案提供商，专注于可编程逻辑器件（FPGA）的研发、生产和销售。</p>
-            <p>公司拥有完整的FPGA产品线，覆盖从低密度到高密度的各类应用场景，产品广泛应用于通信、工业控制、数据中心、人工智能等领域。</p>
-            <p>紫光同创致力于打造自主可控的FPGA核心技术，推动国产芯片的持续创新与发展。</p>
+            <p>深圳市紫光同创电子股份有限公司，专业从事可编程系统平台芯片及其配套EDA开发工具的研发与销售，致力于为客户提供完善的、具有自主知识产权的可编程逻辑器件平台和系统解决方案。公司是国家高新技术企业，拥有高中低端全系列产品，产品覆盖通信、工业控制、图像视频、消费电子等应用领域。</p>
+            <p>紫光同创秉承“客户至上、奋斗为本、集成创新、至臻致远”核心价值观，立足中国大陆本土，以全球化思维布局，总部设在深圳，拥有上海、北京、成都等研发中心。</p>
           </div>
         )}
 
         {page === 'contactUs' && (
           <div className="settings-content">
             {[
-              { title: '深圳总部', phone: '0755-26908911', fax: '0755-26908900', email: 'info@pangomicro.com', addr: '深圳市南山区粤海街道高新区社区高新南一道002号飞亚达科技大厦' },
-              { title: '上海分公司', phone: '021-50805678', fax: '021-50805679', email: 'sh@pangomicro.com', addr: '上海市浦东新区张江高科技园区祖冲之路1077号' },
-              { title: '成都分公司', phone: '028-85336789', fax: '028-85336780', email: 'cd@pangomicro.com', addr: '成都市高新区天府大道中段1366号天府软件园' },
-              { title: '北京办事处', phone: '010-82607890', fax: '010-82607891', email: 'bj@pangomicro.com', addr: '北京市海淀区中关村东路1号清华科技园' },
+              { title: '深圳总公司', phone: '86-755-66886188', fax: '86-755-86363368', code: '518000', email: 'marketing@pangomicro.com', addr: '深圳市南山区高新技术产业园高新南一道15号' },
+              { title: '上海子公司', phone: '021-54652018', fax: '021-64856887', code: '200233', email: 'marketing@pangomicro.com', addr: '上海市漕河泾开发区桂平路391号新漕河泾国际商务中心A座901-902室' },
+              { title: '成都子公司', phone: '028-86736086', code: '610095', email: 'marketing@pangomicro.com', addr: '成都高新区益州大道中段2555号紫光芯云中心B座25楼' },
+              { title: '北京分公司', code: '100191', email: 'marketing@pangomicro.com', addr: '北京市朝阳区光华路众秀大厦37层3707' },
             ].map((c, i) => (
               <div key={i} className="contact-card">
                 <h4>{c.title}</h4>
-                <p>电话：{c.phone}</p>
-                <p>传真：{c.fax}</p>
+                {c.phone && <p>电话：{c.phone}</p>}
+                {c.fax && <p>传真：{c.fax}</p>}
+                <p>邮编：{c.code}</p>
                 <p>邮箱：{c.email}</p>
                 <p>地址：{c.addr}</p>
               </div>

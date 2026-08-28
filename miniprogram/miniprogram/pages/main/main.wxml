@@ -1,7 +1,7 @@
 <!--自定义菜单-->
 <top-menu title="{{ pageTitle }}" iconName="{{pageLeftIconName}}" bind:openLeftPanel="showLeftPanel" bind:reloadSession="reloadSession" bind:openWiki="openWiki" />
 <!--左侧抽屉页面 -->
-<left-menu id="leftPanel" dataDayTitle="{{dataDayTitle}}" dataHisTitle="{{dataHisTitle}}" userInfo="{{userInfo}}" bind:openSetPanel="showSetPanel" bind:doSearchHisItem="doSearchHisItem" bind:refresh="handleRefresh" />
+<left-menu id="leftPanel" dataDayTitle="{{dataDayTitle}}" dataHisTitle="{{dataHisTitle}}" userInfo="{{userInfo}}" bind:openSetPanel="showSetPanel" bind:doSearchHisItem="doSearchHisItem" bind:deleteHistoryItem="deleteHistoryItem" bind:refresh="handleRefresh" />
 <!--底部设置页面-->
 <set-menu id="setPanel" bind:logout="logout"></set-menu>
 <!--主页-->

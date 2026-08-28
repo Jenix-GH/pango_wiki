@@ -17,8 +17,7 @@ Component({
     data: {
         showPopup: false,                   //底部菜单显示控制
         showSubPage: "set",                 //底部菜单当前显示的页面名称
-        title: '设置',                      //底部菜单的标题
-        flagDataManagerUse: true            //个人数据授权存储及使用
+        title: '设置'                       //底部菜单的标题
     },
 
     /**
@@ -36,9 +35,6 @@ Component({
         },
         gotoUserinfo(){
             this.setData({showSubPage: "userinfo", flagShowBackBtn: true, title: "个人信息"})
-        },
-        gotoDataManager(){
-            this.setData({showSubPage: "dataManager", flagShowBackBtn: true, title: "数据管理"})
         },
         logout(){
             this.triggerEvent('logout')

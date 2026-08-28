@@ -46,6 +46,7 @@ public class ServiceQuestion extends ServiceImpl<MapperQuestion, DtoQuestion> im
         validateQuestionImages(obj.getQuestionImages());
         String today = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
         obj.setDoDate(today);
+        obj.setFlagHidden(0);
         if (obj.getDotime() == null) obj.setDotime(new Date());
         this.save(obj);
     }
@@ -119,6 +120,7 @@ public class ServiceQuestion extends ServiceImpl<MapperQuestion, DtoQuestion> im
         LambdaQueryWrapper<DtoQuestion> qw = loadQw();
         qw.eq(DtoQuestion::getUserinfoId, userId)
                 .eq(DtoQuestion::getFlagDel, 0)
+                .eq(DtoQuestion::getFlagHidden, 0)
                 .eq(DtoQuestion::getDoDate, today)
                 .orderByDesc(DtoQuestion::getId);
         List<DtoQuestion> todayList = groupBySession(this.list(qw));
@@ -134,6 +136,7 @@ public class ServiceQuestion extends ServiceImpl<MapperQuestion, DtoQuestion> im
         qw = loadQw();
         qw.eq(DtoQuestion::getUserinfoId, userId)
                 .eq(DtoQuestion::getFlagDel, 0)
+                .eq(DtoQuestion::getFlagHidden, 0)
                 .between(DtoQuestion::getDoDate, weekStart, weekEnd)
                 .orderByDesc(DtoQuestion::getId);
         List<DtoQuestion> weekList = groupBySession(this.list(qw));
@@ -156,23 +159,36 @@ public class ServiceQuestion extends ServiceImpl<MapperQuestion, DtoQuestion> im
         LambdaQueryWrapper<DtoQuestion> qw = loadQw();
         qw.eq(DtoQuestion::getUserinfoId, userId)
                 .eq(DtoQuestion::getFlagDel, 0)
+                .eq(DtoQuestion::getFlagHidden, 0)
                 .eq(DtoQuestion::getDoDate, today)
                 .orderByDesc(DtoQuestion::getId);
         List<DtoQuestion> todayList = groupBySession(this.list(qw));
         return new DtoQuestion().setTodayQuestion(todayList);
     }
 
-    /**
-     * 删除用户下所有记录
-     * @param userId 用户ID
-     */
-    public void doRemoveHis(int userId){
-        // 查询需要软删除的记录
+    public void hideSession(int userId, String sessionId) {
         LambdaQueryWrapper<DtoQuestion> qw = loadQw();
         qw.eq(DtoQuestion::getUserinfoId, userId)
-                .eq(DtoQuestion::getFlagDel, 0);
-        //执行软删除，将flagDel字段置为1
-        this.update(new DtoQuestion().setFlagDel(1), qw);
+                .eq(DtoQuestion::getFlagDel, 0)
+                .eq(DtoQuestion::getFlagHidden, 0);
+        if (sessionId.startsWith("legacy_")) {
+            try {
+                qw.eq(DtoQuestion::getId, Long.parseLong(sessionId.substring("legacy_".length())));
+            } catch (NumberFormatException error) {
+                throw new MyException("会话ID格式不正确");
+            }
+        } else {
+            qw.eq(DtoQuestion::getSessionId, sessionId);
+        }
+        this.update(new DtoQuestion().setFlagHidden(1), qw);
+    }
+
+    public void hideAllHistory(int userId) {
+        LambdaQueryWrapper<DtoQuestion> qw = loadQw();
+        qw.eq(DtoQuestion::getUserinfoId, userId)
+                .eq(DtoQuestion::getFlagDel, 0)
+                .eq(DtoQuestion::getFlagHidden, 0);
+        this.update(new DtoQuestion().setFlagHidden(1), qw);
     }
 
     /**

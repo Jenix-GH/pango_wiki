@@ -11,6 +11,7 @@ interface Props {
   dayQuestions: QuestionItem[]
   weekQuestions: QuestionItem[]
   onSelectHistory: (sessionId: string) => void
+  onDeleteHistory: (sessionId: string) => void
   onOpenSettings: () => void
   onRefresh: () => void
   onOpenGuide: () => void
@@ -24,6 +25,7 @@ export default function LeftDrawer({
   dayQuestions,
   weekQuestions,
   onSelectHistory,
+  onDeleteHistory,
   onOpenSettings,
   onRefresh,
   onOpenGuide,
@@ -99,16 +101,31 @@ export default function LeftDrawer({
                   onClick={() => onSelectHistory(q.sessionId)}
                 >
                   <span className="drawer-item-text" title={q.question}>{q.question}</span>
-                  <button
-                    className="drawer-copy-btn"
-                    onClick={(e) => { e.stopPropagation(); handleCopy(q.question) }}
-                    title="复制"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </svg>
-                  </button>
+                  <span className="drawer-item-actions">
+                    <button
+                      type="button"
+                      className="drawer-copy-btn"
+                      onClick={(e) => { e.stopPropagation(); handleCopy(q.question) }}
+                      title="复制"
+                      aria-label={`复制历史对话：${q.question}`}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className="drawer-delete-btn"
+                      onClick={(e) => { e.stopPropagation(); onDeleteHistory(q.sessionId) }}
+                      title="删除历史对话"
+                      aria-label={`删除历史对话：${q.question}`}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 10v6M14 10v6" />
+                      </svg>
+                    </button>
+                  </span>
                 </div>
               ))}
             </div>
@@ -121,16 +138,31 @@ export default function LeftDrawer({
                   onClick={() => onSelectHistory(q.sessionId)}
                 >
                   <span className="drawer-item-text" title={q.question}>{q.question}</span>
-                  <button
-                    className="drawer-copy-btn"
-                    onClick={(e) => { e.stopPropagation(); handleCopy(q.question) }}
-                    title="复制"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </svg>
-                  </button>
+                  <span className="drawer-item-actions">
+                    <button
+                      type="button"
+                      className="drawer-copy-btn"
+                      onClick={(e) => { e.stopPropagation(); handleCopy(q.question) }}
+                      title="复制"
+                      aria-label={`复制历史对话：${q.question}`}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className="drawer-delete-btn"
+                      onClick={(e) => { e.stopPropagation(); onDeleteHistory(q.sessionId) }}
+                      title="删除历史对话"
+                      aria-label={`删除历史对话：${q.question}`}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 10v6M14 10v6" />
+                      </svg>
+                    </button>
+                  </span>
                 </div>
               ))}
             </div>
