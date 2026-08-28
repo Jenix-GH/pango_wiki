@@ -375,7 +375,7 @@ export default function ChatPage() {
     }
   }
 
-  const handleNewSession = async () => {
+  const handleNewSession = async (notify = true) => {
     clearStreamTimeout()
     activeRunRef.current += 1
     abort()
@@ -385,7 +385,23 @@ export default function ChatPage() {
     setShowTips(true)
     const id = api.createSession(recordUserId || 'guest', true)
     setSessionId(id)
-    showToast('已切换新对话')
+    if (notify) showToast('已切换新对话')
+  }
+
+  const handleDeleteHistoryItem = async (historySessionId: string) => {
+    if (!recordUserId || !historySessionId) return
+    if (!window.confirm('确定删除这条历史对话吗？')) return
+
+    try {
+      const res = await api.hideHistory({ userinfoId: recordUserId, sessionId: historySessionId })
+      if (res.code !== 2000) throw new Error(res.message || '删除失败')
+    } catch {
+      showToast('删除历史记录失败，请稍后重试')
+      return
+    }
+    await loadHistory()
+    if (sessionId === historySessionId) void handleNewSession(false)
+    showToast('历史对话已删除')
   }
 
   const handleRefresh = () => {
@@ -486,6 +502,7 @@ export default function ChatPage() {
           dayQuestions={dayQuestions}
           weekQuestions={weekQuestions}
           onSelectHistory={handleSelectHistory}
+          onDeleteHistory={handleDeleteHistoryItem}
           onOpenSettings={() => { if (isLoggedIn) setShowSettings(true) }}
           onRefresh={handleRefresh}
           onOpenGuide={() => navigate('/user-guide')}
@@ -495,7 +512,6 @@ export default function ChatPage() {
         <SettingsPanel
           open={showSettings}
           onClose={() => setShowSettings(false)}
-          onDeleteHistory={() => { setDayQuestions([]); setWeekQuestions([]); setShowTips(true); setMessages([]) }}
         />
 
         <div className={`chat-main ${conversationStarted ? 'has-conversation' : 'is-empty'}`}>

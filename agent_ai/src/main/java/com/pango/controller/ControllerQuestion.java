@@ -1,8 +1,12 @@
 package com.pango.controller;
 
+import com.pango.entity.DtoAnswer;
 import com.pango.entity.DtoQuestion;
+import com.pango.entity.DtoUserinfo;
+import com.pango.exception.MyException;
 import com.pango.rs.R;
 import com.pango.service.ServiceAnswer;
+import com.pango.service.ServiceAuth;
 import com.pango.service.ServiceQuestion;
 import com.pango.service.ServiceUserinfo;
 import com.pango.utils.MyAssert;
@@ -10,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import javax.annotation.Resource;
 import java.util.Map;
@@ -18,7 +23,6 @@ import java.util.Collections;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.Objects;
-import com.pango.entity.DtoAnswer;
 
 /**
  * 问题控制入口
@@ -34,6 +38,8 @@ public class ControllerQuestion implements MyAssert {
     private ServiceAnswer serviceAnswer;
     @Resource
     private ServiceUserinfo serviceUserinfo;
+    @Resource
+    private ServiceAuth serviceAuth;
 
     /**
      * 添加问题
@@ -102,14 +108,40 @@ public class ControllerQuestion implements MyAssert {
     }
 
     /**
-     * 删除用户历史问题
-     * @param params userinfoId
+     * 隐藏单个会话或全部历史记录，不删除问题与回答内容。
      */
-    @PostMapping("/doDelHis")
-    public R doDelHis(@RequestBody Map<String, Object> params){
-        int userId = idIsNull(params.get("userinfoId"), "用户ID");
-        serviceQuestion.doRemoveHis(userId);
+    @PostMapping("/hideHistory")
+    public R hideHistory(
+            @RequestBody Map<String, Object> params,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        DtoUserinfo user = serviceAuth.resolveUser(authorization);
+        int userId = Math.toIntExact(user.getId());
+        if (params.containsKey("userinfoId")) {
+            int requestedUserId = idIsNull(params.get("userinfoId"), "用户ID");
+            if (requestedUserId != userId) {
+                throw new MyException("用户身份不匹配");
+            }
+        }
+        Object rawSessionId = params.get("sessionId");
+        String sessionId = rawSessionId == null ? "" : String.valueOf(rawSessionId).trim();
+        if (sessionId.isEmpty()) {
+            serviceQuestion.hideAllHistory(userId);
+        } else {
+            serviceQuestion.hideSession(userId, sessionId);
+        }
         return R.ok();
+    }
+
+    /**
+     * 兼容旧客户端：原删除入口现在只隐藏历史记录。
+     * @param params userinfoId
+    */
+    @PostMapping("/doDelHis")
+    public R doDelHis(
+            @RequestBody Map<String, Object> params,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        params.remove("sessionId");
+        return hideHistory(params, authorization);
     }
 
 }

@@ -27,6 +27,7 @@ public class DtoQuestion {
     private Date dotime; //创建时间
     private Date uptime;
     private Integer flagDel;//删除标志
+    private Integer flagHidden;//历史记录隐藏标志：0显示，1隐藏
 
     @TableField(exist = false)
     private List<DtoQuestion> todayQuestion;

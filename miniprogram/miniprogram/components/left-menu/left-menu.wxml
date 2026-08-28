@@ -34,18 +34,24 @@
                 <!--显示今天的-->
                 <view hidden="{{dataDayTitle.length === 0}}" class="data-group">
                     <view class="left-panel-title">今天</view>
-                    <view wx:for="{{dataDayTitle}}" wx:key="index">
+                    <view wx:for="{{dataDayTitle}}" wx:key="sessionId">
                         <view bind:longpress="doCopy" bind:tap="doSearchHis" data-id="{{item.id}}" data-session-id="{{item.sessionId}}" data-content="{{item.question}}" class="data-item {{activeId === item.id ? 'active-style' : ''}}">
-                            {{item.question}}
+                            <text class="data-item-text">{{item.question}}</text>
+                            <view class="data-item-delete" catch:tap="doDeleteHistory" data-session-id="{{item.sessionId}}" hover-class="data-item-delete--pressed" aria-role="button" aria-label="删除历史对话">
+                                <iconfont name="shanchu" size="18" color="#8a8f98" />
+                            </view>
                         </view>
                     </view>
                 </view>
                 <!--显示除今天之外的历史-->
                 <view hidden="{{dataHisTitle.length === 0}}" class="data-group">
                     <view class="left-panel-title">7天内</view>
-                    <view wx:for="{{dataHisTitle}}" wx:key="index">
+                    <view wx:for="{{dataHisTitle}}" wx:key="sessionId">
                         <view bind:longpress="doCopy" bind:tap="doSearchHis" data-id="{{item.id}}" data-session-id="{{item.sessionId}}" data-content="{{item.question}}" class="data-item {{activeId === item.id ? 'active-style' : ''}}">
-                            {{item.question}}
+                            <text class="data-item-text">{{item.question}}</text>
+                            <view class="data-item-delete" catch:tap="doDeleteHistory" data-session-id="{{item.sessionId}}" hover-class="data-item-delete--pressed" aria-role="button" aria-label="删除历史对话">
+                                <iconfont name="shanchu" size="18" color="#8a8f98" />
+                            </view>
                         </view>
                     </view>
                 </view>
