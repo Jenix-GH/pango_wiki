@@ -457,7 +457,7 @@ export default function ChatPage() {
 
   const tips = [
     { content: '紫光同创FPGA芯片有哪些?' },
-    { content: '介绍一下PG2T390器件' },
+    { content: '在 PDS 中如何查看时序分析报告？' },
   ]
   const conversationStarted = messages.length > 0 || isStreaming
   const chatInput = (
