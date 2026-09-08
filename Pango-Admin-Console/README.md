@@ -76,6 +76,31 @@ npm start
 
 浏览器打开 `http://127.0.0.1:3100`。构建模式下由 `server.mjs` 同时托管静态页面和 `/local-api`。
 
+## 上传并部署到服务器
+
+仓库提供 Windows PowerShell 部署脚本。首次使用先创建本地部署配置：
+
+```powershell
+Copy-Item deploy/upload-admin-console.example.psd1 deploy/upload-admin-console.psd1
+notepad deploy/upload-admin-console.psd1
+```
+
+填写 SSH 服务器、账号、管理后台远端目录和 PM2 进程名后，可以直接双击：
+
+```text
+deploy/upload-admin-console.cmd
+```
+
+首次双击时，CMD 会自动复制配置模板并打开记事本；保存配置后再次双击即可上传部署，不需要传入参数。也可以从 PowerShell 执行底层脚本：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/upload-admin-console.ps1
+```
+
+脚本会先执行本地测试和构建，再上传源码压缩包。`config/`、`node_modules/`、`dist/`、`tests/`、`deploy/`、`.env*` 和日志不会上传。远端会在临时目录重新安装依赖、检查语法并构建，成功后保留原 `config/`、切换版本并重启 `pango_console`；启动失败会恢复旧版本。
+
+服务器现有远端目录必须提前准备好 `config/database.env`，部署账号需要具备该目录父目录的创建、移动权限，并能直接执行 `node`、`npm` 和 `pm2`。只验证本地打包内容、不连接服务器时可增加 `-DryRun`；确需跳过本地测试和构建时可增加 `-SkipLocalChecks`。
+
 ## 安全边界
 
 - 数据库配置只由本地 Node 服务从 `config/database.env` 读取，不得写入前端代码或提交到 Git。
@@ -95,4 +120,5 @@ npm start
 - 所选时段新用户注册：在所选起止日期内统计 `dto_userinfo.user_type='USER'` 的记录，访客账号不计入。
 - 所选时段提问终端分布：统计所选起止日期内的 `dto_question`，并按 `session_id` 的 `web_`、`mini_` 前缀区分终端。
 - 问答记录：按所选起止日期读取 `dto_question` 并按 `session_id` 组织会话；会话详情关联 `dto_answer`，还原用户问题、上传图片、Markdown 回答、模型图片及参考资料。没有会话标识的历史问题按单条独立会话展示。
+- 问答记录导出：在问答记录页按当前起止日期生成 ZIP。压缩包中的 `README.md` 提供会话索引，`sessions/` 按每个会话保存完整 Markdown，`assets/` 保存用户上传图片和能够安全获取的同源模型配图；配图获取失败时 Markdown 会保留在线地址。
 - 反馈问答复现：使用反馈快照渲染问题和回复，并按用户、会话、问题内容定位原回答的图片与参考资料；Markdown 换行和引用图片插入直接复用 Web 端共享逻辑。
