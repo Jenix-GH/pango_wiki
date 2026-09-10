@@ -60,6 +60,7 @@ export default function WikiReaderPage() {
     if (appRoot) appRoot.style.display = 'contents'
     const bodyDatasetKeys = ['pdfUrl', 'initialPage', 'initialDisplayPage', 'documentId'] as const
     let removePinchListeners = () => {}
+    let stopRemovingWebBack = () => {}
 
     const initialize = async () => {
       try {
@@ -71,7 +72,21 @@ export default function WikiReaderPage() {
         if (!pdfUrl) throw new Error('Missing PDF URL')
 
         sourceBody.querySelectorAll('script').forEach((script) => script.remove())
+        sourceBody.querySelectorAll('.back-link, .identity-divider').forEach((element) => element.remove())
         host.innerHTML = sourceBody.innerHTML
+        const removeWebBack = () => {
+          host.querySelectorAll([
+            '.back-link',
+            '.identity-divider',
+            '.document-identity a[href="/docs"]',
+            '.document-identity a[href$="/docs"]',
+            '.document-identity a[href*="/docs?"]',
+          ].join(',')).forEach((element) => element.remove())
+        }
+        removeWebBack()
+        const backObserver = new MutationObserver(removeWebBack)
+        backObserver.observe(host, { childList: true, subtree: true })
+        stopRemovingWebBack = () => backObserver.disconnect()
         bodyDatasetKeys.forEach((key) => {
           const value = sourceBody.dataset[key]
           if (value) document.body.dataset[key] = value
@@ -135,6 +150,7 @@ export default function WikiReaderPage() {
     return () => {
       controller.abort()
       removePinchListeners()
+      stopRemovingWebBack()
       document.querySelectorAll('[data-wiki-reader-asset="true"]').forEach((asset) => asset.remove())
       bodyDatasetKeys.forEach((key) => delete document.body.dataset[key])
       if (appRoot) appRoot.style.display = previousRootDisplay
@@ -146,7 +162,9 @@ export default function WikiReaderPage() {
     return (
       <main className="wiki-reader-error">
         <p>文档阅读链接无效</p>
-        <button type="button" onClick={() => navigate('/docs?client=miniprogram')}>返回 Wiki</button>
+        {miniProgramClient
+          ? <span>请使用左上角返回文档中心</span>
+          : <button type="button" onClick={() => navigate('/docs')}>返回文档中心</button>}
       </main>
     )
   }

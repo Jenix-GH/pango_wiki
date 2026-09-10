@@ -1,0 +1,62 @@
+<top-menu activeTab="license" bind:openChat="openChat" bind:openWiki="openWiki" bind:openLicense="noop" />
+
+<scroll-view class="license-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+  <view class="license-main">
+    <view class="license-card">
+      <view class="license-heading">
+        <text class="license-kicker">软件授权服务</text>
+        <text class="license-title">PDS License 申请</text>
+        <text class="license-description">请准确填写软件运行环境和申请人信息，我们将在审核后与您联系。</text>
+      </view>
+
+      <view class="form-section">
+        <view class="section-title"><text>授权信息</text></view>
+        <view class="field">
+          <text class="field-label">操作系统版本</text>
+          <picker mode="selector" range="{{operatingSystemOptions}}" bindchange="selectOperatingSystem">
+            <view class="picker-field"><text>{{form.operatingSystem}}</text><text>⌄</text></view>
+          </picker>
+        </view>
+        <label class="field">
+          <text class="field-label">软件版本</text>
+          <input value="{{form.softwareVersion}}" data-field="softwareVersion" bindinput="inputField" maxlength="50" placeholder="请输入软件版本号" />
+        </label>
+        <view class="field">
+          <text class="field-label">授权类型</text>
+          <view class="license-options">
+            <view class="license-option {{form.licenseType === 'STANDALONE' ? 'selected' : ''}}" bind:tap="selectLicenseType" data-type="STANDALONE">
+              <view class="radio-dot"><view></view></view><view><text class="option-title">单机版</text><text class="option-description">支持单一用户使用</text></view>
+            </view>
+            <view class="license-option {{form.licenseType === 'SERVER' ? 'selected' : ''}}" bind:tap="selectLicenseType" data-type="SERVER">
+              <view class="radio-dot"><view></view></view><view><text class="option-title">服务器版</text><text class="option-description">支持多用户使用</text></view>
+            </view>
+          </view>
+        </view>
+        <view class="field">
+          <text class="field-label">使用时长</text>
+          <picker mode="selector" range="{{durationOptions}}" bindchange="selectDuration">
+            <view class="picker-field"><text>{{form.durationYears}}年</text><text>⌄</text></view>
+          </picker>
+        </view>
+        <label class="field">
+          <text class="field-label">MAC 地址</text>
+          <input value="{{form.macAddress}}" data-field="macAddress" bindinput="inputField" maxlength="17" placeholder="00-1A-2B-3C-4D-5E" />
+        </label>
+      </view>
+
+      <view class="form-section">
+        <view class="section-title"><text>申请人信息</text></view>
+        <label class="field"><text class="field-label">申请人</text><input value="{{form.applicantName}}" data-field="applicantName" bindinput="inputField" maxlength="100" placeholder="请输入申请人姓名" /></label>
+        <label class="field"><text class="field-label">公司</text><input value="{{form.companyName}}" data-field="companyName" bindinput="inputField" maxlength="200" placeholder="请输入公司名称" /></label>
+        <label class="field"><text class="field-label">邮箱</text><input value="{{form.email}}" data-field="email" bindinput="inputField" maxlength="200" placeholder="name@company.com" /></label>
+        <label class="field"><text class="field-label">电话</text><input value="{{form.phone}}" data-field="phone" bindinput="inputField" maxlength="50" placeholder="请输入联系电话" /></label>
+        <label class="field"><text class="field-label">地址</text><textarea value="{{form.address}}" data-field="address" bindinput="inputField" maxlength="500" placeholder="请输入详细地址" /></label>
+      </view>
+
+      <view wx:if="{{error}}" class="form-message error">{{error}}</view>
+      <view wx:if="{{success}}" class="form-message success">{{success}}</view>
+      <button class="submit-button" loading="{{submitting}}" disabled="{{submitting}}" bind:tap="submitApplication">{{submitting ? '提交中…' : '提交申请'}}</button>
+    </view>
+    <view class="license-bottom-space"></view>
+  </view>
+</scroll-view>

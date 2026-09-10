@@ -53,7 +53,8 @@ Component({
         flagUserPhone: false,
         userinfo: {} as User,
         code: '',
-        flagLogin: false
+        flagLogin: false,
+        overlayHeaderTop: 100
     },
     /**
      * 组件的方法列表
@@ -101,7 +102,7 @@ Component({
                 timingFunction: 'ease'
             })
             maskAnim.opacity(0).step()
-            panelAnim.left('-75%').step()
+            panelAnim.left('-82%').step()
             this.setData({
                 maskAnimation: maskAnim.export(),
                 panelAnimation: panelAnim.export()
@@ -246,6 +247,8 @@ Component({
     },
     lifetimes: {
         attached() {
+            const capsule = wx.getMenuButtonBoundingClientRect()
+            this.setData({ overlayHeaderTop: capsule.bottom > 0 ? capsule.bottom + 8 : 100 })
             //判断用户信息是否获得
             let info = wx.getStorageSync("userInfo")
             const isGuest = Boolean(info && String(info.userType || '').toUpperCase() === 'GUEST')

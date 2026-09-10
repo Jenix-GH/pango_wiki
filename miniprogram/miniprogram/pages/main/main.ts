@@ -430,9 +430,19 @@ function placeMediaAfterCitations(content: string, media: AnswerMedia[]): Answer
 }
 
 function openReferenceViewer(url: string) {
-    app.globalData._refViewerUrl = url
+    const referenceUrl = absoluteReferenceUrl(url).replace(
+        /\/references\/(cloud\/)?document(?=[?#]|$)/,
+        '/references/$1viewer'
+    )
+    const webHost = String(app.globalData.qaHost || app.globalData.referenceHost || '').trim().replace(/\/$/, '')
+    if (!referenceUrl || !/^https?:\/\//i.test(webHost)) {
+        showError('参考文档阅读服务地址无效')
+        return
+    }
+    const readerUrl = `${webHost}/docs/reader?client=miniprogram&entry=${Date.now()}&url=${encodeURIComponent(referenceUrl)}`
+    app.globalData._refViewerUrl = readerUrl
     wx.navigateTo({
-        url: `/pages/reference-viewer/reference-viewer?url=${encodeURIComponent(url)}`,
+        url: '/pages/reference-viewer/reference-viewer',
         fail: err => {
             console.error('打开参考文档页面失败', err)
             showError('参考文档页面打开失败')
@@ -574,7 +584,7 @@ Page({
 
     openWiki() {
         trackAnalyticsEvent('wiki_view', '/pages/wiki/wiki')
-        wx.navigateTo({
+        wx.switchTab({
             url: '/pages/wiki/wiki',
             fail: err => {
                 console.error('打开文档中心页面失败', err)
@@ -582,6 +592,18 @@ Page({
             }
         })
     },
+
+    openLicense() {
+        wx.switchTab({
+            url: '/pages/license/license',
+            fail: err => {
+                console.error('打开 License 申请页面失败', err)
+                showError('License 申请页面打开失败')
+            }
+        })
+    },
+
+    noop() {},
 
     openFeedback(e: any) {
         this.setData({
@@ -1042,9 +1064,8 @@ Page({
     },
     // 显示底部弹窗
     showSetPanel() {
-        //调用子组件的方法
-        const setPanel = this.selectComponent('#setPanel');
-        setPanel.showSetPanel();
+        const setPanel = this.selectComponent('#setPanel') as any
+        if (setPanel?.showSetPanel) setPanel.showSetPanel()
     },
     syncUserInfoFromStorage() {
         const stored = wx.getStorageSync('userInfo')

@@ -17,7 +17,15 @@ Component({
     data: {
         showPopup: false,                   //底部菜单显示控制
         showSubPage: "set",                 //底部菜单当前显示的页面名称
-        title: '设置'                       //底部菜单的标题
+        title: '设置',                       //底部菜单的标题
+        modalTop: 100
+    },
+
+    lifetimes: {
+        attached() {
+            const capsule = wx.getMenuButtonBoundingClientRect()
+            this.setData({ modalTop: capsule.bottom > 0 ? capsule.bottom + 8 : 100 })
+        }
     },
 
     /**
@@ -29,6 +37,9 @@ Component({
         },
         hideSetPanel() {
             this.setData({ showPopup: false, showSubPage: "set", flagShowBackBtn: false, title: "设置" })
+        },
+        preventTouchMove() {
+            return false
         },
         gotoSetList(){
             this.setData({showSubPage: "set", flagShowBackBtn: false, title: "设置"})

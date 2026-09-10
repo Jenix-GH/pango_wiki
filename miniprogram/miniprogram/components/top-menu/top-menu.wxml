@@ -1,14 +1,29 @@
-<!--顶部菜单组件-->
-<view class="panel">
-    <view class="panel-actions">
-        <view class="panel-left-icon" bind:tap="goto_left_menu">
-            <iconfont name="{{iconName}}" size="25" color="white" />
+<!-- 三个原生主页面共用同一套顶部结构和尺寸。 -->
+<view class="panel" style="padding-top: {{statusBarHeight}}px">
+    <view class="panel-toolbar" style="height: {{navigationBarHeight}}px">
+        <view class="panel-actions {{showChatActions ? '' : 'panel-actions-hidden'}}">
+            <view class="panel-action" bind:tap="goto_left_menu" aria-role="button" aria-label="打开历史记录">
+                <iconfont name="{{iconName}}" size="22" color="#35383d" />
+            </view>
+            <view class="panel-action" bind:tap="reloadSession" aria-role="button" aria-label="新建会话">
+                <view class="new-session"></view>
+            </view>
         </view>
-        <view class="panel-left-icon" bind:tap="reloadSession">
-            <view class="new-session"></view>
+        <view class="panel-brand">
+            <image class="panel-logo" src="/images/pango-logo.png" mode="aspectFit" />
+            <text class="panel-brand-title">Pango 智能服务平台</text>
         </view>
-        <view class="panel-wiki" bind:tap="openWiki">Doc</view>
     </view>
-    <view class="panel-text">{{ title }}</view>
+    <view class="panel-tabs">
+        <view class="panel-tab {{activeTab === 'wiki' ? 'active' : ''}}" bind:tap="openWiki" aria-role="button">
+            <view class="panel-tab-icon tab-icon-wiki"></view><text>文档</text>
+        </view>
+        <view class="panel-tab {{activeTab === 'chat' ? 'active' : ''}}" bind:tap="openChat" aria-role="button">
+            <view class="panel-tab-icon tab-icon-chat"></view><text>Pango 慧答</text>
+        </view>
+        <view class="panel-tab {{activeTab === 'license' ? 'active' : ''}}" bind:tap="openLicense" aria-role="button">
+            <view class="panel-tab-icon tab-icon-license"></view><text>License 申请</text>
+        </view>
+    </view>
 </view>
 

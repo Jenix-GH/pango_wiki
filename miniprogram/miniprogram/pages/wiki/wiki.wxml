@@ -1,4 +1,115 @@
-<web-view
-  src="{{wikiUrl}}"
-  binderror="handleWikiError"
-/>
+<top-menu activeTab="wiki" bind:openChat="openChat" bind:openWiki="noop" bind:openLicense="openLicense" />
+
+<scroll-view class="wiki-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+  <view class="wiki-content">
+    <view class="wiki-heading">
+      <view class="wiki-title-row">
+        <view class="directory-button" bind:tap="openDirectory"><text class="directory-lines">☰</text>目录</view>
+        <view class="wiki-title-block">
+          <text class="wiki-eyebrow">PANGO TECHNICAL LIBRARY</text>
+          <text class="wiki-title">器件技术文档中心</text>
+        </view>
+      </view>
+      <view class="search-box">
+        <text class="search-icon">⌕</text>
+        <input value="{{query}}" bindinput="inputSearch" confirm-type="search" placeholder="搜索文档编号、器件系列或功能模块" />
+      </view>
+    </view>
+
+    <scroll-view class="filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="filter-row">
+        <view wx:for="{{filters}}" wx:key="key" class="filter-item {{activeFilter === item.key ? 'active' : ''}}" bind:tap="selectFilter" data-key="{{item.key}}">
+          <text>{{item.name}}</text><text class="filter-count">{{item.count}}</text>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="toolbar">
+      <view class="refresh-button {{refreshing ? 'disabled' : ''}}" bind:tap="refreshCatalog"><text class="refresh-icon">↻</text>{{refreshing ? '正在刷新' : '刷新目录'}}</view>
+      <picker mode="selector" range="{{sortOptions}}" bindchange="changeSort">
+        <view class="sort-button"><text>⇅</text>{{sortLabel}}⌄</view>
+      </picker>
+    </view>
+
+    <view class="current-row">
+      <view>当前位置：<text class="current-name">{{selectedDirectoryName}}</text>（{{resultCount}}）</view>
+      <view wx:if="{{catalog}}" class="raw-count">共 {{catalog.document_count}} 份文档（含历史版本）</view>
+    </view>
+
+    <view wx:if="{{actionError}}" class="state-message error">{{actionError}}</view>
+    <view wx:if="{{loading}}" class="state-message">正在加载文档目录…</view>
+    <view wx:elif="{{loadError}}" class="state-message error">
+      <text>{{loadError}}</text>
+      <button class="retry-button" bind:tap="retryCatalog">重新加载</button>
+    </view>
+    <view wx:elif="{{cards.length === 0}}" class="state-message">没有找到匹配的文档</view>
+
+    <view wx:else class="document-list">
+      <view wx:for="{{cards}}" wx:key="id" class="document-card">
+        <view class="card-top">
+          <text class="document-code" bind:tap="toggleCard" data-id="{{item.id}}">{{item.label}}</text>
+          <text class="document-kind">{{item.kind}}</text>
+        </view>
+        <text class="document-title">{{item.title}}</text>
+        <view class="document-meta">
+          <text>版本：{{item.versionText}}</text><text class="current-badge">当前</text>
+        </view>
+        <view wx:if="{{item.expanded}}" class="document-detail">
+          <view class="detail-row"><text>文件名</text><text>{{item.file_name}}</text></view>
+          <view class="detail-row"><text>所在目录</text><text>{{item.section || item.series}}</text></view>
+          <view class="detail-row"><text>更新时间</text><text>{{item.updated_at}}</text></view>
+          <view class="detail-row"><text>文件大小</text><text>{{item.size_label || '—'}}</text></view>
+          <view class="detail-row"><text>文档状态</text><text>{{item.source_status || '—'}}</text></view>
+          <view class="detail-row"><text>知识片段</text><text>{{item.chunk_count || '—'}}</text></view>
+          <view wx:if="{{item.history.length}}" class="history-section">
+            <text class="history-title">历史版本</text>
+            <view wx:for="{{item.history}}" wx:for-item="history" wx:key="key" class="history-item">
+              <view class="history-info">
+                <text>{{history.label}} · {{history.versionText}}</text>
+                <text>{{history.updatedText}}</text>
+              </view>
+              <view class="history-actions">
+                <view class="history-action {{history.action_type === 'download' ? 'history-download' : ''}} {{history.action_disabled ? 'disabled' : ''}}" bind:tap="openDocument" data-key="{{history.key}}">{{history.actionText}}</view>
+                <view wx:if="{{history.canDownload}}" class="history-action history-download {{history.action_disabled ? 'disabled' : ''}}" bind:tap="downloadDocumentByKey" data-key="{{history.key}}">下载</view>
+              </view>
+            </view>
+          </view>
+        </view>
+        <view class="card-actions">
+          <view class="read-button {{item.action_type === 'download' ? 'download-button' : ''}} {{item.action_disabled ? 'disabled' : ''}}" bind:tap="openDocument" data-key="{{item.key}}">
+            <view wx:if="{{item.action_type === 'download'}}" class="small-download"></view>
+            <view wx:else class="small-book"></view>
+            <text>{{item.actionText}}</text>
+          </view>
+          <view wx:if="{{item.canDownload}}" class="download-button {{item.action_disabled ? 'disabled' : ''}}" bind:tap="downloadDocumentByKey" data-key="{{item.key}}">
+            <view class="small-download"></view><text>下载</text>
+          </view>
+          <text wx:if="{{item.historyCount}}" class="history-count">历史版本 {{item.historyCount}}</text>
+          <view class="expand-button" bind:tap="toggleCard" data-id="{{item.id}}">{{item.expanded ? '⌃' : '›'}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{resultCount > 0}}" class="pagination">
+      <view class="page-button {{page <= 1 ? 'disabled' : ''}}" bind:tap="previousPage">‹</view>
+      <text><text class="page-current">{{page}}</text> / {{totalPages}}</text>
+      <view class="page-button {{page >= totalPages ? 'disabled' : ''}}" bind:tap="nextPage">›</view>
+    </view>
+    <view class="page-bottom-space"></view>
+  </view>
+</scroll-view>
+
+<view wx:if="{{directoryOpen}}" class="directory-mask" catch:tap="closeDirectory">
+  <view class="directory-panel" catch:tap="noop">
+    <view class="directory-header"><text>文档目录</text><text bind:tap="closeDirectory">×</text></view>
+    <scroll-view class="directory-list" scroll-y>
+      <view class="directory-row {{selectedDirectory === 'all' ? 'active' : ''}}" bind:tap="selectDirectory" data-key="all" data-name="全部文档">
+        <text>全部文档</text><text class="directory-count">{{allGroups.length}}</text>
+      </view>
+      <view wx:for="{{directories}}" wx:key="key" class="directory-row {{selectedDirectory === item.key ? 'active' : ''}}" style="padding-left: {{28 + item.indent}}rpx" bind:tap="selectDirectory" data-key="{{item.key}}" data-name="{{item.name}}">
+        <text class="directory-name">{{item.name}}</text><text class="directory-count">{{item.count}}</text>
+      </view>
+    </scroll-view>
+    <view class="directory-note">文档来源：Pango 官方文档</view>
+  </view>
+</view>
