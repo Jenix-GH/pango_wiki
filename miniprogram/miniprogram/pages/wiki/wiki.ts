@@ -1,6 +1,14 @@
 export {}
 
 const app = getApp()
+
+function isUserLoggedIn(): boolean {
+  const info = wx.getStorageSync('userInfo')
+  if (!info) return false
+  const isGuest = String(info.userType || '').toUpperCase() === 'GUEST'
+  return Boolean(info.setId && Number(info.setId) > 0 && !isGuest)
+}
+
 const CATALOG_URL = 'https://aiapp.pangomicro.com/wiki/api/catalog'
 const PAGE_SIZE = 20
 const ALLOWED_DOCUMENT_PATHS = [
@@ -388,6 +396,21 @@ Page({
 
   downloadDocument(document: WikiDocument) {
     this.setData({ actionError: '' })
+    if (!isUserLoggedIn()) {
+      wx.showModal({
+        title: '需要登录',
+        content: '下载文档需要先登录，在线阅读不受影响。',
+        confirmText: '去登录',
+        cancelText: '取消',
+        success: result => {
+          if (result.confirm) {
+            app.globalData._pendingLogin = true
+            wx.switchTab({ url: '/pages/main/main' })
+          }
+        },
+      })
+      return
+    }
     if (document.action_disabled) {
       this.setData({ actionError: document.source_status || '该文件当前不可用。' })
       return

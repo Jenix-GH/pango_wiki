@@ -1,7 +1,7 @@
 <!--自定义菜单-->
 <top-menu activeTab="chat" showChatActions="{{true}}" iconName="{{pageLeftIconName}}" bind:openLeftPanel="showLeftPanel" bind:reloadSession="reloadSession" bind:openChat="noop" bind:openWiki="openWiki" bind:openLicense="openLicense" />
 <!--左侧抽屉页面 -->
-<left-menu id="leftPanel" dataDayTitle="{{dataDayTitle}}" dataHisTitle="{{dataHisTitle}}" userInfo="{{userInfo}}" bind:openSetPanel="showSetPanel" bind:doSearchHisItem="doSearchHisItem" bind:deleteHistoryItem="deleteHistoryItem" bind:refresh="handleRefresh" />
+<left-menu id="leftPanel" dataDayTitle="{{dataDayTitle}}" dataHisTitle="{{dataHisTitle}}" userInfo="{{userInfo}}" bind:openSetPanel="showSetPanel" bind:doSearchHisItem="doSearchHisItem" bind:deleteHistoryItem="deleteHistoryItem" bind:refresh="handleRefresh" bind:panelVisibilityChange="onLeftPanelVisibilityChange" />
 <!--底部设置页面-->
 <set-menu id="setPanel" bind:logout="logout"></set-menu>
 <!--主页-->
@@ -151,7 +151,7 @@
                             <view class="image-preview-remove" bind:tap="removeImage" data-index="{{index}}">×</view>
                         </view>
                     </view>
-                    <textarea wx:if="{{!flagLuyuning && !flagVoiceMode}}" auto-height placeholder="{{inputPlaceholder}}" bindinput="doReady" confirm-type="send" disable-default-padding show-confirm-bar="{{false}}" bindconfirm="doSearch" cursor-spacing="{{0}}" adjust-position="{{false}}" value="{{questionContent}}" class="textarea" id="myInput" maxlength="-1" bindlongpress="startRecord" bindfocus="onInputFocus" bindblur="onInputBlur" />
+                    <textarea wx:if="{{!flagLuyuning && !flagVoiceMode && !flagLeftPanelOpen}}" auto-height placeholder="{{inputPlaceholder}}" bindinput="doReady" confirm-type="send" disable-default-padding show-confirm-bar="{{false}}" bindconfirm="doSearch" cursor-spacing="{{0}}" adjust-position="{{false}}" value="{{questionContent}}" class="textarea" id="myInput" maxlength="-1" bindlongpress="startRecord" bindfocus="onInputFocus" bindblur="onInputBlur" />
                     <view hidden="{{!flagLuyuning && !flagVoiceMode}}" class="talkView-active" bindtouchstart="startRecord" catchtouchmove="cancelRecord" catchtouchend="stopRecord" catchtouchcancel="cancelRecordBySystem">
                         {{luyunTipText}}
                     </view>

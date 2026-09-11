@@ -77,6 +77,7 @@ Component({
                 maskAnimation: maskAnim.export(),
                 panelAnimation: panelAnim.export()
             })
+            this.triggerEvent('panelVisibilityChange', { visible: true })
         },
         // 鉴权失败后切回未登录视图，确保重新授权入口可见。
         resetAuthentication() {
@@ -109,6 +110,7 @@ Component({
             })
             setTimeout(() => {
                 this.setData({ flag_showLeftPanel: false })
+                this.triggerEvent('panelVisibilityChange', { visible: false })
             }, 300)
         },
         //‌阻止默认行为,侧边抽屉展开时固定主内容区位置‌

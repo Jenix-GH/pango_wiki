@@ -526,6 +526,7 @@ Page({
         keyboardPadding: 0,
         cursorPos: 0,
         _inputFocused: false,
+        flagLeftPanelOpen: false,
         flagVoiceMode: false,
         inputPlaceholder: '发消息或按住说话...',
         isRecording: false, //录音相关
@@ -1048,7 +1049,13 @@ Page({
         const leftPanel = this.selectComponent('#leftPanel');
         leftPanel.showLeftPanel();
         leftPanel.doClearChoose();
+        // 抽屉展开时隐藏原生 textarea，避免其悬浮在上层拦截底部点击并弹出键盘
+        this.setData({ flagLeftPanelOpen: true })
+        wx.hideKeyboard()
         void this.refreshHistoryList()
+    },
+    onLeftPanelVisibilityChange(e: any) {
+        this.setData({ flagLeftPanelOpen: Boolean(e.detail && e.detail.visible) })
     },
     async refreshHistoryList() {
         if (!this.data.userInfo?.id) return
@@ -2401,6 +2408,10 @@ Page({
      * 生命周期函数--监听页面显示
      */
     onShow() {
+        if (app.globalData._pendingLogin) {
+            app.globalData._pendingLogin = false
+            this.showLeftPanel()
+        }
         if (recordAuthorizationPending && this.data.flagLuyuning) {
             recorderIntentVersion++
             recordAuthorizationPending = false
