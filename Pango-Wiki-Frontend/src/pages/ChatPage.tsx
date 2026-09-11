@@ -183,7 +183,14 @@ export default function ChatPage() {
       return
     }
 
-    if (!question && uploadImages.length === 0) return
+    if (!question) {
+      if (uploadImages.length > 0) {
+        showToast('请先输入问题文字，图片需要配合文字一起发送')
+      } else {
+        showToast('请输入问题内容')
+      }
+      return
+    }
 
     setShowTips(false)
     setUserScrolledUp(false)
