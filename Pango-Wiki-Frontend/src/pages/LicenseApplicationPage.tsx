@@ -1,35 +1,29 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { LicenseApplicationPayload } from '../api/types'
+import type { LicenseApplicationPayload, UserInfo } from '../api/types'
 import TopBar from '../components/TopBar'
 import { useAuth } from '../contexts/AuthContext'
 import './LicenseApplicationPage.css'
 
-const initialForm: LicenseApplicationPayload = {
+const createInitialForm = (user: UserInfo | null): LicenseApplicationPayload => ({
   operatingSystem: 'Windows',
   softwareVersion: '',
   licenseType: 'STANDALONE',
   durationYears: 1,
   macAddress: '',
-  applicantName: '',
-  companyName: '',
-  email: '',
-  phone: '',
   address: '',
-}
+  userinfoId: user?.id,
+  applicantName: user?.nickName || '',
+  companyName: user?.companyName || '',
+  email: user?.mailAddress || '',
+  phone: user?.phoneNumber || '',
+})
 
 export default function LicenseApplicationPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [form, setForm] = useState<LicenseApplicationPayload>(() => ({
-    ...initialForm,
-    userinfoId: user?.id,
-    applicantName: user?.nickName || '',
-    companyName: user?.companyName || '',
-    email: user?.mailAddress || '',
-    phone: user?.phoneNumber || '',
-  }))
+  const [form, setForm] = useState<LicenseApplicationPayload>(() => createInitialForm(user))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -57,7 +51,8 @@ export default function LicenseApplicationPage() {
         macAddress: form.macAddress.toUpperCase(),
       })
       if (response.code !== 2000) throw new Error(response.message || '提交失败')
-      setSuccess(`申请已提交，申请编号：${response.data?.id || '-'}`)
+      setForm(createInitialForm(user))
+      setSuccess('申请已提交，我们将在审核后与您联系')
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : '提交失败，请稍后重试')
     } finally {

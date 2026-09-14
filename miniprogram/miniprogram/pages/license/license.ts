@@ -31,6 +31,14 @@ interface ApiResponse {
   data?: { id?: number }
 }
 
+interface StoredUserInfo {
+  id?: number
+  nickName?: string
+  companyName?: string
+  mailAddress?: string
+  phoneNumber?: string
+}
+
 const emptyForm = (): LicenseForm => ({
   operatingSystem: 'Windows',
   softwareVersion: '',
@@ -44,28 +52,32 @@ const emptyForm = (): LicenseForm => ({
   address: '',
 })
 
+/** 表单初始状态：手填字段留空，申请人信息由登录账号带入。提交成功后复位到该状态。 */
+const initialForm = (user: StoredUserInfo = {}): LicenseForm => ({
+  ...emptyForm(),
+  userinfoId: user.id,
+  applicantName: user.nickName || '',
+  companyName: user.companyName || '',
+  email: user.mailAddress || '',
+  phone: user.phoneNumber || '',
+})
+
+const readStoredUser = (): StoredUserInfo => (wx.getStorageSync('userInfo') || {}) as StoredUserInfo
+
 Page({
   data: {
     form: emptyForm(),
     operatingSystemOptions: ['Windows', 'Linux'],
+    operatingSystemIndex: 0,
     durationOptions: ['1年', '2年', '3年'],
+    durationIndex: 0,
     submitting: false,
     error: '',
     success: '',
   },
 
   onLoad() {
-    const user = wx.getStorageSync('userInfo') || {}
-    this.setData({
-      form: {
-        ...emptyForm(),
-        userinfoId: user.id,
-        applicantName: user.nickName || '',
-        companyName: user.companyName || '',
-        email: user.mailAddress || '',
-        phone: user.phoneNumber || '',
-      },
-    })
+    this.setData({ form: initialForm(readStoredUser()) })
   },
 
   openChat() {
@@ -89,12 +101,15 @@ Page({
 
   selectOperatingSystem(event: FieldEvent) {
     const index = Number(event.detail.value) || 0
-    this.setData({ 'form.operatingSystem': this.data.operatingSystemOptions[index] as 'Windows' | 'Linux' })
+    this.setData({
+      operatingSystemIndex: index,
+      'form.operatingSystem': this.data.operatingSystemOptions[index] as 'Windows' | 'Linux',
+    })
   },
 
   selectDuration(event: FieldEvent) {
     const index = Number(event.detail.value) || 0
-    this.setData({ 'form.durationYears': (index + 1) as 1 | 2 | 3 })
+    this.setData({ durationIndex: index, 'form.durationYears': (index + 1) as 1 | 2 | 3 })
   },
 
   selectLicenseType(event: DatasetEvent) {
@@ -144,7 +159,12 @@ Page({
           this.setData({ error: response.message || '提交失败，请稍后重试' })
           return
         }
-        this.setData({ success: `申请已提交，申请编号：${response.data?.id || '-'}` })
+        this.setData({
+          form: initialForm(readStoredUser()),
+          operatingSystemIndex: 0,
+          durationIndex: 0,
+          success: '申请已提交，我们将在审核后与您联系',
+        })
       },
       fail: error => {
         console.error('License 申请提交失败', error)

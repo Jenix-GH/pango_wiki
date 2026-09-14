@@ -13,7 +13,7 @@
         <view class="section-title"><text>授权信息</text></view>
         <view class="field">
           <text class="field-label">操作系统版本</text>
-          <picker mode="selector" range="{{operatingSystemOptions}}" bindchange="selectOperatingSystem">
+          <picker mode="selector" range="{{operatingSystemOptions}}" value="{{operatingSystemIndex}}" bindchange="selectOperatingSystem">
             <view class="picker-field"><text>{{form.operatingSystem}}</text><text>⌄</text></view>
           </picker>
         </view>
@@ -34,7 +34,7 @@
         </view>
         <view class="field">
           <text class="field-label">使用时长</text>
-          <picker mode="selector" range="{{durationOptions}}" bindchange="selectDuration">
+          <picker mode="selector" range="{{durationOptions}}" value="{{durationIndex}}" bindchange="selectDuration">
             <view class="picker-field"><text>{{form.durationYears}}年</text><text>⌄</text></view>
           </picker>
         </view>
