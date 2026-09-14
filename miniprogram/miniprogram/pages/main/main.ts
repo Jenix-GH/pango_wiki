@@ -63,6 +63,8 @@ let recorderAttemptStartedAt = 0
 let recorderStopFallbackTimer: any = null
 let recorderIntentVersion = 0
 let recordAuthorizationPending = false
+let recordPressTimer: any = null
+let recordPressClientY = 0
 const MAX_UPLOAD_IMAGE_BYTES = 15 * 1024 * 1024
 
 function clearRecorderStopFallback() {
@@ -526,6 +528,8 @@ Page({
         keyboardPadding: 0,
         cursorPos: 0,
         _inputFocused: false,
+        inputFocus: false,
+        inputActive: false,
         flagLeftPanelOpen: false,
         flagVoiceMode: false,
         inputPlaceholder: '发消息或按住说话...',
@@ -748,9 +752,50 @@ Page({
             complete: () => this.setData({ feedbackSubmitting: false })
         })
     },
+    // 长按输入框进入录音。用 touchstart + 定时器模拟长按，替代 bindlongpress，
+    // 避免真机上长按后松开不触发 touchend 导致录音无法停止的问题。
+    recordTouchStart(e: any) {
+        if (this.data.flagLuyuning || !this.data.flagTalkOver) return
+        // 以按下瞬间的聚焦状态为准：此时已经聚焦说明用户正在打字，
+        // 本次长按不触发录音（保持原有行为）；本次长按自身引起的聚焦不算。
+        const focusedBeforePress = Boolean(this.data._inputFocused)
+        const touch = e.touches?.[0] || e.changedTouches?.[0]
+        if (!touch) return
+        recordPressClientY = touch.clientY
+        if (recordPressTimer) clearTimeout(recordPressTimer)
+        recordPressTimer = setTimeout(() => {
+            recordPressTimer = null
+            if (focusedBeforePress) return
+            this.startRecord({ touches: [{ clientY: recordPressClientY }] }, true)
+        }, 350)
+    },
+    recordTouchEnd() {
+        if (recordPressTimer) {
+            clearTimeout(recordPressTimer)
+            recordPressTimer = null
+        }
+        this.stopRecord()
+    },
+    recordTouchMove(e: any) {
+        if (recordPressTimer) {
+            clearTimeout(recordPressTimer)
+            recordPressTimer = null
+            return
+        }
+        this.cancelRecord(e)
+    },
+    recordTouchCancel() {
+        if (recordPressTimer) {
+            clearTimeout(recordPressTimer)
+            recordPressTimer = null
+        }
+        this.cancelRecordBySystem()
+    },
     // 开始录音（长按输入框触发）
-    startRecord(e: any) {
-        if (this.data._inputFocused) return;
+    startRecord(e: any, fromLongPress = false) {
+        // 长按输入框时原生 textarea 可能已获得焦点，此时不能再按聚焦状态拦截，
+        // 否则录音永远无法开始。
+        if (!fromLongPress && this.data._inputFocused) return;
         if (!this.data.userInfo?.id) {
             showError("访客信息初始化中，请稍后重试")
             return
@@ -771,8 +816,13 @@ Page({
             audioPath: '', luyunTipText: "松开 结束",
             flagLuyuning: true, flagCancel: false,
             startY: (e.detail?.touches?.[0]?.clientY || e.touches?.[0]?.clientY || 0),
-            startTime: Date.now(), flagTalkOver: false
+            startTime: Date.now(), flagTalkOver: false,
+            // 长按输入框会让原生 textarea 获得焦点，这里主动置为失焦，
+            // 否则录音结束后输入框回到原位时键盘会再次弹出（闪动）。
+            inputFocus: false
         })
+        // 长按输入框可能已经唤起了键盘，录音期间需要收起。
+        wx.hideKeyboard()
         wx.authorize({
             scope: 'scope.record',
             success: () => {
@@ -1055,7 +1105,14 @@ Page({
         void this.refreshHistoryList()
     },
     onLeftPanelVisibilityChange(e: any) {
-        this.setData({ flagLeftPanelOpen: Boolean(e.detail && e.detail.visible) })
+        const visible = Boolean(e.detail && e.detail.visible)
+        // 抽屉开合都退出输入态：既避免原生 textarea 浮在抽屉上层拦截点击，
+        // 也避免抽屉关闭时残留的输入态让 textarea 重建、键盘与布局抖动。
+        this.setData({
+            flagLeftPanelOpen: visible,
+            inputActive: false,
+            inputFocus: false
+        })
     },
     async refreshHistoryList() {
         if (!this.data.userInfo?.id) return
@@ -1127,11 +1184,29 @@ Page({
         const ready = this.data.questionContent.trim() !== ''
         this.setData({ flagVoiceMode: false, flagDoReady: ready })
     },
+    // 点击输入框：切换 textarea 到输入位置并聚焦。
+    // 非输入态由普通 view 呈现输入框，长按录音不经过原生组件，因此不会唤起键盘。
+    activateInput() {
+        if (this.data.flagLuyuning || !this.data.flagTalkOver) return
+        if (this.data.flagVoiceMode) return
+        // 提示语在点击这一刻就换掉，不要等原生 focus 事件回来（那样会慢一拍，
+        // 表现为键盘弹出后提示语才变化）。textarea 常驻在屏幕外完成过首次布局，
+        // 这里只是把它的 left 移回原位，宽度不参与重新计算。
+        this.setData({ inputActive: true, inputPlaceholder: '发消息...' }, () => {
+            this.setData({ inputFocus: true })
+        })
+    },
     onInputFocus() {
-        this.setData({ _inputFocused: true, inputPlaceholder: '发消息...' });
+        this.setData({ _inputFocused: true, inputFocus: true, inputPlaceholder: '发消息...' });
     },
     onInputBlur() {
-        this.setData({ _inputFocused: false, inputPlaceholder: '发消息或按住说话...' });
+        // 失焦后把 textarea 移回屏幕外，view 恢复可见。
+        this.setData({
+            _inputFocused: false,
+            inputActive: false,
+            inputFocus: false,
+            inputPlaceholder: '发消息或按住说话...'
+        });
     },
     toggleVoiceMode() {
         if (this.data.flagStart) return;
@@ -2091,6 +2166,14 @@ Page({
         await this.refreshUserAndHistory()
         const EXTRA_OFFSET = 0; // 键盘顶部与输入框之间的额外间距
         wx.onKeyboardHeightChange(res => {
+            // 只有输入态才需要键盘占位。输入框已移除（录音、抽屉开合等）时，
+            // 键盘收起动画的中间值会让输入区上下抖动，这里直接归零并忽略。
+            if (!this.data.inputActive) {
+                if (this.data.keyboardPadding !== 0) {
+                    this.setData({ keyboardPadding: 0 })
+                }
+                return
+            }
             const newPadding = res.height > 0 ? res.height + EXTRA_OFFSET : 0
             this.setData({ keyboardPadding: newPadding }, () => {
                 // 键盘弹出时自动滚到底，使最新消息始终在输入框上方可见
@@ -2441,6 +2524,10 @@ Page({
         // never start the global recorder later.
         recorderIntentVersion++
         recordAuthorizationPending = false
+        if (recordPressTimer) {
+            clearTimeout(recordPressTimer)
+            recordPressTimer = null
+        }
         if (activeRecorderPage === this) {
             activeRecorderPage = null
             try { this.stopRecorderManager() } catch (_) {}

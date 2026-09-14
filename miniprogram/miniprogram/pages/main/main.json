@@ -1,4 +1,5 @@
 {
+  "disableScroll": true,
   "usingComponents": {
       "top-menu" : "/components/top-menu/top-menu",
       "left-menu" : "/components/left-menu/left-menu",
