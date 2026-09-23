@@ -53,7 +53,8 @@ Component({
         flagUserPhone: false,
         userinfo: {} as User,
         code: '',
-        flagLogin: false
+        flagLogin: false,
+        overlayHeaderTop: 100
     },
     /**
      * 组件的方法列表
@@ -76,6 +77,7 @@ Component({
                 maskAnimation: maskAnim.export(),
                 panelAnimation: panelAnim.export()
             })
+            this.triggerEvent('panelVisibilityChange', { visible: true })
         },
         // 鉴权失败后切回未登录视图，确保重新授权入口可见。
         resetAuthentication() {
@@ -101,13 +103,14 @@ Component({
                 timingFunction: 'ease'
             })
             maskAnim.opacity(0).step()
-            panelAnim.left('-75%').step()
+            panelAnim.left('-82%').step()
             this.setData({
                 maskAnimation: maskAnim.export(),
                 panelAnimation: panelAnim.export()
             })
             setTimeout(() => {
                 this.setData({ flag_showLeftPanel: false })
+                this.triggerEvent('panelVisibilityChange', { visible: false })
             }, 300)
         },
         //‌阻止默认行为,侧边抽屉展开时固定主内容区位置‌
@@ -246,6 +249,8 @@ Component({
     },
     lifetimes: {
         attached() {
+            const capsule = wx.getMenuButtonBoundingClientRect()
+            this.setData({ overlayHeaderTop: capsule.bottom > 0 ? capsule.bottom + 8 : 100 })
             //判断用户信息是否获得
             let info = wx.getStorageSync("userInfo")
             const isGuest = Boolean(info && String(info.userType || '').toUpperCase() === 'GUEST')

@@ -27,6 +27,14 @@
   overflow: hidden;
 }
 
+.wiki-reader-page.is-miniprogram .back-link,
+.wiki-reader-page.is-miniprogram .identity-divider,
+.wiki-reader-page.is-miniprogram .document-identity a[href='/docs'],
+.wiki-reader-page.is-miniprogram .document-identity a[href$='/docs'],
+.wiki-reader-page.is-miniprogram .document-identity a[href*='/docs?'] {
+  display: none !important;
+}
+
 .wiki-reader-frame {
   width: 100%;
   height: 100%;

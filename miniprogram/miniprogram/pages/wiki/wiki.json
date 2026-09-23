@@ -1,7 +1,7 @@
 {
-  "navigationStyle": "default",
-  "navigationBarTitleText": "文档中心",
-  "navigationBarTextStyle": "black",
-  "navigationBarBackgroundColor": "#ffffff",
-  "disableScroll": true
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "usingComponents": {
+    "top-menu": "/components/top-menu/top-menu"
+  }
 }

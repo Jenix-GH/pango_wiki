@@ -197,6 +197,9 @@ async function loadConversations() {
   state.endDate = data.endDate || state.endDate
   renderListPage('问答记录', `所选时段共 ${number(data.total)} 个会话`, dateRangeFilter())
   bindDateRangeFilter(() => { state.conversationPage = 1; loadConversations() })
+  const exportButton=element('button','export-button','导出所选时段')
+  exportButton.addEventListener('click',exportConversations)
+  document.querySelector('.filters').append(exportButton)
   const table = createTable(['最近提问时间','终端','用户','会话首问','问题数','操作'])
   ;(data.records || []).forEach(row => {
     const openButton = element('button','feedback-detail-link','还原问答现场')
@@ -205,6 +208,31 @@ async function loadConversations() {
   })
   content.querySelector('.panel').append(table)
   appendPager(data,state.conversationPage,page=>{state.conversationPage=page;loadConversations()})
+}
+
+async function exportConversations() {
+  const button=document.querySelector('.export-button')
+  button.disabled=true;button.textContent='正在生成压缩包…'
+  try {
+    const query=`startDate=${encodeURIComponent(state.startDate)}&endDate=${encodeURIComponent(state.endDate)}`
+    const response=await fetch(`/local-api/conversations-export?${query}`,{cache:'no-store',credentials:'same-origin'})
+    if (!response.ok) {
+      let message=`导出失败（HTTP ${response.status}）`
+      try { const result=await response.json();message=result.message||message } catch {}
+      if (response.status===401) { state.username='';renderLogin(message);const error=new Error(message);error.authentication=true;throw error }
+      throw new Error(message)
+    }
+    const blob=await response.blob()
+    const disposition=response.headers.get('content-disposition')||''
+    const fileName=disposition.match(/filename="?([^";]+)"?/i)?.[1]||`Pango_conversations_${state.startDate}_${state.endDate}.zip`
+    const url=URL.createObjectURL(blob),link=document.createElement('a')
+    link.href=url;link.download=fileName;document.body.append(link);link.click();link.remove()
+    setTimeout(()=>URL.revokeObjectURL(url),1000)
+  } catch(error) {
+    if (!error.authentication) alert(error.message||'导出失败')
+  } finally {
+    if (button.isConnected) { button.disabled=false;button.textContent='导出所选时段' }
+  }
 }
 
 async function showConversationDetail(conversationKey) {

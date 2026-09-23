@@ -1,4 +1,7 @@
 {
-  "navigationStyle": "custom",
+  "navigationStyle": "default",
+  "navigationBarTitleText": "文档阅读",
+  "navigationBarTextStyle": "black",
+  "navigationBarBackgroundColor": "#ffffff",
   "disableScroll": true
 }

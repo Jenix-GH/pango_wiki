@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { extname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import archiver from 'archiver'
 import mysql from 'mysql2/promise'
+import { conversationFileName, groupConversationRecords, imageExtension, renderConversationMarkdown } from './conversationExport.mjs'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 const apiOnly = process.argv.includes('--api-only')
@@ -50,7 +52,8 @@ const server = http.createServer(async (request, response) => {
     await serveStatic(response, url.pathname)
   } catch (error) {
     console.error(error)
-    json(response, 500, { message: safeError(error) })
+    if (response.headersSent) response.destroy(error)
+    else json(response, 500, { message: safeError(error) })
   }
 })
 
@@ -68,6 +71,7 @@ async function handleApi(request, response, url) {
   if (request.method === 'GET' && path === '/dashboard') return dashboard(response, selectedDateRange(url.searchParams))
   if (request.method === 'GET' && path === '/events') return events(response, url.searchParams)
   if (request.method === 'GET' && path === '/conversations') return conversations(response, url.searchParams)
+  if (request.method === 'GET' && path === '/conversations-export') return conversationsExport(response, url.searchParams)
   if (request.method === 'GET' && path === '/conversation') return conversationDetail(response, url.searchParams)
   if (request.method === 'GET' && path === '/feedback') return feedback(response, url.searchParams)
   if (request.method === 'GET' && path === '/feedback-export') return feedbackExport(response, url.searchParams)
@@ -291,6 +295,143 @@ async function conversationDetail(response, params) {
       answer_media: parseJson(row.answer_media) || [],
     })),
   } })
+}
+
+async function conversationsExport(response, params) {
+  const { startDate, endDate } = selectedDateRange(params)
+  const [rows] = await pool.query(`
+    SELECT
+      COALESCE(NULLIF(q.session_id,''), CONCAT('question:',q.id)) conversation_key,
+      q.id question_id,q.userinfo_id,q.session_id,q.question,q.question_images,q.dotime question_time,
+      a.id answer_id,a.content answer_content,a.dotime answer_time,a.answer_time answer_elapsed,a.reference,a.answer_media,
+      CASE
+        WHEN q.session_id LIKE 'web\\_%' THEN 'WEB'
+        WHEN q.session_id LIKE 'mini\\_%' THEN 'MINIPROGRAM'
+        ELSE 'UNKNOWN'
+      END platform,
+      COALESCE(NULLIF(u.nick_name,''),NULLIF(u.phone_number,''),NULLIF(u.mail_address,''),CONCAT('用户#',q.userinfo_id)) user_name
+    FROM dto_question q
+    LEFT JOIN dto_userinfo u ON u.id=q.userinfo_id
+    LEFT JOIN dto_answer a ON a.id=(SELECT a2.id FROM dto_answer a2 WHERE a2.question_id=q.id ORDER BY a2.id DESC LIMIT 1)
+    WHERE COALESCE(q.flag_del,0)=0
+      AND q.dotime >= ? AND q.dotime < DATE_ADD(?, INTERVAL 1 DAY)
+    ORDER BY q.dotime,q.id`, [startDate, endDate])
+  const conversations = groupConversationRecords(rows.map(row => ({
+    ...row,
+    question_images: parseJson(row.question_images) || [],
+    reference: parseJson(row.reference) || { chunks: [], total: 0 },
+    answer_media: parseJson(row.answer_media) || [],
+  })))
+  const files = conversations.map((conversation, index) => ({ conversation, fileName: conversationFileName(conversation, index) }))
+  const archiveName = `Pango_conversations_${startDate}_${endDate}.zip`
+  response.writeHead(200, {
+    'Content-Type': 'application/zip',
+    'Content-Disposition': `attachment; filename="${archiveName}"`,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+  })
+
+  const archive = archiver('zip', { zlib: { level: 6 } })
+  archive.on('warning', error => console.warn('Conversation export warning:', error))
+  archive.on('error', error => response.destroy(error))
+  response.on('close', () => { if (!response.writableEnded) archive.abort() })
+  archive.pipe(response)
+  archive.append(exportIndexMarkdown(files, startDate, endDate), { name: 'README.md' })
+
+  const publicOrigin = config.PANGO_PUBLIC_ORIGIN || 'https://aiapp.pangomicro.com'
+  for (let index = 0; index < files.length; index++) {
+    const { conversation, fileName } = files[index]
+    const assetFolder = String(index + 1).padStart(4, '0')
+    const markdown = await renderConversationMarkdown(conversation, {
+      startDate,
+      endDate,
+      publicOrigin,
+      resolveAsset: archiveAssetResolver(archive, assetFolder, publicOrigin),
+    })
+    archive.append(markdown, { name: `sessions/${fileName}` })
+  }
+  await archive.finalize()
+}
+
+function exportIndexMarkdown(files, startDate, endDate) {
+  const lines = [
+    '# Pango慧答问答记录导出',
+    '',
+    `- 时间范围：${startDate} 至 ${endDate}`,
+    `- 会话数量：${files.length}`,
+    `- 导出时间：${formatExportDateTime(new Date())}`,
+    '',
+    '每个会话对应 `sessions/` 目录中的一个 Markdown 文件；会话配图保存在 `assets/` 目录。',
+    '',
+    '## 会话目录',
+    '',
+  ]
+  if (!files.length) lines.push('所选时间段内没有问答记录。')
+  files.forEach(({ conversation, fileName }, index) => {
+    const firstQuestion = String(conversation.records[0]?.question || '—').replace(/[\r\n|]/g, ' ').slice(0, 80).replace(/([\\[\]])/g, '\\$1')
+    lines.push(`${index + 1}. [${conversation.platform} · ${firstQuestion}](sessions/${encodeURIComponent(fileName)})`)
+  })
+  return `${lines.join('\n')}\n`
+}
+
+function archiveAssetResolver(archive, assetFolder, publicOrigin) {
+  return async (media, { kind, round, mediaIndex }) => {
+    try {
+      const loaded = media?.data_base64
+        ? decodeBase64Image(media)
+        : await downloadAnswerImage(media, publicOrigin)
+      if (!loaded) return null
+      const extension = imageExtension(loaded.mimeType, media?.filename || loaded.sourceUrl)
+      const assetName = `${kind}-${String(round).padStart(3, '0')}-${String(mediaIndex + 1).padStart(2, '0')}.${extension}`
+      const archivePath = `assets/${assetFolder}/${assetName}`
+      archive.append(loaded.buffer, { name: archivePath })
+      return { relativePath: `../${archivePath}` }
+    } catch (error) {
+      console.warn(`Conversation export skipped ${kind} image:`, safeError(error))
+      return null
+    }
+  }
+}
+
+function decodeBase64Image(media) {
+  const mimeType = String(media?.mime_type || '').trim().toLowerCase()
+  if (!mimeType.startsWith('image/')) throw new Error('图片 MIME 类型不正确')
+  const raw = String(media?.data_base64 || '').replace(/^data:image\/[^;]+;base64,/i, '').replace(/\s/g, '')
+  if (!raw || !/^[a-zA-Z0-9+/]*={0,2}$/.test(raw)) throw new Error('图片 Base64 数据不正确')
+  const buffer = Buffer.from(raw, 'base64')
+  if (!buffer.length || buffer.length > 25 * 1024 * 1024) throw new Error('单张图片超过25MB限制')
+  return { buffer, mimeType }
+}
+
+async function downloadAnswerImage(media, publicOrigin) {
+  const rawUrl = media?.absoluteUrl || media?.absolute_url || media?.url || media?.image_url
+  if (!rawUrl) return null
+  const origin = new URL(publicOrigin)
+  const url = new URL(String(rawUrl), origin)
+  if (url.origin !== origin.origin || !url.pathname.startsWith('/references/figures/')) {
+    throw new Error('回答图片地址不在允许的同源目录中')
+  }
+  const assetResponse = await fetch(url, { signal: AbortSignal.timeout(15000) })
+  if (!assetResponse.ok) throw new Error(`图片下载失败：HTTP ${assetResponse.status}`)
+  const mimeType = String(assetResponse.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+  if (!mimeType.startsWith('image/')) throw new Error('下载内容不是图片')
+  const declaredLength = Number(assetResponse.headers.get('content-length') || 0)
+  if (declaredLength > 25 * 1024 * 1024) throw new Error('单张图片超过25MB限制')
+  const chunks = []
+  let total = 0
+  for await (const chunk of assetResponse.body) {
+    total += chunk.length
+    if (total > 25 * 1024 * 1024) throw new Error('单张图片超过25MB限制')
+    chunks.push(chunk)
+  }
+  return { buffer: Buffer.concat(chunks), mimeType, sourceUrl: url.toString() }
+}
+
+function formatExportDateTime(value) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(value)
 }
 
 async function feedback(response, params) {

@@ -1,9 +1,10 @@
 {
     "pages": [
-        "pages/index/index",
         "pages/main/main",
         "pages/wiki/wiki",
-        "pages/reference-viewer/reference-viewer"
+        "pages/license/license",
+        "pages/reference-viewer/reference-viewer",
+        "pages/index/index"
     ],
     "window": {
         "navigationBarTextStyle": "black",
@@ -17,6 +18,14 @@
     "lazyCodeLoading": "requiredComponents",
     "usingComponents": {
         "iconfont": "/iconfont/iconfont"
+    },
+    "tabBar": {
+        "custom": true,
+        "list": [
+            { "pagePath": "pages/main/main", "text": "Pango 慧答" },
+            { "pagePath": "pages/wiki/wiki", "text": "文档" },
+            { "pagePath": "pages/license/license", "text": "License 申请" }
+        ]
     },
     "requiredBackgroundModes": ["audio"]
 }

@@ -183,7 +183,14 @@ export default function ChatPage() {
       return
     }
 
-    if (!question && uploadImages.length === 0) return
+    if (!question) {
+      if (uploadImages.length > 0) {
+        showToast('请先输入问题文字，图片需要配合文字一起发送')
+      } else {
+        showToast('请输入问题内容')
+      }
+      return
+    }
 
     setShowTips(false)
     setUserScrolledUp(false)
@@ -457,7 +464,7 @@ export default function ChatPage() {
 
   const tips = [
     { content: '紫光同创FPGA芯片有哪些?' },
-    { content: '介绍一下PG2T390器件' },
+    { content: '在 PDS 中如何查看时序分析报告？' },
   ]
   const conversationStarted = messages.length > 0 || isStreaming
   const chatInput = (

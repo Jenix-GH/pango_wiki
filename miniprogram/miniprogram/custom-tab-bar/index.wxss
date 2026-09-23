@@ -1,0 +1,6 @@
+:host,
+.native-tab-placeholder {
+  display: none;
+  width: 0;
+  height: 0;
+}

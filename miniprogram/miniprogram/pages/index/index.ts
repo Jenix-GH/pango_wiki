@@ -129,8 +129,8 @@ Page({
         });
     },
     gotoMain() {
-        wx.navigateTo({
-            url: "../main/main"
+        wx.switchTab({
+            url: "/pages/main/main"
         })
     },
     //页面加载时检查是否已有用户信息

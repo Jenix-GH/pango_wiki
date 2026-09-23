@@ -1,11 +1,13 @@
 <!--自定义菜单-->
-<top-menu title="{{ pageTitle }}" iconName="{{pageLeftIconName}}" bind:openLeftPanel="showLeftPanel" bind:reloadSession="reloadSession" bind:openWiki="openWiki" />
+<top-menu activeTab="chat" showChatActions="{{true}}" iconName="{{pageLeftIconName}}" bind:openLeftPanel="showLeftPanel" bind:reloadSession="reloadSession" bind:openChat="noop" bind:openWiki="openWiki" bind:openLicense="openLicense" />
 <!--左侧抽屉页面 -->
-<left-menu id="leftPanel" dataDayTitle="{{dataDayTitle}}" dataHisTitle="{{dataHisTitle}}" userInfo="{{userInfo}}" bind:openSetPanel="showSetPanel" bind:doSearchHisItem="doSearchHisItem" bind:deleteHistoryItem="deleteHistoryItem" bind:refresh="handleRefresh" />
+<left-menu id="leftPanel" dataDayTitle="{{dataDayTitle}}" dataHisTitle="{{dataHisTitle}}" userInfo="{{userInfo}}" bind:openSetPanel="showSetPanel" bind:doSearchHisItem="doSearchHisItem" bind:deleteHistoryItem="deleteHistoryItem" bind:refresh="handleRefresh" bind:panelVisibilityChange="onLeftPanelVisibilityChange" />
 <!--底部设置页面-->
 <set-menu id="setPanel" bind:logout="logout"></set-menu>
 <!--主页-->
-<view class="main-container" style="padding-bottom:{{keyboardPadding}}px">
+<!-- 录音的松手/系统中断兜底挂在整个内容区上：长按输入框时若手指移出输入框矩形，
+     touchend 不再派发到那个 view，只有靠这里冒泡到的大范围监听才能结束录音。 -->
+<view class="main-container" style="padding-bottom:{{keyboardPadding}}px" bindtouchend="recordTouchEnd" bindtouchcancel="recordTouchCancel">
     <!-- <scroll-view class="scrollarea" scroll-y scroll-with-animation scroll-into-view="{{scrollToId}}"> -->
     <scroll-view class="scrollarea" scroll-y scroll-into-view="{{scrollToId}}" scroll-top="{{scrollTop}}" bindscroll="onScroll">
         <!--顶部的提示问题列表-->
@@ -144,15 +146,59 @@
                 <view wx:if="{{!flagLuyuning && !flagVoiceMode}}" class="image-upload-btn" bind:tap="chooseImage">
                     <view class="image-icon"></view>
                 </view>
-                <view style="flex:1; min-width:0;" class="textarea-wrap" bindtouchend="stopRecord" bindtouchmove="cancelRecord" bindtouchcancel="cancelRecordBySystem">
+                <view style="flex:1; min-width:0;" class="textarea-wrap">
                     <view wx:if="{{uploadImages.length > 0 && !flagVoiceMode}}" class="image-preview-list">
                         <view wx:for="{{uploadImages}}" wx:key="index" class="image-preview-item">
                             <image class="image-preview-thumb" src="{{item.local_url || 'data:' + item.mime_type + ';base64,' + item.data_base64}}" mode="aspectFill" style="border-radius:10rpx;overflow:hidden" />
                             <view class="image-preview-remove" bind:tap="removeImage" data-index="{{index}}">×</view>
                         </view>
                     </view>
-                    <textarea wx:if="{{!flagLuyuning && !flagVoiceMode}}" auto-height placeholder="{{inputPlaceholder}}" bindinput="doReady" confirm-type="send" disable-default-padding show-confirm-bar="{{false}}" bindconfirm="doSearch" cursor-spacing="{{0}}" adjust-position="{{false}}" value="{{questionContent}}" class="textarea" id="myInput" maxlength="-1" bindlongpress="startRecord" bindfocus="onInputFocus" bindblur="onInputBlur" />
-                    <view hidden="{{!flagLuyuning && !flagVoiceMode}}" class="talkView-active" bindtouchstart="startRecord" catchtouchmove="cancelRecord" catchtouchend="stopRecord" catchtouchcancel="cancelRecordBySystem">
+                    <!-- 输入区：普通 view 负责显示内容并撑住高度，textarea 常驻并绝对定位覆盖其上。
+                         触摸事件统一挂在这一层：无论手指起始落在普通 view 还是上层的原生 textarea 上，
+                         都能冒泡到这里处理，避免只绑在 view 上时某些位置长按后收不到 move/end。 -->
+                    <view
+                        class="input-area"
+                        bind:tap="activateInput"
+                        bindtouchstart="recordTouchStart"
+                        bindtouchend="recordTouchEnd"
+                        catchtouchmove="recordTouchMove"
+                        bindtouchcancel="recordTouchCancel"
+                    >
+                        <!-- 非输入态：用普通 view 呈现输入框内容。这里不涉及原生组件，
+                             所以长按不会唤起键盘。输入态下它转为不可见但仍保留，负责撑住输入区高度。 -->
+                        <view
+                            wx:if="{{!flagVoiceMode}}"
+                            class="input-proxy {{inputActive ? 'input-proxy-ghost' : ''}} {{flagLuyuning ? 'input-proxy-recording' : ''}}"
+                        >
+                            <text wx:if="{{flagLuyuning}}">{{luyunTipText}}</text>
+                            <text wx:elif="{{questionContent}}" class="input-proxy-text">{{questionContent}}</text>
+                            <text wx:else class="input-proxy-placeholder">{{inputPlaceholder}}</text>
+                        </view>
+                        <!-- textarea 常驻渲染：非输入态停在屏幕外（首次布局也发生在屏幕外，
+                             首帧抖动因此不可见），输入态只切换 left 覆盖到 view 上，
+                             宽度始终是 100%，不会触发任何重新计算。 -->
+                        <textarea
+                            wx:if="{{!flagVoiceMode && !flagLeftPanelOpen}}"
+                            class="textarea {{inputActive ? '' : 'textarea-offscreen'}}"
+                            auto-height
+                            focus="{{inputFocus}}"
+                            placeholder="{{inputPlaceholder}}"
+                            bindinput="doReady"
+                            confirm-type="send"
+                            disable-default-padding
+                            show-confirm-bar="{{false}}"
+                            bindconfirm="doSearch"
+                            cursor-spacing="{{0}}"
+                            adjust-position="{{false}}"
+                            value="{{questionContent}}"
+                            id="myInput"
+                            maxlength="-1"
+                            bindfocus="onInputFocus"
+                            bindblur="onInputBlur"
+                        />
+                    </view>
+                    <!-- 语音模式：按住说话 -->
+                    <view hidden="{{!flagVoiceMode}}" class="talkView-active" bindtouchstart="startRecord" catchtouchmove="cancelRecord" catchtouchend="stopRecord" catchtouchcancel="cancelRecordBySystem">
                         {{luyunTipText}}
                     </view>
                 </view>

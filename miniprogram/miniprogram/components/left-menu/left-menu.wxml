@@ -1,4 +1,6 @@
 <!--左侧抽屉面板 -->
+<root-portal wx:if="{{flag_showLeftPanel}}">
+<view class="leftMask" bind:tap="hideLeftPanel" animation="{{maskAnimation}}" catch:touchmove="preventTouchMove"></view>
 <view class="leftPanel" animation="{{panelAnimation}}" catch:touchmove="preventTouchMove">
     <view hidden="{{flagLogin}}" class="left-panel-container" style="padding-top: 50%;">
         <button wx:if="{{!flagUserInfo && !flagUserPhone}}" bind:tap="getUserInfo" class="btn-auth fade-button">
@@ -21,13 +23,17 @@
 
                 </view>
                 <view class="privacy-buttons">
-                    <button class="privacy-button" style="border: 1px solid var(--text-mark); color: var(--text-mark); margin-right: 30rpx;" bindtap="onPrivacyRefuse">拒绝</button>
-                    <button class="privacy-button btn-primary" bindtap="onPrivacyAgree">同意</button>
+                    <button class="privacy-button" style="border: 1px solid var(--text-mark); color: var(--text-mark); margin-right: 30rpx; background: white;" bindtap="onPrivacyRefuse">拒绝</button>
+                    <button class="privacy-button btn-primary" style="background: rgb(150, 12, 115); color: white; border: 1px solid rgb(150, 12, 115);" bindtap="onPrivacyAgree">同意</button>
                 </view>
             </view>
         </view>
     </view>
-    <view hidden="{{!flagLogin}}" class="left-panel-container">
+    <view hidden="{{!flagLogin}}" class="left-panel-container left-panel-container-auth">
+        <view class="left-panel-header" style="padding-top: {{overlayHeaderTop}}px">
+            <text>历史记录</text>
+            <view class="left-panel-close" bind:tap="hideLeftPanel" aria-role="button" aria-label="关闭历史记录">×</view>
+        </view>
         <scroll-view class="left-panel-his" scroll-y="true">
             <view class="left-panel-nohis" wx:if="{{dataHisTitle.length === 0 && dataDayTitle.length ===0}}">暂无对话</view>
             <view wx:else>
@@ -71,5 +77,4 @@
         </view>
     </view>
 </view>
-<!--左侧抽屉遮罩层 -->
-<view wx:if="{{flag_showLeftPanel}}" class="leftMask" bind:tap="hideLeftPanel" animation="{{maskAnimation}}" catch:touchmove="preventTouchMove"></view>
+</root-portal>

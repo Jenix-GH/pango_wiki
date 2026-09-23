@@ -1,5 +1,7 @@
 <!-- 底部弹窗主体 -->
-<view class="modal-container {{showPopup ? 'show' : ''}}" catchtouchmove="true">
+<root-portal>
+<view wx:if="{{showPopup}}" class="modal-mask" bind:tap="hideSetPanel" catch:touchmove="preventTouchMove"></view>
+<view class="modal-container {{showPopup ? 'show' : ''}}" style="top: {{modalTop}}px">
     <view>
         <view class="modal-header">
             <iconfont wx:if="{{flagShowBackBtn}}" class="back" name="fanhui" size="25" bind:tap="gotoSetList" />
@@ -21,5 +23,4 @@
         <set-contact-us wx:if="{{showSubPage === 'contactUs'}}"></set-contact-us>
     </view>
 </view>
-<!-- 底部弹窗遮罩层 -->
-<view wx:if="{{showPopup}}" class="modal-mask" bind:tap="hideSetPanel"></view>
+</root-portal>

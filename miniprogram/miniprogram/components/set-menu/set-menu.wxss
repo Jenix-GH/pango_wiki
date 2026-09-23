@@ -5,34 +5,55 @@
     right: 0;
     bottom: 0;
     left: 0;
-    z-index: 998;
-    background: rgba(0, 0, 0, 0.5);
+    z-index: 1998;
+    background: rgba(17, 24, 39, 0.46);
 }
 
 /* 弹窗容器 */
 .modal-container {
     position: fixed;
-    width: 100%;
-    height: calc(100vh - 95rpx);
-    bottom: -100vh;
-    /* 初始隐藏 */
-    transition: transform 0.4s ease;
-    background-color: var(--bg-light);
-    z-index: 999;
-    border-radius: 20rpx;
+    top: 200rpx;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    height: auto;
+    transform: translateY(105%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.35s ease, visibility 0s linear 0.35s;
+    --bg-primary: #960c73;
+    --bg-white: #ffffff;
+    --bg-light: #f7f7f7;
+    --text-dark: #333333;
+    --text-mark: #8b8b8b;
+    --text-light: #8a8f98;
+    background-color: #f7f7f7;
+    z-index: 1999;
+    border-radius: 22rpx 22rpx 0 0;
+    box-shadow: 0 -12rpx 40rpx rgba(15, 23, 42, 0.18);
+    overflow: hidden;
+    box-sizing: border-box;
 }
 
 /* 显示状态 */
 .modal-container.show {
-    transform: translateY(-100%);
+    transform: translateY(0);
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
 }
 
 /* 设置子页面的标题栏样式 */
 .modal-header {
-    padding: 15rpx;
+    height: 104rpx;
+    padding: 0 15rpx;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border-bottom: 1rpx solid #e1e5ea;
+    background: #ffffff;
+    box-sizing: border-box;
 }
 
 .modal-header .title {
@@ -62,12 +83,15 @@
 /* 子页面切换动画 */
 .subpage {
     position: absolute;
-    top: 100rpx;
+    top: 104rpx;
     bottom: 0;
     width: 100%;
+    padding-bottom: env(safe-area-inset-bottom);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     transition: all 0.35s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+    background: #f7f7f7;
+    box-sizing: border-box;
 }
 
 .subpage-active {

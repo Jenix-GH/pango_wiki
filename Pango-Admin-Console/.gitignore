@@ -1,3 +1,4 @@
 config/database.env
+deploy/upload-admin-console.psd1
 node_modules/
 dist/

@@ -121,7 +121,7 @@ export default function ChatInput({ onSend, onStop, isStreaming, uploadImages, o
               </button>
             ) : (
               <button
-                className={`input-action-btn ${text.trim() || uploadImages.length > 0 ? 'ready' : ''}`}
+                className={`input-action-btn ${text.trim() ? 'ready' : ''}`}
                 onClick={handleSend}
                 disabled={!text.trim() && uploadImages.length === 0}
                 title="发送"

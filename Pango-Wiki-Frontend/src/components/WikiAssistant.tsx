@@ -118,7 +118,13 @@ export default function WikiAssistant() {
 
   const send = () => {
     const question = text.trim()
-    if ((!question && uploadImages.length === 0) || streaming) return
+    if (streaming) return
+    if (!question) {
+      if (uploadImages.length > 0) {
+        window.alert('请先输入问题文字，图片需要配合文字一起发送')
+      }
+      return
+    }
     if (!recordUserId) {
       setStatus('访客信息初始化中，请稍后重试')
       return
