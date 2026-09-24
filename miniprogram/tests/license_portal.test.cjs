@@ -93,3 +93,19 @@ test('returning from License login refreshes the existing personal-center menu, 
   definition.pageLifetimes.show.call(instance)
   assert.equal(refreshes,2, 'refresh marker is consumed once')
 })
+
+
+test('License login preserves the same account avatar but never copies it to another account',()=>{
+  const source=fs.readFileSync(path.join(__dirname,'../miniprogram/pages/license-login/license-login.ts'),'utf8')
+  const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText
+  for(const id of [42,99]){
+    let definition,request,saved
+    const old={id:42,avatarUrl:'https://example.com/original-avatar.png'}
+    const wx={getStorageSync:()=>old,setStorageSync(){},navigateBack(){},request:options=>{request=options}}
+    vm.runInNewContext(compiled,{exports:{},require:()=>({persistUserInfo:user=>{saved=user}}),wx,getApp:()=>({globalData:{baseHost:'https://test.invalid'}}),Page:value=>{definition=value}})
+    const instance={...definition,data:structuredClone(definition.data),setData(update){Object.assign(this.data,update)}}
+    instance.login('test-code')
+    request.success({statusCode:200,data:{code:2000,data:{id,accessToken:'test-token',userType:'MEMBER'}}})
+    assert.equal(saved.avatarUrl,id===42?old.avatarUrl:undefined)
+  }
+})

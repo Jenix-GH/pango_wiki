@@ -119,3 +119,28 @@ dialog { width: 440px; padding: 0; border: 0; border-radius: 12px; box-shadow: 0
 select.application-badge { border:1px solid #d5dde7; font:inherit; min-width:92px; cursor:pointer; }
 .license-row-actions { display:grid; gap:10px; }
 .license-history-item { border-bottom:1px solid #e0e7f0; padding:8px 0 14px; }
+.mail-settings > summary { cursor:pointer; font-weight:650; font-size:17px; line-height:1.7; }
+.mail-settings-status { display:inline-block; margin-left:16px; color:#6b7280; font-size:12px; font-weight:400; }
+.mail-settings-body { display:grid; gap:26px; padding-top:22px; }
+.mail-intro,.mail-hint { margin:0; color:#64748b; font-size:13px; line-height:1.8; }
+.mail-account-form,.mail-template-editor,.mail-tester { display:grid; gap:16px; min-width:0; }
+.mail-template-editor,.mail-tester { padding-top:24px; border-top:1px solid #e2e8f0; }
+.mail-settings h3 { margin:0; font-size:16px; }
+.mail-account-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+.mail-field { display:grid; gap:8px; font-size:13px; color:#334155; min-width:0; }
+.mail-field small { font-size:12px; color:#718096; line-height:1.6; }
+.mail-field input,.mail-field select,.mail-field textarea { width:100%; min-height:42px; box-sizing:border-box; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#1e293b; font:inherit; }
+.mail-field textarea { resize:vertical; line-height:1.8; }
+.mail-field input:focus,.mail-field select:focus,.mail-field textarea:focus { outline:2px solid #eacde1; outline-offset:1px; border-color:#a41b74; }
+.mail-button { justify-self:start; padding:10px 16px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#8f1c64; cursor:pointer; font:inherit; font-size:13px; }
+.mail-button.primary { background:#a31b70; border-color:#a31b70; color:white; }
+.mail-settings button:disabled { opacity:.55; cursor:wait; }
+.mail-actions,.mail-variables { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.mail-variables { color:#64748b; font-size:12px; }
+.mail-variables .mail-button { padding:6px 9px; background:#f8fafc; font-size:12px; }
+.mail-test-confirm { display:flex; gap:10px; align-items:flex-start; font-size:13px; line-height:1.7; color:#475569; }
+.mail-test-confirm input { margin-top:4px; flex-shrink:0; }
+.mail-preview:not(:empty) { padding:20px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; }
+.mail-preview p { font-size:13px; color:#64748b; overflow-wrap:anywhere; }
+.mail-preview pre { font-family:inherit; font-size:14px; line-height:1.8; white-space:pre-wrap; overflow-wrap:anywhere; }
+@media(max-width:640px){.mail-account-grid{grid-template-columns:1fr}.mail-settings-status{display:block;margin-left:0}.mail-actions .mail-button{flex:1}.mail-preview:not(:empty){padding:14px}}

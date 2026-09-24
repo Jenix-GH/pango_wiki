@@ -3,6 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import mysql from 'mysql2/promise'
 import {readFile} from 'node:fs/promises'
+import {createWorkflowMailSender} from '../licenseMail.mjs'
 import {uploadFiles,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,resolveWorkflowMail,listApplications,listFiles,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
 const night={faeEmail:'fae@example.com',replyTo:'fae@example.com',now:new Date('2026-09-23T14:00:00Z')}
 const morning={...night,now:new Date('2026-09-23T01:00:00Z')}
@@ -24,6 +25,24 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   let sent=[]
   const sender=async message=>{sent.push(message);return {state:'accepted',detail:'fake accepted'}}
   const customerCount=()=>sent.filter(m=>m.to!=='fae@example.com').length
+  await t.test('failed digest retries its saved customized content after templates change',async()=>{
+   await reset();await application();const messages=[]
+   const failed=async message=>{messages.push(message);return {state:'failed',detail:'test rejection'}}
+   await runDigest(pool,failed,{...morning,templates:{digest:{subject:'旧标题 {{日期}}',text:'旧正文\n{{原始正文}}'}}})
+   await runDigest(pool,failed,{...morning,templates:{digest:{subject:'新标题 {{日期}}',text:'新正文\n{{原始正文}}'}}})
+   assert.equal(messages.length,2);assert.equal(messages[1].subject,messages[0].subject);assert.equal(messages[1].text,messages[0].text)
+  })
+  await t.test('database workflows tag digest/summary for platform and customer/rejection for FAE',async()=>{
+   await reset();const delivered=[]
+   const routed=createWorkflowMailSender({LICENSE_MAIL_ENV:'/platform.env',LICENSE_FAE_MAIL_ENV:'/fae.env',LICENSE_FAE_EMAIL:'fae@example.com'},{senderFactory:config=>async message=>{delivered.push({path:config.LICENSE_MAIL_ENV,...message});return {state:'accepted',detail:'fake SMTP'}}})
+   await application();await upload();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
+   await rejectApplication(pool,2,'测试拒绝理由','tester',0)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'")
+   await runNightly(pool,routed,night)
+   assert.deepEqual(delivered.map(m=>[m.mailKind,m.path]),[['customer','/fae.env'],['rejection','/fae.env'],['summary','/platform.env']])
+   await reset();delivered.length=0;await application();await runDigest(pool,routed,morning)
+   assert.deepEqual(delivered.map(m=>[m.mailKind,m.path]),[['digest','/platform.env']])
+  })
   await t.test('unique match sends once; repeated run and duplicate upload do not resend',async()=>{
    await reset();sent=[];await application();const {records}=await upload();assert.equal(records[0].state,'queued')
    await runNightly(pool,sender,night);assert.equal(await state(records[0].id),'accepted');assert.equal(customerCount(),1)

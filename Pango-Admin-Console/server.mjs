@@ -8,6 +8,10 @@ import archiver from 'archiver'
 import mysql from 'mysql2/promise'
 import { uploadFiles, listFiles, fileDetail, fileAction, MAX_UPLOAD_BODY, problem, listApplications, setApplicationStatus, applicationStatusHistory, rejectionDetail, retryRejection, resolveWorkflowMail } from './licenseDelivery.mjs'
 import { conversationFileName, groupConversationRecords, imageExtension, renderConversationMarkdown } from './conversationExport.mjs'
+import { mailSettingsView, saveMailSettings, applySavedMailSettings } from './licenseMailSettings.mjs'
+import { createWorkflowMailSender, assertMailConfiguration } from './licenseMail.mjs'
+import { sampleMail, publicMailPreview } from './licenseMailPreview.mjs'
+import { withDeliveryLock, validEmail } from './licenseDelivery.mjs'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 const apiOnly = process.argv.includes('--api-only')
@@ -21,6 +25,8 @@ const adminPasswordHash = parsePasswordHash(requiredConfig('ADMIN_CONSOLE_PASSWO
 const sessionHours = clampNumber(config.ADMIN_CONSOLE_SESSION_HOURS, 1, 168, 12)
 const sessions = new Map()
 const loginAttempts = new Map()
+const mailTests = new Map()
+let mailTestRunning = false
 const sessionCookie = 'pango_admin_session'
 const databaseOptions = {
   host: requiredConfig('PANGO_DB_HOST'),
@@ -512,11 +518,41 @@ async function updateLicenseStatus(response, id, body) {
 async function handleLicenseDelivery(request, response, path, params) {
   const enabled = config.LICENSE_DELIVERY_ENABLED === 'true'
   if (request.method === 'GET' && path === '/license-delivery/config') return json(response, 200, {data:{enabled, sendingEnabled:config.LICENSE_SEND_ENABLED === 'true', timezone:'Asia/Shanghai', digestAt:'09:00', deliveryAt:'22:00'}})
-  if (!enabled) throw problem('License 自动发放尚未配置，请先执行数据库迁移并启用配置', 503)
   if (request.method === 'POST') {
     if (!String(request.headers['content-type'] || '').startsWith('application/json')) throw problem('仅接受 JSON 请求',415)
     if (request.headers.origin && new URL(request.headers.origin).host !== request.headers.host) throw problem('请求来源不允许',403)
   }
+  if (path === '/license-delivery/mail-settings' && request.method === 'GET') {
+    response.setHeader('Cache-Control','no-store')
+    return json(response,200,{data:await mailSettingsView(config,configPath)})
+  }
+  if (path === '/license-delivery/mail-settings' && request.method === 'POST') {
+    const body=await readLicenseJson(request,256000)
+    const data=await withDeliveryLock(licensePool,()=>saveMailSettings(config,configPath,body,adminUser))
+    response.setHeader('Cache-Control','no-store')
+    return json(response,200,{data})
+  }
+  if (['/license-delivery/mail-preview','/license-delivery/mail-test'].includes(path) && request.method==='POST') {
+    const body=await readLicenseJson(request,256000)
+    const effective=await applySavedMailSettings(config,configPath)
+    const message=sampleMail(effective,body)
+    response.setHeader('Cache-Control','no-store')
+    if(path.endsWith('/mail-preview'))return json(response,200,{data:publicMailPreview(effective,message)})
+    if(body.confirm!==true||!validEmail(body.to)||!/^[a-f0-9-]{36}$/.test(body.testId||''))throw problem('请指定测试邮箱并确认发送',400)
+    for(const [key,value]of mailTests)if(value.expiresAt<Date.now())mailTests.delete(key)
+    const existing=mailTests.get(body.testId)
+    if(existing)return json(response,200,{data:await existing.promise})
+    if(mailTestRunning||mailTests.size>=30)throw problem('测试邮件正在发送或次数过多，请稍后再试',429)
+    assertMailConfiguration(effective,{requireFae:['customer','rejection'].includes(message.mailKind)})
+    mailTestRunning=true
+    const promise=createWorkflowMailSender(effective,{testRecipient:body.to})(message)
+      .then(result=>({...result,messageId:message.messageId,to:message.to}))
+      .catch(()=>({state:'unknown',detail:'测试结果不明，请先检查邮箱，勿重复发送',messageId:message.messageId,to:message.to}))
+      .finally(()=>{mailTestRunning=false})
+    mailTests.set(body.testId,{promise,expiresAt:Date.now()+3600000})
+    return json(response,200,{data:await promise})
+  }
+  if (!enabled) throw problem('License 自动发放尚未配置，请先执行数据库迁移并启用配置', 503)
   if (request.method === 'GET' && path === '/license-delivery/files') return json(response,200,{data:await listFiles(licensePool,params)})
   if (request.method === 'GET' && path === '/license-delivery/notices') {
     const [records] = await licensePool.query("SELECT id,kind,recipient,state,detail,message_id,attempts,created_at,updated_at FROM dto_license_mail WHERE kind IN ('digest','summary') ORDER BY updated_at DESC LIMIT 20")

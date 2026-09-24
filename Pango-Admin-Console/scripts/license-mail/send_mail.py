@@ -13,6 +13,12 @@ import mail_client
 
 
 def build_message(cfg, payload):
+    expected = payload.get('expectedFrom')
+    forbidden = payload.get('forbiddenFrom')
+    if expected and cfg.address.strip().casefold() != expected.strip().casefold():
+        raise ValueError('FAE sender does not match LICENSE_FAE_EMAIL')
+    if forbidden and cfg.address.strip().casefold() == forbidden.strip().casefold():
+        raise ValueError('Platform mail must use a separate sender account')
     msg = EmailMessage()
     msg['From'] = formataddr((cfg.display_name, cfg.address)) if cfg.display_name else cfg.address
     msg['To'] = payload['to']
@@ -54,13 +60,23 @@ def dispatch(cfg, payload, opener=mail_client.open_authenticated_smtp):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', required=True)
+    parser.add_argument('--env')
     args = parser.parse_args()
     try:
-        cfg = mail_client.load_config(Path(args.env), argparse.Namespace(smtp_host=None, smtp_port=None, smtp_security=None, pop3_host=None, pop3_port=None, pop3_security=None, smtp_auth=None, timeout=None, insecure=False))
+        payload = json.load(sys.stdin)
+        if payload.get('smtpConfig'):
+            values = payload['smtpConfig']
+            allowed = {'address', 'password', 'smtp_host', 'smtp_port', 'smtp_security', 'username', 'display_name'}
+            if set(values) - allowed:
+                raise ValueError('Unsupported SMTP setting')
+            cfg = mail_client.Config(**values)
+        else:
+            if not args.env:
+                raise ValueError('Missing SMTP configuration')
+            cfg = mail_client.load_config(Path(args.env), argparse.Namespace(smtp_host=None, smtp_port=None, smtp_security=None, pop3_host=None, pop3_port=None, pop3_security=None, smtp_auth=None, timeout=None, insecure=False))
         if cfg.timeout > 45:
             cfg.timeout = 45
-        result = dispatch(cfg, json.load(sys.stdin))
+        result = dispatch(cfg, payload)
     except Exception as error:
         result = {'state': 'failed', 'detail': f'发信配置或输入错误：{type(error).__name__}'}
     print(json.dumps(result, ensure_ascii=False))

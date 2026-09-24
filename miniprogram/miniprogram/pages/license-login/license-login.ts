@@ -1,6 +1,6 @@
 import { persistUserInfo } from '../../utils/tools'
 const app = getApp()
-interface LoginUser { id: number; accessToken: string; userType?: string; nickName?: string }
+interface LoginUser { id: number; accessToken: string; userType?: string; nickName?: string; avatarUrl?: string }
 Page({
   data: { loading: false, error: '' },
   onGetPhoneNumber(event: { detail: { code?: string } }) {
@@ -22,6 +22,10 @@ Page({
         const user = result.data.data
         if (result.statusCode !== 200 || result.data.code !== 2000 || !user?.id || !user.accessToken || user.userType === 'GUEST') {
           this.setData({ error: result.data.message || '登录失败，请重试' }); return
+        }
+        const previous = wx.getStorageSync('userInfo')
+        if (!user.avatarUrl && previous?.id && String(previous.id) === String(user.id) && typeof previous.avatarUrl === 'string') {
+          user.avatarUrl = previous.avatarUrl
         }
         wx.setStorageSync('pangoAccessToken', user.accessToken)
         persistUserInfo(user)

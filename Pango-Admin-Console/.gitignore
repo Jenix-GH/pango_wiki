@@ -4,3 +4,5 @@ node_modules/
 dist/
 __pycache__/
 *.pyc
+config/license-mail-settings.json*
+config/.license-mail-settings.key

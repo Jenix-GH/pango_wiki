@@ -16,6 +16,8 @@ export async function renderLicenseDelivery(content,request){
   let cfg
   try{cfg=await request('/license-delivery/config')}catch(error){report(error);return}
   if(!root.isConnected)return
+  await renderLicenseMailSettings(root,request)
+  if(!root.isConnected)return
   if(!cfg.enabled){root.append(node('div','自动发放尚未配置。请先执行数据库迁移，再启用 LICENSE_DELIVERY_ENABLED。','panel'));return}
   if(!cfg.sendingEnabled)root.append(node('div','当前为准备模式：可以上传和核对文件，自动发信尚未启用。','delivery-warning'))
   const uploadPanel=node('section','','panel delivery-upload')
@@ -101,3 +103,4 @@ export async function renderLicenseDelivery(content,request){
   }
   await reload().catch(report)
 }
+import { renderLicenseMailSettings } from './licenseMailSettings.js'

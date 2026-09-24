@@ -44,5 +44,21 @@ class TransportTests(unittest.TestCase):
         self.payload['to']='customer@example.com\nBcc: other@example.com'
         self.assertEqual(send_mail.dispatch(self.cfg,self.payload,unexpected)['state'],'failed')
 
+    def test_customer_mail_cannot_use_platform_from_address(self):
+        self.payload['expectedFrom'] = 'fae@example.com'
+        def unexpected(*a, **k):
+            self.fail('sender mismatch must be rejected before SMTP connection')
+        self.assertEqual(send_mail.dispatch(self.cfg, self.payload, unexpected)['state'], 'failed')
+        self.cfg.address = 'fae@example.com'
+        msg = send_mail.build_message(self.cfg, self.payload)
+        self.assertIn('fae@example.com', msg['From'])
+        self.assertNotIn('service@example.com', msg['From'])
+
+    def test_platform_mail_cannot_use_fae_from_address(self):
+        self.payload['forbiddenFrom'] = 'service@example.com'
+        def unexpected(*a, **k):
+            self.fail('platform must use a separate account')
+        self.assertEqual(send_mail.dispatch(self.cfg, self.payload, unexpected)['state'], 'failed')
+
 if __name__ == '__main__':
     unittest.main()

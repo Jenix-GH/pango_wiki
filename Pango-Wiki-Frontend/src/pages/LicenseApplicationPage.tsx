@@ -108,8 +108,14 @@ export default function LicenseApplicationPage() {
           <form className="license-form" onSubmit={submit}>
             <fieldset>
               <legend>授权信息</legend>
-              <label>是否已在官网提交<select value={String(form.officialSubmitted)} onChange={event => update('officialSubmitted', event.target.value === 'true')}><option value="false">否</option><option value="true">是</option></select></label>
-              {form.officialSubmitted ? <p className="license-message" role="status">正在加急处理中，请勿重复提交</p> : null}
+              <div className="license-official">
+                <span id="official-submitted-label">是否已在官网提交</span>
+                <div className="license-official-options" role="group" aria-labelledby="official-submitted-label">
+                  <label className={!form.officialSubmitted ? 'selected' : ''}><input type="radio" name="officialSubmitted" checked={!form.officialSubmitted} onChange={() => update('officialSubmitted', false)} />否，尚未提交</label>
+                  <label className={form.officialSubmitted ? 'selected' : ''}><input type="radio" name="officialSubmitted" checked={form.officialSubmitted} onChange={() => update('officialSubmitted', true)} />是，已提交</label>
+                </div>
+                {form.officialSubmitted ? <p className="license-official-notice" role="status">正在加急处理中，请勿重复提交</p> : null}
+              </div>
               <div className="license-grid">
                 <label>操作系统版本<select value={form.operatingSystem} onChange={(event) => update('operatingSystem', event.target.value as 'Windows' | 'Linux')}><option>Windows</option><option>Linux</option></select></label>
                 <label>软件版本<input required maxLength={50} value={form.softwareVersion} onChange={(event) => update('softwareVersion', event.target.value)} placeholder="请输入软件版本号" /></label>

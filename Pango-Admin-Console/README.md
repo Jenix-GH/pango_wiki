@@ -131,6 +131,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/upload-admin-cons
 
 ## License 批量上传与自动发放
 
+发信使用两套 SMTP 配置：`LICENSE_MAIL_ENV` 为平台邮箱，只向 `LICENSE_FAE_EMAIL` 发汇总；`LICENSE_FAE_MAIL_ENV` 为 FAE 邮箱，向客户发送 License 和拒绝说明。也可在“License 发放 → 邮件设置与测试”直接保存 FAE 邮箱与 SMTP 凭据，此时保存的同一地址同时用于接收平台通知和给客户发信，优先于文件配置。缺少 FAE 账号时不会用平台账号代发；已保存密码加密存储且不回显。页面支持编辑模板、插入变量、预览和单封测试发送。完整说明见 `deploy/mail-accounts.md`。
+
 新增“License 发放”页面：支持 `new_pds_<12位MAC>.lic` 多文件上传、匹配异常处理、暂停/取消、发送记录及结果核查。每天北京时间 09:00 汇总待办给 FAE，22:00 自动逐封发送客户附件。
 
 该功能默认关闭。先依次迁移 `database/20260923_license_delivery.sql` 、`database/20260923_license_workflow.sql` 和 `database/20260924_license_manual_status.sql`，按 `config/database.env.example` 配置，再安装服务器计划任务。发送程序复用已有 SMTP `.env`；准备模式不发真实邮件。

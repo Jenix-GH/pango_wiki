@@ -3,13 +3,16 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import mysql from 'mysql2/promise'
 
-export function readWorkerConfig(argv=process.argv.slice(2)) {
+export function workerConfigPath(argv=process.argv.slice(2)) {
   const root=fileURLToPath(new URL('.',import.meta.url))
   const at=argv.indexOf('--config')
   const path=at>=0?argv[at+1]:'config/database.env'
   if(!path)throw new Error('--config 缺少路径')
+  return resolve(root,path)
+}
+export function readWorkerConfig(argv=process.argv.slice(2)) {
   const config={}
-  for(const line of readFileSync(resolve(root,path),'utf8').split(/\r?\n/)){
+  for(const line of readFileSync(workerConfigPath(argv),'utf8').split(/\r?\n/)){
     const text=line.trim()
     if(!text || text.startsWith('#'))continue
     const i=text.indexOf('=')

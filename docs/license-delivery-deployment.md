@@ -68,12 +68,17 @@ LICENSE_SEND_ENABLED=false
 LICENSE_FAE_EMAIL=实际FAE邮箱
 LICENSE_REPLY_TO=实际FAE邮箱
 LICENSE_MAIL_ENV=/home/sjchen/license-notify/.env
+LICENSE_FAE_MAIL_ENV=/home/sjchen/license-notify/fae.env
 LICENSE_PYTHON=/usr/bin/python3
 ```
 
-`LICENSE_MAIL_ENV` 指向已有 SMTP 配置，直接复用 MAIL_ADDRESS/MAIL_PASSWORD/SMTP_HOST/SMTP_PORT/SMTP_SECURITY 等设置。无需把密码提供给开发会话。后台和 worker 的执行账号需要能读取该文件；不要为此把它设为所有人可读。
+优先通过后台“License 发放 → 邮件设置与测试”保存 FAE 账号、修改正文并发送单封测试邮件。后台保存的账号覆盖以下手工 FAE 配置；平台配置继续保留。
 
-`mail_client.py` 来自用户提供的 license-notify-code.tar.gz。本次新增 JSON stdin 桥接程序，发信内容和凭据不会通过 shell 命令参数传递。实际发件人始终是企业批准的发信邮箱；Reply-To 设置为 FAE。
+`LICENSE_MAIL_ENV` 指向平台 SMTP 配置，仅用于给 `LICENSE_FAE_EMAIL` 发送早间汇总和夜间发放结果。`LICENSE_FAE_MAIL_ENV` 指向另一份 FAE SMTP 配置，用于发送客户 License 和拒绝说明；其中 `MAIL_ADDRESS` 必须与 `LICENSE_FAE_EMAIL` 一致，并填写该 FAE 邮箱的 SMTP 密码/授权码（如有 `MAIL_USERNAME`，也需核对）。两份文件不能指向同一实际文件。SMTP_HOST/SMTP_PORT/SMTP_SECURITY 等按各自邮箱服务配置。
+
+未配置 FAE 发信文件时，夜间任务在处理数据库队列前停止，不会用平台邮箱代发；发件地址不匹配则在连接 SMTP 前拒绝发送。早间汇总可以只配置平台邮箱。运行账号需能读取对应文件，密码仅保留在服务器上，不提供给开发会话。邮件子进程不继承外层 MAIL_/SMTP_/POP3_ 环境变量，以免平台凭据覆盖 FAE 配置。
+
+`mail_client.py` 来自用户提供的 license-notify-code.tar.gz。JSON stdin 桥接程序复用其 SMTP 能力；邮件类型明确选择平台或 FAE 配置。实际 From 来自所选文件的 MAIL_ADDRESS，LICENSE_REPLY_TO 仅控制客户点击回复的地址，不能代替 FAE 发信凭据。详见 [双邮箱配置与测试](license-mail-accounts.md)。
 
 准备模式允许上传、核对、填写拒绝理由及保存状态，邮件留在队列中，但脚本拒绝实际发送。重启后台后可在“License 发放”查看准备模式提示。
 
