@@ -5,7 +5,7 @@ import type { UploadImage } from '../api/types'
 import './ChatInput.css'
 
 interface Props {
-  onSend: (text: string) => void
+  onSend: (text: string) => Promise<boolean> | boolean | void
   onStop: () => void
   isStreaming: boolean
   uploadImages: UploadImage[]
@@ -19,6 +19,7 @@ export default function ChatInput({ onSend, onStop, isStreaming, uploadImages, o
   const [mode, setMode] = useState<'text' | 'voice'>('text')
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const sendingRef = useRef(false)
 
   useEffect(() => {
     if (textareaRef.current && !isStreaming) {
@@ -26,11 +27,14 @@ export default function ChatInput({ onSend, onStop, isStreaming, uploadImages, o
     }
   }, [isStreaming, mode])
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const hasContent = text.trim() || uploadImages.length > 0
-    if (!hasContent || isStreaming) return
-    onSend(text.trim())
-    setText('')
+    if (!hasContent || isStreaming || sendingRef.current) return
+    sendingRef.current = true
+    try {
+      const accepted = await onSend(text.trim())
+      if (accepted !== false) setText(current => current === text ? '' : current)
+    } finally { sendingRef.current = false }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

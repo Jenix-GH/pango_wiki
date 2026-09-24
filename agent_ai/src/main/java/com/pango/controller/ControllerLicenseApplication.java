@@ -5,7 +5,9 @@ import com.pango.exception.MyException;
 import com.pango.rs.R;
 import com.pango.service.ServiceLicenseApplication;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.*;
+import com.pango.service.ServiceLicensePortal;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,8 +21,31 @@ public class ControllerLicenseApplication {
     @Resource
     private ServiceLicenseApplication serviceLicenseApplication;
 
+    @Resource private ServiceLicensePortal portal;
+
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<R> handleLicenseHttpException(org.springframework.web.server.ResponseStatusException exception) {
+        return ResponseEntity.status(exception.getStatus()).body(
+                R.error(exception.getRawStatusCode(), exception.getReason(), null));
+    }
+
+    @GetMapping("/mine")
+    public ResponseEntity<R> mine(@RequestHeader(value = "Authorization", required = false) String authorization,
+                  @RequestParam(defaultValue = "1") int page) {
+        return ResponseEntity.ok().header("Cache-Control", "no-store, private").body(R.ok(portal.list(portal.requireMember(authorization), page)));
+    }
+
+    @GetMapping("/{id}/download")
+    public ResponseEntity<byte[]> download(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @PathVariable long id) {
+        return portal.download(portal.requireMember(authorization), id);
+    }
+
     @PostMapping("/submit")
-    public R submit(@RequestBody DtoLicenseApplication application) {
+    public R submit(@RequestHeader(value = "Authorization", required = false) String authorization,
+                    @RequestBody DtoLicenseApplication application) {
+        application.setUserinfoId(portal.requireMember(authorization)).setOwnerVerified(true);
+        if (application.getOfficialSubmitted() == null) throw new MyException("请选择是否已在官网提交");
         application.setOperatingSystem(option(application.getOperatingSystem(), "操作系统版本", "Windows", "Linux"));
         application.setSoftwareVersion(required(application.getSoftwareVersion(), "软件版本", 50));
         application.setLicenseType(option(application.getLicenseType(), "授权类型", "STANDALONE", "SERVER"));
@@ -33,7 +58,7 @@ public class ControllerLicenseApplication {
         }
         application.setMacAddress(macAddress);
         application.setApplicantName(required(application.getApplicantName(), "申请人", 100));
-        application.setCompanyName(required(application.getCompanyName(), "公司", 200));
+        application.setCompanyName(required(application.getCompanyName(), "公司或学校", 200));
         String email = required(application.getEmail(), "邮箱", 200);
         if (!email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) throw new MyException("邮箱格式不正确");
         application.setEmail(email);

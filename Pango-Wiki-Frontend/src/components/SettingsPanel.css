@@ -169,3 +169,6 @@
   font-size: 13px;
   margin-bottom: 2px;
 }
+
+.profile-required-notice { padding:12px; border-radius:8px; color:#755618; background:#fff3d7; font-size:14px; line-height:1.6; }
+.profile-save-error { color:#b42318; font-size:14px; line-height:1.6; }

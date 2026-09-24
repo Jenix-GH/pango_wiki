@@ -1,0 +1,16 @@
+page { color:#263247; background:#f4f7fb; }
+.portal { padding:32rpx 24rpx calc(40rpx + env(safe-area-inset-bottom)); }
+.title { font-size:38rpx; font-weight:600; }
+.description { color:#62748b; font-size:25rpx; line-height:1.7; margin:18rpx 0; }
+.actions { display:flex; align-items:center; gap:16rpx; margin:24rpx 0; }
+.actions button { flex:1; margin:0; }
+button { font-size:26rpx; background:white; color:#8c166d; margin-top:22rpx; }
+.card { padding:28rpx; margin:24rpx 0; border-radius:16rpx; background:white; border:1rpx solid #dde5ef; overflow-wrap:anywhere; }
+.card-title { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16rpx; font-size:31rpx; font-weight:600; }
+.status { font-size:24rpx; color:#46566e; background:#edf1f7; padding:8rpx 20rpx; border-radius:28rpx; }
+.status-1 { background:#e8f1ff; color:#245cad; }
+.status-2 { background:#e8f6ef; color:#25724f; }
+.status-3,.error { background:#fcebea; color:#a83131; }
+.error { white-space:pre-wrap; padding:18rpx; margin:18rpx 0; font-size:26rpx; line-height:1.7; border-radius:10rpx; }
+.detail { font-size:26rpx; line-height:1.8; margin-top:12rpx; }
+.empty { text-align:center; color:#62748b; padding:60rpx 0; }

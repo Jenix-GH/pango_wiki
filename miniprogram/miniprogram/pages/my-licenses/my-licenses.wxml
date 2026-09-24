@@ -1,0 +1,23 @@
+<view class="portal">
+  <view class="title">我的 License 申请</view>
+  <view class="description">查看申请进度，下载已匹配的 License 文件。</view>
+  <view class="actions"><button bind:tap="apply">申请 License</button><button bind:tap="refresh" disabled="{{loading}}">刷新</button></view>
+  <view wx:if="{{!loggedIn}}" class="card"><view>请登录后查看自己的申请记录。</view><button bind:tap="login">手机号登录 / 注册</button></view>
+  <block wx:else>
+    <view wx:if="{{loading}}" class="description">正在加载申请…</view>
+    <view wx:if="{{error}}" class="error">{{error}}</view>
+    <view wx:if="{{!loading && !error && !records.length}}" class="empty">暂无 License 申请</view>
+    <view wx:if="{{downloadedPath}}" class="card"><view>已下载：{{downloadedName}}</view><button bind:tap="saveFile">保存 / 转发文件</button><view class="description">可转发给文件传输助手，在电脑上保存使用。</view></view>
+    <view wx:for="{{records}}" wx:key="id" class="card">
+      <view class="card-title"><text>{{item.softwareVersion}}</text><text class="status status-{{item.status}}">{{item.statusLabel}}</text></view>
+      <view class="detail">提交时间：{{item.dateLabel}}</view><view class="detail">MAC 地址：{{item.macAddress}}</view>
+      <view class="detail">授权信息：{{item.operatingSystem}} / {{item.licenseType}} / {{item.durationYears}}年</view>
+      <view class="detail">官网已提交：{{item.officialLabel}}</view>
+      <view wx:if="{{item.status === 3}}" class="error">拒绝理由：{{item.rejectionReason || '暂无记录，请联系对接人员'}}</view>
+      <button wx:if="{{item.canDownload}}" bind:tap="download" data-id="{{item.id}}" disabled="{{downloading}}">{{downloading ? '下载中…' : '下载 License'}}</button>
+      <view wx:elif="{{item.status !== 3}}" class="description">文件暂不可下载，请稍后刷新。</view>
+    </view>
+    <view wx:if="{{pages > 1}}" class="actions"><button bind:tap="previous" disabled="{{page <= 1 || loading}}">上一页</button><text>{{page}} / {{pages}}</text><button bind:tap="next" disabled="{{page >= pages || loading}}">下一页</button></view>
+    <view class="description">历史申请仍由后台处理；尚未核实账户归属的记录不会在此显示。如需关联，请联系对接人员核对。</view>
+  </block>
+</view>

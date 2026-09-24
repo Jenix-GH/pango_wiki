@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { LicenseApplicationPayload, UserInfo } from '../api/types'
@@ -13,7 +13,7 @@ const createInitialForm = (user: UserInfo | null): LicenseApplicationPayload => 
   durationYears: 1,
   macAddress: '',
   address: '',
-  userinfoId: user?.id,
+  officialSubmitted: false,
   applicantName: user?.nickName || '',
   companyName: user?.companyName || '',
   email: user?.mailAddress || '',
@@ -22,11 +22,35 @@ const createInitialForm = (user: UserInfo | null): LicenseApplicationPayload => 
 
 export default function LicenseApplicationPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const [form, setForm] = useState<LicenseApplicationPayload>(() => createInitialForm(user))
+  const { user, loading, logout } = useAuth()
+  const [form, setForm] = useState<LicenseApplicationPayload>(() => {
+    try {
+      const raw = sessionStorage.getItem('pango_license_draft')
+      if (raw) {
+        const draft = JSON.parse(raw)
+        if (Date.now() - draft.savedAt < 60 * 60 * 1000) return { ...createInitialForm(user), ...draft.form }
+      }
+    } catch { /* Ignore an expired or invalid local draft. */ }
+    return createInitialForm(user)
+  })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    sessionStorage.removeItem('pango_license_draft')
+    if (user) setForm(previous => ({ ...previous,
+      applicantName: previous.applicantName || user.nickName || '',
+      companyName: previous.companyName || user.companyName || '',
+      email: previous.email || user.mailAddress || '',
+      phone: previous.phone || user.phoneNumber || '',
+    }))
+  }, [user])
+
+  const goLogin = () => {
+    sessionStorage.setItem('pango_license_draft', JSON.stringify({ form, savedAt: Date.now() }))
+    navigate('/login?returnTo=/license-application')
+  }
 
   const update = <K extends keyof LicenseApplicationPayload>(key: K, value: LicenseApplicationPayload[K]) => {
     setForm((previous) => ({ ...previous, [key]: value }))
@@ -36,6 +60,7 @@ export default function LicenseApplicationPage() {
     event.preventDefault()
     setError('')
     setSuccess('')
+    if (!user) { goLogin(); return }
     if (!/^[0-9A-Fa-f]{2}(?:-[0-9A-Fa-f]{2}){5}$/.test(form.macAddress)) {
       setError('请输入正确的 MAC 地址，例如：00-1A-2B-3C-4D-5E')
       return
@@ -50,6 +75,7 @@ export default function LicenseApplicationPage() {
         ...form,
         macAddress: form.macAddress.toUpperCase(),
       })
+      if (response.code === 401) { logout(); goLogin(); return }
       if (response.code !== 2000) throw new Error(response.message || '提交失败')
       setForm(createInitialForm(user))
       setSuccess('申请已提交，我们将在审核后与您联系')
@@ -68,7 +94,7 @@ export default function LicenseApplicationPage() {
         onOpenChat={() => navigate('/')}
         onOpenWiki={() => navigate('/docs')}
         onOpenLicense={() => undefined}
-        onOpenUser={() => navigate(user ? '/' : '/login')}
+        onOpenUser={() => navigate('/my-licenses')}
       />
       <main className="license-main">
         <section className="license-card">
@@ -77,9 +103,13 @@ export default function LicenseApplicationPage() {
             <h1>PDS License 申请</h1>
             <p>请准确填写软件运行环境和申请人信息，我们将在审核后与您联系。</p>
           </div>
+          <div className="license-portal-links"><button type="button" onClick={() => navigate('/my-licenses')}>查看我的 License 申请</button></div>
+          {!loading && !user ? <div className="license-message"><p>登录后才能提交申请，已填写的内容会为您保留。</p><button type="button" onClick={goLogin}>登录 / 注册</button></div> : null}
           <form className="license-form" onSubmit={submit}>
             <fieldset>
               <legend>授权信息</legend>
+              <label>是否已在官网提交<select value={String(form.officialSubmitted)} onChange={event => update('officialSubmitted', event.target.value === 'true')}><option value="false">否</option><option value="true">是</option></select></label>
+              {form.officialSubmitted ? <p className="license-message" role="status">正在加急处理中，请勿重复提交</p> : null}
               <div className="license-grid">
                 <label>操作系统版本<select value={form.operatingSystem} onChange={(event) => update('operatingSystem', event.target.value as 'Windows' | 'Linux')}><option>Windows</option><option>Linux</option></select></label>
                 <label>软件版本<input required maxLength={50} value={form.softwareVersion} onChange={(event) => update('softwareVersion', event.target.value)} placeholder="请输入软件版本号" /></label>
@@ -98,7 +128,7 @@ export default function LicenseApplicationPage() {
               <legend>申请人信息</legend>
               <div className="license-grid">
                 <label>申请人<input required maxLength={100} value={form.applicantName} onChange={(event) => update('applicantName', event.target.value)} placeholder="请输入申请人姓名" /></label>
-                <label>公司<input required maxLength={200} value={form.companyName} onChange={(event) => update('companyName', event.target.value)} placeholder="请输入公司名称" /></label>
+                <label>公司或学校<input required maxLength={200} value={form.companyName} onChange={(event) => update('companyName', event.target.value)} placeholder="请输入公司或学校名称" /></label>
                 <label>邮箱<input required type="email" maxLength={200} value={form.email} onChange={(event) => update('email', event.target.value)} placeholder="name@company.com" /></label>
                 <label>电话<input required maxLength={50} value={form.phone} onChange={(event) => update('phone', event.target.value)} placeholder="请输入联系电话" /></label>
                 <label className="full-row">地址<textarea required maxLength={500} value={form.address} onChange={(event) => update('address', event.target.value)} placeholder="请输入详细地址" /></label>
@@ -106,7 +136,7 @@ export default function LicenseApplicationPage() {
             </fieldset>
             {error ? <div className="license-message error" role="alert">{error}</div> : null}
             {success ? <div className="license-message success">{success}</div> : null}
-            <div className="license-actions"><button type="submit" disabled={submitting}>{submitting ? '提交中…' : '提交申请'}</button></div>
+            <div className="license-actions"><button type="submit" disabled={submitting || loading} formNoValidate={!user}>{submitting ? '提交中…' : user ? '提交申请' : '登录后提交申请'}</button></div>
           </form>
         </section>
       </main>

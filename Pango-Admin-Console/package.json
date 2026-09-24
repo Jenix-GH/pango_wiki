@@ -8,8 +8,9 @@
     "dev:web": "vite",
     "dev:api": "node --watch server.mjs --api-only",
     "build": "vite build",
-    "test": "node --check server.mjs && node --check conversationExport.mjs && node --check src/main.js && node tests/conversation_export.test.mjs",
-    "start": "node server.mjs"
+    "test": "node --check server.mjs && node --check conversationExport.mjs && node --check src/main.js && node --check src/licenseApplications.js && node --check src/licenseDelivery.js && node tests/conversation_export.test.mjs && node --test tests/license_delivery.test.mjs && python3 tests/license_mail_test.py",
+    "start": "node server.mjs",
+    "test:delivery:mysql": "node --test tests/license_delivery.mysql.test.mjs"
   },
   "dependencies": {
     "archiver": "^5.3.2",

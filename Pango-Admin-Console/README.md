@@ -122,3 +122,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/upload-admin-cons
 - 问答记录：按所选起止日期读取 `dto_question` 并按 `session_id` 组织会话；会话详情关联 `dto_answer`，还原用户问题、上传图片、Markdown 回答、模型图片及参考资料。没有会话标识的历史问题按单条独立会话展示。
 - 问答记录导出：在问答记录页按当前起止日期生成 ZIP。压缩包中的 `README.md` 提供会话索引，`sessions/` 按每个会话保存完整 Markdown，`assets/` 保存用户上传图片和能够安全获取的同源模型配图；配图获取失败时 Markdown 会保留在线地址。
 - 反馈问答复现：使用反馈快照渲染问题和回复，并按用户、会话、问题内容定位原回答的图片与参考资料；Markdown 换行和引用图片插入直接复用 Web 端共享逻辑。
+
+## License 批量上传与自动发放
+
+新增“License 发放”页面：支持 `new_pds_<12位MAC>.lic` 多文件上传、匹配异常处理、暂停/取消、发送记录及结果核查。每天北京时间 09:00 汇总待办给 FAE，22:00 自动逐封发送客户附件。
+
+该功能默认关闭。先依次迁移 `database/20260923_license_delivery.sql` 、`database/20260923_license_workflow.sql` 和 `database/20260924_license_manual_status.sql`，按 `config/database.env.example` 配置，再安装服务器计划任务。发送程序复用已有 SMTP `.env`；准备模式不发真实邮件。
+
+完整上线、权限、定时任务、回退和测试说明见完整仓库的 `docs/license-delivery-deployment.md`。申请状态为待处理、处理中、已处理、已拒绝：FAE 邮件发送成功后进入处理中，文件上传并匹配后进入已处理。拒绝理由必填，说明邮件在 22:00 队列中发送。支持提交日期与申请状态组合筛选；业务状态和邮件发送结果分别记录。四状态也支持人工下拉设置，修改留痕；选择拒绝仍需填写理由。历史状态迁移请参考部署说明。
+
+客户个人中心、两端登录要求和官网提交标记的升级步骤见 [`docs/license-portal-deployment.md`](../docs/license-portal-deployment.md)。需要额外执行一次 Java 目录中的增量迁移。

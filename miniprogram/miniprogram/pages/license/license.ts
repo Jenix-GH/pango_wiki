@@ -3,7 +3,7 @@ export {}
 const app = getApp()
 
 interface LicenseForm {
-  userinfoId?: number
+  officialSubmitted: boolean
   operatingSystem: 'Windows' | 'Linux'
   softwareVersion: string
   licenseType: 'STANDALONE' | 'SERVER'
@@ -33,6 +33,7 @@ interface ApiResponse {
 
 interface StoredUserInfo {
   id?: number
+  userType?: string
   nickName?: string
   companyName?: string
   mailAddress?: string
@@ -40,6 +41,7 @@ interface StoredUserInfo {
 }
 
 const emptyForm = (): LicenseForm => ({
+  officialSubmitted: false,
   operatingSystem: 'Windows',
   softwareVersion: '',
   licenseType: 'STANDALONE',
@@ -55,7 +57,6 @@ const emptyForm = (): LicenseForm => ({
 /** 表单初始状态：手填字段留空，申请人信息由登录账号带入。提交成功后复位到该状态。 */
 const initialForm = (user: StoredUserInfo = {}): LicenseForm => ({
   ...emptyForm(),
-  userinfoId: user.id,
   applicantName: user.nickName || '',
   companyName: user.companyName || '',
   email: user.mailAddress || '',
@@ -71,6 +72,7 @@ Page({
     operatingSystemIndex: 0,
     durationOptions: ['1年', '2年', '3年'],
     durationIndex: 0,
+    loggedIn: false,
     submitting: false,
     error: '',
     success: '',
@@ -78,6 +80,25 @@ Page({
 
   onLoad() {
     this.setData({ form: initialForm(readStoredUser()) })
+  },
+
+  onShow() {
+    const user = readStoredUser()
+    const loggedIn = Boolean(user.id && user.userType !== 'GUEST' && wx.getStorageSync('pangoAccessToken'))
+    const current = this.data.form
+    const prefill = initialForm(user)
+    this.setData({ loggedIn, form: { ...current,
+      applicantName: current.applicantName || prefill.applicantName,
+      companyName: current.companyName || prefill.companyName,
+      email: current.email || prefill.email,
+      phone: current.phone || prefill.phone,
+    } })
+  },
+
+  login() { wx.navigateTo({ url: '/pages/license-login/license-login' }) },
+  openMine() { wx.navigateTo({ url: '/pages/my-licenses/my-licenses' }) },
+  selectOfficial(event: FieldEvent) {
+    this.setData({ 'form.officialSubmitted': String(event.detail.value) === 'true' })
   },
 
   openChat() {
@@ -119,12 +140,13 @@ Page({
 
   submitApplication() {
     if (this.data.submitting) return
+    if (!this.data.loggedIn) { this.login(); return }
     const form = this.data.form as LicenseForm
     const required: Array<[keyof LicenseForm, string]> = [
       ['softwareVersion', '软件版本'],
       ['macAddress', 'MAC 地址'],
       ['applicantName', '申请人'],
-      ['companyName', '公司'],
+      ['companyName', '公司或学校'],
       ['email', '邮箱'],
       ['phone', '电话'],
       ['address', '地址'],
@@ -155,6 +177,11 @@ Page({
       data: { ...form, macAddress: form.macAddress.toUpperCase() },
       success: result => {
         const response = result.data
+        if (result.statusCode === 401 || response.code === 401) {
+          this.setData({ loggedIn: false, error: '登录已失效，请重新登录；已填写内容保留。' })
+          this.login()
+          return
+        }
         if (result.statusCode < 200 || result.statusCode >= 300 || response.code !== 2000) {
           this.setData({ error: response.message || '提交失败，请稍后重试' })
           return

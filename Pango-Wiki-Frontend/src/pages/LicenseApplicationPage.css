@@ -28,3 +28,21 @@
 .license-actions button { min-width: 150px; height: 44px; border-radius: 7px; color: #fff; background: var(--bg-primary); font-weight: 700; }
 .license-actions button:disabled { opacity: .6; cursor: wait; }
 @media (max-width: 640px) { .license-main { padding: 20px 12px 36px; } .license-card { padding: 24px 16px 28px; } .license-form fieldset { padding: 17px 14px; } .license-grid, .license-options { grid-template-columns: 1fr; } .full-row { grid-column: auto; } .license-actions button { width: 100%; } }
+
+.license-portal-links { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:20px 0; }
+.license-portal-links button,.license-message button,.my-license-item button { padding:10px 16px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#234571; cursor:pointer; font:inherit; }
+.license-page button:disabled { opacity:.55; cursor:default; }
+.my-license-list { display:grid; gap:18px; }
+.my-license-item { border:1px solid #dce3ed; border-radius:12px; padding:20px; }
+.my-license-title { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
+.my-license-title h2 { font-size:18px; margin:0; overflow-wrap:anywhere; }
+.my-license-item dl { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.my-license-item dt,.license-file-note { color:#62748b; font-size:13px; line-height:1.7; }
+.my-license-item dd { margin:4px 0 0; overflow-wrap:anywhere; }
+.license-status { border-radius:20px; padding:5px 12px; font-size:13px; background:#edf1f7; color:#46566e; }
+.license-status.status-1 { background:#e8f1ff; color:#245cad; }
+.license-status.status-2 { background:#e8f6ef; color:#25724f; }
+.license-status.status-3 { background:#fcebea; color:#a83131; }
+.license-empty { padding:30px 0; text-align:center; color:#62748b; }
+.my-license-item .license-message { white-space:pre-wrap; overflow-wrap:anywhere; }
+@media (max-width:600px) { .my-license-item dl { grid-template-columns:1fr; } .my-license-item { padding:16px; } }

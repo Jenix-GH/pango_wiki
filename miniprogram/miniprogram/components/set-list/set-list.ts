@@ -19,6 +19,7 @@ Component({
      * 组件的方法列表
      */
     methods: {
+        gotoLicenses(){ wx.navigateTo({ url: '/pages/my-licenses/my-licenses' }) },
         gotoUserinfo(){
             this.triggerEvent('gotoUserinfo')
         },

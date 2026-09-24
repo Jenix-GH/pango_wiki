@@ -242,7 +242,7 @@ export interface SSECallbacks {
 }
 
 export interface LicenseApplicationPayload {
-  userinfoId?: number
+  officialSubmitted: boolean
   operatingSystem: 'Windows' | 'Linux'
   softwareVersion: string
   licenseType: 'STANDALONE' | 'SERVER'
@@ -253,4 +253,25 @@ export interface LicenseApplicationPayload {
   email: string
   phone: string
   address: string
+}
+
+export interface MyLicenseApplication {
+  id: number
+  submittedAt: string
+  operatingSystem: string
+  softwareVersion: string
+  licenseType: string
+  durationYears: number
+  macAddress: string
+  officialSubmitted: boolean | null
+  status: number
+  rejectionReason: string | null
+  canDownload: boolean
+  filename: string | null
+}
+export interface MyLicensePage {
+  records: MyLicenseApplication[]
+  total: number
+  page: number
+  pageSize: number
 }

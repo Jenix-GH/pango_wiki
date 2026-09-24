@@ -6,6 +6,7 @@ import { extname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import archiver from 'archiver'
 import mysql from 'mysql2/promise'
+import { uploadFiles, listFiles, fileDetail, fileAction, MAX_UPLOAD_BODY, problem, listApplications, setApplicationStatus, applicationStatusHistory, rejectionDetail, retryRejection, resolveWorkflowMail } from './licenseDelivery.mjs'
 import { conversationFileName, groupConversationRecords, imageExtension, renderConversationMarkdown } from './conversationExport.mjs'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
@@ -21,7 +22,7 @@ const sessionHours = clampNumber(config.ADMIN_CONSOLE_SESSION_HOURS, 1, 168, 12)
 const sessions = new Map()
 const loginAttempts = new Map()
 const sessionCookie = 'pango_admin_session'
-const pool = mysql.createPool({
+const databaseOptions = {
   host: requiredConfig('PANGO_DB_HOST'),
   port: Number(config.PANGO_DB_PORT || 3306),
   user: requiredConfig('PANGO_DB_USER'),
@@ -35,9 +36,11 @@ const pool = mysql.createPool({
   maxIdle: 2,
   idleTimeout: 60000,
   enableKeepAlive: true,
-})
+}
+const pool = mysql.createPool(databaseOptions)
+const licensePool = mysql.createPool({ ...databaseOptions, supportBigNumbers: true, bigNumberStrings: true, connectionLimit: 2, maxIdle: 1 })
 
-pool.on('connection', connection => {
+for (const databasePool of [pool, licensePool]) databasePool.on('connection', connection => {
   connection.query("SET time_zone = '+08:00'")
 })
 
@@ -53,7 +56,7 @@ const server = http.createServer(async (request, response) => {
   } catch (error) {
     console.error(error)
     if (response.headersSent) response.destroy(error)
-    else json(response, 500, { message: safeError(error) })
+    else json(response, /^\/local-api\/(?:licenses|license-delivery)(?:[/?]|$)/.test(request.url || '') ? error.statusCode || 500 : 500, { message: safeError(error) })
   }
 })
 
@@ -67,6 +70,7 @@ async function handleApi(request, response, url) {
   if (request.method === 'GET' && path === '/auth/session') return authSession(request, response)
   if (request.method === 'POST' && path === '/auth/logout') return logout(request, response)
   if (!authenticated(request)) return json(response, 401, { message: '请先登录中控台' })
+  if (path.startsWith('/license-delivery')) return handleLicenseDelivery(request, response, path, url.searchParams)
   if (request.method === 'GET' && path === '/health') { await pool.query('SELECT 1'); return json(response, 200, { data: true }) }
   if (request.method === 'GET' && path === '/dashboard') return dashboard(response, selectedDateRange(url.searchParams))
   if (request.method === 'GET' && path === '/events') return events(response, url.searchParams)
@@ -79,7 +83,11 @@ async function handleApi(request, response, url) {
   if (request.method === 'POST' && /^\/feedback\/\d+\/status$/.test(path)) return updateStatus(response, 'dto_feedback', Number(path.split('/')[2]), await readJson(request))
   if (request.method === 'POST' && /^\/feedback\/\d+\/progress$/.test(path)) return updateFeedbackProgress(response, Number(path.split('/')[2]), await readJson(request))
   if (request.method === 'GET' && path === '/licenses') return licenses(response, url.searchParams)
-  if (request.method === 'POST' && /^\/licenses\/\d+\/status$/.test(path)) return updateStatus(response, 'dto_license_application', Number(path.split('/')[2]), await readJson(request))
+  if (request.method === 'POST' && /^\/licenses\/\d+\/status$/.test(path)) {
+    if (!String(request.headers['content-type'] || '').startsWith('application/json')) throw problem('仅接受 JSON 请求',415)
+    if (request.headers.origin && new URL(request.headers.origin).host !== request.headers.host) throw problem('请求来源不允许',403)
+    return updateLicenseStatus(response, path.split('/')[2], await readLicenseJson(request))
+  }
   return json(response, 404, { message: '接口不存在' })
 }
 
@@ -481,13 +489,9 @@ async function feedbackDetail(response, id) {
 }
 
 async function licenses(response, params) {
-  const { page, pageSize, offset } = pagination(params, 30)
-  const status = optionalStatus(params.get('status'))
-  const where = status === null ? '' : ' WHERE status=?'
-  const args = status === null ? [] : [status]
-  const [[count]] = await pool.query(`SELECT COUNT(*) total FROM dto_license_application${where}`, args)
-  const [records] = await pool.query(`SELECT * FROM dto_license_application${where} ORDER BY dotime DESC LIMIT ? OFFSET ?`, [...args, pageSize, offset])
-  json(response, 200, { data: { records, total: count.total, page, pageSize } })
+  const data=await listApplications(licensePool,params,{workflowEnabled:config.LICENSE_DELIVERY_ENABLED==='true'})
+  data.sendingEnabled=config.LICENSE_SEND_ENABLED==='true'
+  json(response,200,{data})
 }
 
 async function updateStatus(response, table, id, body) {
@@ -496,6 +500,46 @@ async function updateStatus(response, table, id, body) {
   const [result] = await pool.query(`UPDATE ${table} SET status=?,uptime=NOW() WHERE id=?`, [status, id])
   if (result.affectedRows !== 1) return json(response, 404, { message: '记录不存在' })
   json(response, 200, { data: true })
+}
+
+async function updateLicenseStatus(response, id, body) {
+  const status=Number(body.status)
+  if(!Number.isInteger(status)||status<0||status>3)throw problem('状态参数不正确')
+  if(config.LICENSE_DELIVERY_ENABLED!=='true')throw problem('请先完成 License 工作流迁移并启用配置',503)
+  return json(response,200,{data:await setApplicationStatus(licensePool,id,body,adminUser)})
+}
+
+async function handleLicenseDelivery(request, response, path, params) {
+  const enabled = config.LICENSE_DELIVERY_ENABLED === 'true'
+  if (request.method === 'GET' && path === '/license-delivery/config') return json(response, 200, {data:{enabled, sendingEnabled:config.LICENSE_SEND_ENABLED === 'true', timezone:'Asia/Shanghai', digestAt:'09:00', deliveryAt:'22:00'}})
+  if (!enabled) throw problem('License 自动发放尚未配置，请先执行数据库迁移并启用配置', 503)
+  if (request.method === 'POST') {
+    if (!String(request.headers['content-type'] || '').startsWith('application/json')) throw problem('仅接受 JSON 请求',415)
+    if (request.headers.origin && new URL(request.headers.origin).host !== request.headers.host) throw problem('请求来源不允许',403)
+  }
+  if (request.method === 'GET' && path === '/license-delivery/files') return json(response,200,{data:await listFiles(licensePool,params)})
+  if (request.method === 'GET' && path === '/license-delivery/notices') {
+    const [records] = await licensePool.query("SELECT id,kind,recipient,state,detail,message_id,attempts,created_at,updated_at FROM dto_license_mail WHERE kind IN ('digest','summary') ORDER BY updated_at DESC LIMIT 20")
+    return json(response,200,{data:{records}})
+  }
+  const historyMatch=/^\/license-delivery\/applications\/(\d+)\/history$/.exec(path)
+  if(historyMatch&&request.method==='GET')return json(response,200,{data:await applicationStatusHistory(licensePool,historyMatch[1])})
+  const rejectionMatch=/^\/license-delivery\/rejections\/(\d+)(\/retry)?$/.exec(path)
+  if(rejectionMatch&&request.method==='GET'&&!rejectionMatch[2])return json(response,200,{data:await rejectionDetail(licensePool,rejectionMatch[1])})
+  if(rejectionMatch&&request.method==='POST'&&rejectionMatch[2])return json(response,200,{data:await retryRejection(licensePool,rejectionMatch[1],(await readLicenseJson(request)).note,adminUser)})
+  const noticeMatch=/^\/license-delivery\/notices\/([a-f0-9-]{36})\/resolve$/.exec(path)
+  if(noticeMatch&&request.method==='POST')return json(response,200,{data:await resolveWorkflowMail(licensePool,noticeMatch[1],await readLicenseJson(request),adminUser)})
+  if (request.method === 'POST' && path === '/license-delivery/upload') return json(response,200,{data:await uploadFiles(licensePool,await readLicenseJson(request,MAX_UPLOAD_BODY),adminUser)})
+  const match = /^\/license-delivery\/files\/([a-f0-9-]{36})(\/action|\/content)?$/.exec(path)
+  if (match && request.method === 'GET' && !match[2]) return json(response,200,{data:await fileDetail(licensePool,match[1])})
+  if (match && request.method === 'POST' && match[2] === '/action') return json(response,200,{data:await fileAction(licensePool,match[1],await readLicenseJson(request),adminUser)})
+  if (match && request.method === 'GET' && match[2] === '/content') {
+    const [[file]] = await licensePool.query('SELECT original_name,content FROM dto_license_file WHERE id=?',[match[1]])
+    if (!file) throw problem('文件不存在',404)
+    response.writeHead(200, {'Content-Type':'application/octet-stream','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(file.original_name)}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+    return response.end(file.content)
+  }
+  throw problem('接口不存在',404)
 }
 
 async function updateFeedbackProgress(response, id, body) {
@@ -589,4 +633,20 @@ function fromBase64Url(value) {
 function safeError(error) { return String(error?.message || error || '数据库查询失败，请检查本地服务日志') }
 function json(response, status, body, headers = {}) { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers }); response.end(JSON.stringify(body)) }
 function readJson(request) { return new Promise((resolve, reject) => { let raw=''; request.on('data', chunk => { raw += chunk; if (raw.length > 10000) request.destroy() }); request.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}) } catch (error) { reject(error) } }); request.on('error', reject) }) }
+
+async function readLicenseJson(request, maxBytes = 10000) {
+  let size = 0
+  const chunks = []
+  for await (const chunk of request) {
+    size += chunk.length
+    if (size > maxBytes) throw problem('请求内容超过大小限制', 413)
+    chunks.push(chunk)
+  }
+  try {
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('object required')
+    return body
+  } catch { throw problem('JSON 格式错误，应为对象') }
+}
+
 function mime(extension) { return ({ '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.woff2':'font/woff2' })[extension] || 'application/octet-stream' }

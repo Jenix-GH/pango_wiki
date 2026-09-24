@@ -15,6 +15,9 @@ public class DtoLicenseApplication {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
     private Long userinfoId;
+    private Boolean officialSubmitted;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Boolean ownerVerified;
     private String operatingSystem;
     private String softwareVersion;
     private String licenseType;

@@ -1,5 +1,5 @@
 import { API_CONFIG, ENDPOINTS } from './endpoints'
-import type { AnswerMedia, ApiResponse, AuthData, FeedbackPayload, HistoryData, LicenseApplicationPayload, QuestionItem, ReferencePayload, SessionQuestion, UploadImage, UserInfo } from './types'
+import type { AnswerMedia, ApiResponse, AuthData, FeedbackPayload, HistoryData, LicenseApplicationPayload, MyLicensePage, QuestionItem, ReferencePayload, SessionQuestion, UploadImage, UserInfo } from './types'
 import { emptyReference } from './types'
 import { normalizeReference } from './types'
 import { normalizeAnswerMedia } from '../utils/referenceUrl'
@@ -113,13 +113,24 @@ export const api = {
     post(ENDPOINTS.upFlagUseData, data),
 
   updateUserInfo: (data: Record<string, unknown>) =>
-    post<{ companyName?: string } & Record<string, unknown>>(ENDPOINTS.updateUserInfo, data),
+    post<UserInfo>(ENDPOINTS.updateUserInfo, data),
 
   submitFeedback: (data: FeedbackPayload) =>
     post<{ id: number; status: number }>(ENDPOINTS.feedbackSubmit, data),
 
   submitLicenseApplication: (data: LicenseApplicationPayload) =>
     post<{ id: number; status: number }>(ENDPOINTS.licenseApplicationSubmit, data),
+
+  getMyLicenses: (page = 1) => get<MyLicensePage>(`${ENDPOINTS.licenseApplicationsMine}?page=${page}`),
+
+  downloadLicense: async (id: number): Promise<Blob> => {
+    const res = await fetch(ENDPOINTS.licenseApplicationDownload(id), { headers: getHeaders() })
+    if (!res.ok || !res.headers.get('content-type')?.includes('application/octet-stream')) {
+      const body = await res.json().catch(() => null)
+      throw Object.assign(new Error(body?.message || '下载失败，请刷新后重试'), { status: res.status })
+    }
+    return res.blob()
+  },
 
   trackEvent: (data: { eventName: string; pagePath: string; clientType: 'WEB' | 'MINIPROGRAM'; sessionId?: string; documentId?: string }) =>
     post(ENDPOINTS.analyticsTrack, data),

@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api/client'
@@ -8,35 +9,53 @@ type Page = 'menu' | 'userinfo' | 'company' | 'contactUs'
 interface Props {
   open: boolean
   onClose: () => void
+  requireCompany?: boolean
+  onProfileSaved?: () => void
 }
 
-export default function SettingsPanel({ open, onClose }: Props) {
-  const { user, updateUser, setFlagCompanyInfo } = useAuth()
+export default function SettingsPanel({ open, onClose, requireCompany = false, onProfileSaved }: Props) {
+  const navigate = useNavigate()
+  const { user, answerCount, updateUser, syncQuestionAccess } = useAuth()
   const [page, setPage] = useState<Page>('menu')
   const [nickName, setNickName] = useState('')
   const [companyName, setCompanyName] = useState('')
   const [jobName, setJobName] = useState('')
   const [mailAddress, setMailAddress] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    if (open) setPage('menu')
-  }, [open])
+    if (!open) return
+    setError('')
+    setPage(requireCompany ? 'userinfo' : 'menu')
+    if (requireCompany) {
+      setNickName(user?.nickName || '')
+      setCompanyName(user?.companyName || '')
+      setJobName(user?.jobName || '')
+      setMailAddress(user?.mailAddress || '')
+    }
+  }, [open, requireCompany])
 
   const handleSaveUserInfo = async () => {
-    if (!user) return
+    if (!user || loading) return
+    setError('')
+    if (requireCompany && !companyName.trim()) { setError('请填写公司或学校名称'); return }
+    if (!nickName.trim()) { setError('请填写昵称'); return }
     setLoading(true)
-    const data = { ...user, nickName, companyName, jobName, mailAddress }
-    const res = await api.updateUserInfo(data)
-    if (res.code === 2000) {
-      updateUser({ nickName, companyName, jobName, mailAddress })
-      if (companyName.trim()) setFlagCompanyInfo(true)
-      else setFlagCompanyInfo(false)
-      toast('保存成功')
-    } else {
-      toast('保存失败')
-    }
-    setLoading(false)
+    const token = localStorage.getItem('pango_auth_token')
+    try {
+      const res = await api.updateUserInfo({ ...user, nickName: nickName.trim(), companyName: companyName.trim(), jobName: jobName.trim(), mailAddress: mailAddress.trim() })
+      if (token !== localStorage.getItem('pango_auth_token')) throw new Error('登录状态已变化，请重新打开个人信息')
+      if (res.code !== 2000 || !res.data) throw new Error(res.message || '保存失败，请重试')
+      const complete = Boolean(res.data.companyName?.trim())
+      const count = res.data.count ?? answerCount
+      updateUser({ ...res.data, count, flagCompanyInfo: complete })
+      syncQuestionAccess(count, complete)
+      toast(requireCompany ? '个人信息已完善，可以继续提问' : '保存成功')
+      onProfileSaved?.()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '保存失败，请重试')
+    } finally { setLoading(false) }
   }
 
   if (!open) return null
@@ -64,6 +83,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
           <div className="settings-list">
             <div className="settings-group">
               <div className="settings-label">账户</div>
+              <button className="settings-item" onClick={() => { onClose(); navigate('/my-licenses') }}>我的 License 申请</button>
               <button className="settings-item" onClick={() => { setPage('userinfo'); setNickName(user?.nickName || ''); setCompanyName(user?.companyName || ''); setJobName(user?.jobName || ''); setMailAddress(user?.mailAddress || ''); }}>个人信息</button>
             </div>
             <div className="settings-group">
@@ -76,6 +96,8 @@ export default function SettingsPanel({ open, onClose }: Props) {
 
         {page === 'userinfo' && (
           <div className="settings-form">
+            {requireCompany ? <p className="profile-required-notice" role="status">已完成 50 次提问，请填写公司或学校名称后继续使用。</p> : null}
+            {error ? <p className="profile-save-error" role="alert">{error}</p> : null}
             <div className="form-field">
               <label>昵称</label>
               <input value={nickName} onChange={(e) => setNickName(e.target.value)} placeholder="请输入昵称" />
@@ -85,8 +107,8 @@ export default function SettingsPanel({ open, onClose }: Props) {
               <input value={mailAddress} onChange={(e) => setMailAddress(e.target.value)} placeholder="请输入邮箱" />
             </div>
             <div className="form-field">
-              <label>公司名称</label>
-              <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="请输入公司名称（完善后解除次数限制）" />
+              <label>公司或学校</label>
+              <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} maxLength={200} placeholder="请输入公司或学校名称" />
             </div>
             <div className="form-field">
               <label>职位</label>
