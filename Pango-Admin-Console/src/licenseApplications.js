@@ -88,7 +88,7 @@ export async function renderLicenseApplications(content,request,openDelivery){
       mode.hidden=Boolean(data.workflowEnabled&&data.sendingEnabled)
       mode.textContent=data.workflowEnabled?'当前为准备模式：状态和拒绝理由会保存，邮件排队等待启用发送。':'工作流尚未配置：可查询申请，暂不能设置状态或安排拒绝通知。'
       count.textContent=`共 ${data.total} 条申请 · 按提交时间筛选${view.startDate||view.endDate?`：${view.startDate||'不限'} 至 ${view.endDate||'不限'}（含结束当天）`:''}`
-      const table=el('table'),head=el('thead'),hr=el('tr');['提交时间','申请人 / 公司','系统 / 版本','类型 / 年限','MAC 地址','联系方式','官网已提交','申请状态','文件 / 邮件','拒绝理由','操作'].forEach(h=>hr.append(el('th',h)));head.append(hr);const tbody=el('tbody');table.append(head,tbody)
+      const table=el('table'),head=el('thead'),hr=el('tr');['申请编号','提交时间','申请人 / 公司','系统 / 版本','类型 / 年限','MAC 地址','联系方式','官网已提交','申请状态','文件 / 邮件','拒绝理由','操作'].forEach(h=>hr.append(el('th',h)));head.append(hr);const tbody=el('tbody');table.append(head,tbody)
       for(const row of data.records){
         const state=document.createElement('select')
         state.className=`application-badge application-status-${row.status}`
@@ -113,9 +113,10 @@ export async function renderLicenseApplications(content,request,openDelivery){
           else if(!['accepted','sending','unknown'].includes(row.delivery_state))operation.append(button(Number(row.status)===3?'补充拒绝理由':'拒绝申请',()=>reject(row),'license-reject-button'))
         }
         const delivery=Number(row.status)===3?(row.rejection_mail_state?`拒绝邮件：${mailLabels[row.rejection_mail_state]||row.rejection_mail_state}`:'历史记录：未保存理由及邮件'):deliveryLabels[row.delivery_state]||'未上传 / 未关联文件'
-        addRow(tbody,[time(row.dotime),`${row.applicant_name}\n${row.company_name}`,`${row.operating_system} / ${row.software_version}`,`${row.license_type} / ${row.duration_years}年`,row.mac_address,`${row.email||''}\n${row.phone||''}`,row.official_submitted==null?'未记录':Number(row.official_submitted)===1?'是':'否',state,delivery,row.rejection_reason?(Number(row.status)===3?row.rejection_reason:`历史拒绝：${row.rejection_reason}`):'—',operation])
+        const applicationId=el('span',`#${row.id}`,'license-application-id');applicationId.title='与邮件中的申请编号一致'
+        addRow(tbody,[applicationId,time(row.dotime),`${row.applicant_name}\n${row.company_name}`,`${row.operating_system} / ${row.software_version}`,`${row.license_type} / ${row.duration_years}年`,row.mac_address,`${row.email||''}\n${row.phone||''}`,row.official_submitted==null?'未记录':Number(row.official_submitted)===1?'是':'否',state,delivery,row.rejection_reason?(Number(row.status)===3?row.rejection_reason:`历史拒绝：${row.rejection_reason}`):'—',operation])
       }
-      if(!data.records.length){const row=el('tr'),cell=el('td','该时段及状态下暂无申请','empty');cell.colSpan=11;row.append(cell);tbody.append(row)}
+      if(!data.records.length){const row=el('tr'),cell=el('td','该时段及状态下暂无申请','empty');cell.colSpan=12;row.append(cell);tbody.append(row)}
       const wrap=el('div','','table-wrap');wrap.append(table);const pager=el('div','','pager');const pages=Math.max(1,Math.ceil(data.total/30))
       const previous=button('上一页',()=>{view.page--;load().catch(report)}),next=button('下一页',()=>{view.page++;load().catch(report)});previous.disabled=view.page<=1;next.disabled=view.page>=pages;pager.append(el('span',`${view.page} / ${pages}`),previous,next);panel.replaceChildren(wrap,pager)
     }finally{loading=false;filters.querySelectorAll('input,select,button').forEach(item=>item.disabled=false)}
