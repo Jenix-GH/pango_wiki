@@ -97,9 +97,15 @@ deploy/upload-admin-console.cmd
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/upload-admin-console.ps1
 ```
 
-脚本会先执行本地测试和构建，再上传源码压缩包。`config/`、`node_modules/`、`dist/`、`tests/`、`deploy/`、`.env*` 和日志不会上传。远端会在临时目录重新安装依赖、检查语法并构建，成功后保留原 `config/`、切换版本并重启 `pango_console`；启动失败会恢复旧版本。
+脚本会先执行本地测试和构建，再上传源码压缩包。`config/`、`node_modules/`、`dist/`、`tests/`、`deploy/`、`.env*`、Python 缓存和日志不会进入源码压缩包；`deploy-admin-console.sh` 会作为本次远端部署入口单独上传。远端会在临时目录安装依赖、构建，并检查现有 PM2 工作目录。
 
-服务器现有远端目录必须提前准备好 `config/database.env`，部署账号需要具备该目录父目录的创建、移动权限，并能直接执行 `node`、`npm` 和 `pm2`。只验证本地打包内容、不连接服务器时可增加 `-DryRun`；确需跳过本地测试和构建时可增加 `-SkipLocalChecks`。
+随后复制服务器原 `config/` 到临时版本，检查 License 七张工作流表。缺表时先使用服务器上的 `mysqldump` 备份现有数据库，再仅补建缺失表；已有表缺必要字段、邮件唯一索引或不是 InnoDB 时停止，不擅自修改。备份失败或数据库账号没有建表权限时不会切换代码。MySQL `max_allowed_packet` 至少 16 MB。此脚本不执行 Java 个人中心的 ALTER 迁移，不修改申请数据或历史状态。
+
+检查成功后只在新版本配置中设置 `LICENSE_DELIVERY_ENABLED=true`、`LICENSE_SEND_ENABLED=false`，其他配置保留。切换目录、重启配置指定的 PM2 进程，并核对实际网页及认证接口；检查失败恢复原代码及配置，新增数据库表保留。成功后也保留 `.pango-admin-backup-<发布编号>`（原工程及配置）；数据库备份存放在同级 `.pango-admin-database-backup-<发布编号>/database.sql`。备份包含私有数据，应按原服务器权限管理及备份策略保管，代码回退时不要直接恢复旧数据库覆盖新增业务数据。
+
+每次运行此入口均为准备模式，不安装或变更 cron，不发送邮件。若服务器已经开启 `LICENSE_SEND_ENABLED=true`，脚本会停止，需由运维先暂停新发送任务并关闭该开关，再部署。本次不改原 license-notify 任务。具体说明见 [自动部署与回滚](deploy/README.md)。
+
+服务器现有远端目录必须提前准备好 `config/database.env`，部署账号需要具备该目录父目录的创建、移动权限，并能执行 `node`、`npm`、`pm2`、`flock`，缺表时还需要 `mysqldump` 及数据库备份/建表权限。不支持 PM2 自定义 `--config`、API-only 或集群启动方式，遇到这些配置会停止并提示人工核对。只验证本地打包内容、不连接服务器时可增加 `-DryRun`；确需跳过本地测试和构建时可增加 `-SkipLocalChecks`。
 
 ## 安全边界
 

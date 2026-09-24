@@ -34,3 +34,9 @@
 - 已发送的邮件无法通过代码回滚撤回；旧早间脚本只有在核对已通知记录后才可恢复。
 
 Git 保存的是代码版本，不代替数据库、生产配置和上传附件的备份。
+
+## Windows 上传入口补充（后台 v5.2）
+
+新版完整后台包支持继续双击 `deploy/upload-admin-console.cmd`。保留原 `deploy/upload-admin-console.psd1`，先在本地后台目录运行 `npm ci`。PS1 调用新的远端脚本，自动检查工作流表，缺表时先用 mysqldump 备份数据库，再补建缺失表；成功后将新版本设为准备模式并保留旧工程备份。权限不足、结构不符或备份失败会在切换前停止。Java 的 ALTER 迁移仍单独执行。详见 [后台自动部署说明](../Pango-Admin-Console/deploy/README.md)。
+
+此修复只更新后台部署及其测试/文档，Web、小程序、Java 业务代码不变。已验证本地构建、准备检查、隔离 MySQL 备份/建表/重复运行、缺 CREATE 权限中止，以及模拟构建/启动失败回退；Windows PowerShell 到真实服务器的完整 SSH 部署尚未执行。
