@@ -8,6 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts' / 'licens
 import send_mail
 
 class TransportTests(unittest.TestCase):
+    def test_documented_none_security_setting(self):
+        self.assertEqual(send_mail.mail_client.resolve_security('none', 25, False), 'none')
     def setUp(self):
         self.cfg = SimpleNamespace(address='service@example.com', display_name='Pango')
         self.payload = dict(to='customer@example.com', replyTo='fae@example.com', subject='测试', messageId='<test@example.com>', text='正文', attachments=[dict(name='new_pds_123456789abc.lic',base64=base64.b64encode(b'license bytes').decode())])

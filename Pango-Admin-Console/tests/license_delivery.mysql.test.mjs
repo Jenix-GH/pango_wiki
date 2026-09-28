@@ -3,6 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import mysql from 'mysql2/promise'
 import {readFile} from 'node:fs/promises'
+import {runApplicationStep,applicationWorkflow} from '../licenseDelivery.mjs'
 import {createWorkflowMailSender} from '../licenseMail.mjs'
 import {uploadFiles,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,resolveWorkflowMail,listApplications,listFiles,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
 const night={faeEmail:'fae@example.com',replyTo:'fae@example.com',now:new Date('2026-09-23T14:00:00Z')}
@@ -25,6 +26,38 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   let sent=[]
   const sender=async message=>{sent.push(message);return {state:'accepted',detail:'fake accepted'}}
   const customerCount=()=>sent.filter(m=>m.to!=='fae@example.com').length
+  const manual=(action,extra={})=>runApplicationStep(pool,sender,{...night,now:new Date('2026-09-24T05:00:00Z'),applicationId:'1',action,expectedEmail:'customer@example.com',expectedFaeEmail:'fae@example.com',actor:'tester',...extra})
+  await t.test('accepted FAE notifications are not repeated after a manual status reset',async()=>{
+   await reset();sent=[];await application();await runDigest(pool,sender,morning)
+   await pool.query('UPDATE dto_license_application SET status=0 WHERE id=1')
+   await runDigest(pool,sender,{...morning,now:new Date('2026-09-24T01:00:00Z')})
+   assert.equal(sent.length,1)
+  })
+  await t.test('immediate license step sends real file, bypasses time only for selected ID, and shares scheduled dedupe',async()=>{
+   await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
+   const first=await upload();const second=await upload([input('other license','new_pds_AABBCCDDEEFF.lic')])
+   await pool.query("UPDATE dto_license_file SET uploaded_at='2026-09-24 23:59:00'")
+   assert.equal((await manual('deliver-license')).state,'accepted')
+   assert.equal(sent.length,1);assert.equal(sent[0].to,'customer@example.com');assert.equal(sent[0].mailKind,'customer')
+   assert.equal(Buffer.from(sent[0].attachments[0].base64,'base64').toString(),'license one')
+   assert.equal(await state(first.records[0].id),'accepted');assert.equal(await state(second.records[0].id),'queued')
+   assert.equal((await manual('deliver-license')).state,'skipped');assert.equal(sent.length,1)
+   await runNightly(pool,sender,{...night,now:new Date('2026-09-25T14:00:00Z')})
+   assert.equal(sent.filter(m=>m.to==='customer@example.com').length,1)
+   assert.equal((await applicationWorkflow(pool,'1','fae@example.com')).mails[0].state,'accepted')
+  })
+  await t.test('manual steps block stale recipients, rejected/paused files and unknown results without changing unrelated records',async()=>{
+   await reset();sent=[];await application();const first=await upload()
+   await assert.rejects(manual('deliver-license',{expectedEmail:'wrong@example.com'}),/邮箱已变化/)
+   await assert.rejects(manual('deliver-license',{expectedFaeEmail:'wrong@example.com'}),/FAE 邮箱/)
+   await fileAction(pool,first.records[0].id,{action:'pause'},'tester')
+   await assert.rejects(manual('deliver-license'),/可发放状态/);assert.equal(sent.length,0)
+   await fileAction(pool,first.records[0].id,{action:'match',note:'verified'},'tester')
+   await runApplicationStep(pool,async()=>({state:'unknown',detail:'test uncertainty'}),{...night,applicationId:'1',action:'deliver-license',expectedEmail:'customer@example.com',expectedFaeEmail:'fae@example.com'})
+   await assert.rejects(manual('deliver-license'),/需核查/);assert.equal(sent.length,0)
+   await reset();await application();await rejectApplication(pool,1,'test rejection','tester',0)
+   await assert.rejects(manual('deliver-license'),/已拒绝/)
+  })
   await t.test('failed digest retries its saved customized content after templates change',async()=>{
    await reset();await application();const messages=[]
    const failed=async message=>{messages.push(message);return {state:'failed',detail:'test rejection'}}

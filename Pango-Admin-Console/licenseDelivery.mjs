@@ -279,7 +279,7 @@ export async function runDigest(pool,sender,{faeEmail,now=new Date(),templates={
     const [rows]=await db.query(`SELECT a.* FROM dto_license_application a WHERE a.status=0
       AND NOT EXISTS (SELECT 1 FROM dto_license_file f WHERE f.application_id=a.id AND f.state IN ('queued','sending','accepted','unknown','paused'))
       AND NOT EXISTS (SELECT 1 FROM dto_license_mail m WHERE m.application_id=a.id AND m.kind='customer' AND m.state IN ('accepted','unknown','sending'))
-      AND NOT EXISTS (SELECT 1 FROM dto_license_digest_item i JOIN dto_license_mail m ON m.id=i.mail_id WHERE i.application_id=a.id AND m.state IN ('sending','unknown','failed')) ORDER BY a.id`)
+      AND NOT EXISTS (SELECT 1 FROM dto_license_digest_item i JOIN dto_license_mail m ON m.id=i.mail_id WHERE i.application_id=a.id AND m.state IN ('accepted','sending','unknown','failed')) ORDER BY a.id`)
     const [exceptions]=await db.query("SELECT original_name,reason FROM dto_license_file WHERE state IN ('conflict','unmatched','failed','unknown') ORDER BY uploaded_at")
     const [rejected]=await db.query("SELECT application_id,detail FROM dto_license_rejection WHERE state IN ('failed','unknown','paused')")
     exceptions.push(...rejected.map(row=>({original_name:`申请 #${row.application_id} 拒绝邮件`,reason:row.detail})))
@@ -296,24 +296,16 @@ export async function runDigest(pool,sender,{faeEmail,now=new Date(),templates={
     return dispatchDigest(db,sender,{id:prepared.id,message_id:prepared.messageId},{payload:JSON.stringify(message)},true)
   })
 }
-export async function runNightly(pool,sender,{faeEmail,replyTo,now=new Date(),templates={}}) {
-  const {date,hour} = chinaTime(now)
-  if (hour !== 22) throw problem('夜间任务仅在北京时间 22:00–22:59 执行')
-  if (!validEmail(faeEmail)) throw problem('FAE 收件邮箱配置无效')
-  if (replyTo && !validEmail(replyTo)) throw problem('FAE 回复邮箱配置无效')
-  return withDeliveryLock(pool, async db => {
-    await recoverInterrupted(db)
-    const cutoff = `${date} 22:00:00.000000`
-    const [files] = await db.query("SELECT id FROM dto_license_file WHERE uploaded_at<=? AND state IN ('queued','conflict','unmatched','failed') AND attempts<3 ORDER BY uploaded_at,id LIMIT 500",[cutoff])
-    const results=[]
-    for (const {id} of files) {
+async function deliverLicenseFile(db,sender,id,{date,replyTo,templates={},actor='nightly',expectedApplicationId,expectedEmail}) {
       const [[file]] = await db.query('SELECT * FROM dto_license_file WHERE id=?',[id])
       if (createHash('sha256').update(file.content).digest('hex') !== file.sha256 || file.content.length !== file.byte_length) {
         await setFile(db,id,'paused','文件完整性校验失败，请取消并重新上传')
-        results.push({id,state:'paused'}); continue
+        return {id,state:'paused'}
       }
       const match = await matchFile(db,file)
-      if (match.state !== 'queued') { await setFile(db,id,match.state,match.reason); results.push({id,state:match.state}); continue }
+      if (match.state !== 'queued') { await setFile(db,id,match.state,match.reason); return {id,state:match.state} }
+      if(expectedApplicationId && String(match.application.id)!==String(expectedApplicationId))throw problem('文件匹配已变化，请刷新核对',409)
+      if(expectedEmail && match.application.email!==expectedEmail)throw problem('申请邮箱已变化，请刷新核对',409)
       await persistMatch(db,file,match,{advanceStatus:false})
       const row = match.application
       const message = applyMailTemplate(customerMessage(row,file,replyTo),'customer',templates,date)
@@ -323,10 +315,10 @@ export async function runNightly(pool,sender,{faeEmail,replyTo,now=new Date(),te
         mail = await prepareMail(db,{key:`customer:${row.id}`,kind:'customer',fileId:id,applicationId:row.id,message})
         if (!mail) {
           await setFile(db,id,'paused','申请已有发放记录或已达重试上限，请核查')
-          await db.commit(); results.push({id,state:'paused'}); continue
+          await db.commit(); return {id,state:'paused'}
         }
         await db.query("UPDATE dto_license_file SET state='sending',attempts=attempts+1,reason='正在发送',updated_at=NOW(6) WHERE id=?",[id])
-        await audit(db,id,'nightly','sending',`申请 #${row.id}，收件人 ${message.to}，Message-ID ${mail.messageId}`)
+        await audit(db,id,actor,'sending',`申请 #${row.id}，收件人 ${message.to}，Message-ID ${mail.messageId}`)
         await db.commit()
       } catch(error) { await db.rollback(); throw error }
       await db.beginTransaction()
@@ -337,14 +329,26 @@ export async function runNightly(pool,sender,{faeEmail,replyTo,now=new Date(),te
         else result=await safeSend(sender,{...message,messageId:mail.messageId,mailKind:'customer'})
         await finishMail(db,mail,result)
         await setFile(db,id,result.state,result.state==='accepted'?'邮件服务已接受；不代表客户已收件':result.detail)
-        await audit(db,id,'nightly',result.state,result.detail)
+        await audit(db,id,actor,result.state,result.detail)
         await db.commit()
-        results.push({id,state:result.state})
+        return {id,state:result.state,detail:result.detail}
       } catch(error) {
         await db.rollback()
         throw error
       }
-    }
+}
+
+export async function runNightly(pool,sender,{faeEmail,replyTo,now=new Date(),templates={}}) {
+  const {date,hour} = chinaTime(now)
+  if (hour !== 22) throw problem('夜间任务仅在北京时间 22:00–22:59 执行')
+  if (!validEmail(faeEmail)) throw problem('FAE 收件邮箱配置无效')
+  if (replyTo && !validEmail(replyTo)) throw problem('FAE 回复邮箱配置无效')
+  return withDeliveryLock(pool, async db => {
+    await recoverInterrupted(db)
+    const cutoff = `${date} 22:00:00.000000`
+    const [files] = await db.query("SELECT id FROM dto_license_file WHERE uploaded_at<=? AND state IN ('queued','conflict','unmatched','failed') AND attempts<3 ORDER BY uploaded_at,id LIMIT 500",[cutoff])
+    const results=[]
+    for (const {id} of files) results.push(await deliverLicenseFile(db,sender,id,{date,replyTo,templates}))
     const rejectionResults=await dispatchRejections(db,sender,{cutoff,replyTo,templates,date})
     results.push(...rejectionResults)
     const [counts] = await db.query('SELECT state,COUNT(*) count FROM dto_license_file WHERE uploaded_at<=? GROUP BY state',[cutoff])
@@ -353,6 +357,40 @@ export async function runNightly(pool,sender,{faeEmail,replyTo,now=new Date(),te
       summaryResult = await sendNotice(db,sender,`nightly-summary:${date}`,'summary',applyMailTemplate({to:faeEmail,subject:`Pango License 夜间发放结果 ${date}`,text:[`本次检查 ${files.length} 个文件，处理 ${rejectionResults.length} 条拒绝通知。`,'拒绝通知结果：',...rejectionResults.map(item=>`申请 #${item.applicationId}：${item.state}`),'截至本批截止时间的文件状态（累计）：',...counts.map(item=>`${item.state}: ${item.count}`),'','请登录管理后台查看异常及邮件记录。SMTP 接受不等于收件人已收到。'].join('\n'),attachments:[]},'summary',templates,date))
     }
     return {date,cutoff,results,summary:summaryResult}
+  })
+}
+
+function validApplicationId(id){if(!/^[1-9]\d{0,19}$/.test(String(id)))throw problem('申请编号无效');return String(id)}
+export async function applicationWorkflow(pool,id,faeEmail){
+  id=validApplicationId(id)
+  const [[application]]=await pool.query('SELECT * FROM dto_license_application WHERE id=?',[id])
+  if(!application)throw problem('申请不存在',404)
+  const [files]=await pool.query(`SELECT ${FILE_COLUMNS} FROM dto_license_file WHERE application_id=? ORDER BY uploaded_at DESC,id`,[id])
+  const [mails]=await pool.query(`SELECT m.id,m.kind,m.recipient,m.state,m.message_id,m.detail,m.updated_at FROM dto_license_mail m
+    WHERE m.application_id=? OR EXISTS (SELECT 1 FROM dto_license_digest_item i WHERE i.mail_id=m.id AND i.application_id=?) ORDER BY m.created_at DESC LIMIT 20`,[id,id])
+  return {application,faeEmail,files,mails}
+}
+// Explicit administrator action: scope every query/transition to this application.
+// It uses the same dispatch functions and durable dedupe keys as scheduled jobs.
+export async function runApplicationStep(pool,sender,{applicationId,action,expectedFileId,expectedEmail,expectedFaeEmail,faeEmail,replyTo,templates={},actor='admin',now=new Date()}){
+  const id=validApplicationId(applicationId)
+  if(action!=='deliver-license')throw problem('请选择立即发送 License')
+  if(!validEmail(faeEmail)||expectedFaeEmail!==faeEmail)throw problem('FAE 邮箱已变化或未配置，请刷新核对',409)
+  return withDeliveryLock(pool,async db=>{
+    const [[row]]=await db.query('SELECT * FROM dto_license_application WHERE id=?',[id])
+    if(!row)throw problem('申请不存在',404)
+    if(expectedEmail!==row.email||!validEmail(row.email))throw problem('申请邮箱已变化或无效，请刷新核对',409)
+    if(Number(row.status)===3)throw problem('已拒绝申请不能发放 License',409)
+    const [[mail]]=await db.query("SELECT state FROM dto_license_mail WHERE dedupe_key=?",[`customer:${id}`])
+    if(mail?.state==='accepted')return {state:'skipped',detail:'该申请已成功发放，本次未重复发送'}
+    if(mail&&mail.state!=='failed')throw problem('发放记录正在处理或需核查，本次不重发',409)
+    const [files]=await db.query("SELECT id,state,attempts FROM dto_license_file WHERE application_id=? AND state NOT IN ('cancelled','duplicate') ORDER BY uploaded_at,id",[id])
+    if(files.length!==1)throw problem(files.length?'存在多个文件，请先核对并取消多余文件':'尚未关联 License，请先上传并匹配',409)
+    const file=files[0]
+    if(expectedFileId && String(file.id)!==String(expectedFileId))throw problem('关联文件已变化，请刷新核对',409)
+    if(!['queued','failed'].includes(file.state)||Number(file.attempts)>=3)throw problem('文件未处于可发放状态；暂停、冲突、结果待核查或重试超限时需先处理',409)
+    const result=await deliverLicenseFile(db,sender,file.id,{date:chinaTime(now).date,replyTo,templates,actor,expectedApplicationId:id,expectedEmail})
+    return {...result,detail:result.detail||'已完成这条申请的校对，请查看文件状态；其他申请未处理'}
   })
 }
 

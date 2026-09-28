@@ -11,7 +11,7 @@ import { conversationFileName, groupConversationRecords, imageExtension, renderC
 import { mailSettingsView, saveMailSettings, applySavedMailSettings } from './licenseMailSettings.mjs'
 import { createWorkflowMailSender, assertMailConfiguration } from './licenseMail.mjs'
 import { sampleMail, publicMailPreview } from './licenseMailPreview.mjs'
-import { withDeliveryLock, validEmail } from './licenseDelivery.mjs'
+import { withDeliveryLock, validEmail, applicationWorkflow, runApplicationStep } from './licenseDelivery.mjs'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 const apiOnly = process.argv.includes('--api-only')
@@ -553,6 +553,16 @@ async function handleLicenseDelivery(request, response, path, params) {
     return json(response,200,{data:await promise})
   }
   if (!enabled) throw problem('License 自动发放尚未配置，请先执行数据库迁移并启用配置', 503)
+  const workflowMatch=/^\/license-delivery\/applications\/(\d+)\/workflow$/.exec(path)
+  if(workflowMatch&&['GET','POST'].includes(request.method)){
+    const effective=await applySavedMailSettings(config,configPath)
+    if(request.method==='GET')return json(response,200,{data:await applicationWorkflow(licensePool,workflowMatch[1],effective.LICENSE_FAE_EMAIL)})
+    const body=await readLicenseJson(request)
+    if(body.confirm!==true||String(body.confirmedApplicationId)!==workflowMatch[1]||!/^[a-f0-9-]{36}$/.test(body.expectedFileId||''))throw problem('请确认选中的申请、文件及真实发送',400)
+    assertMailConfiguration(effective,{requireFae:body.action==='deliver-license'})
+    const result=await runApplicationStep(licensePool,createWorkflowMailSender(effective),{applicationId:workflowMatch[1],action:body.action,expectedFileId:body.expectedFileId,expectedEmail:body.expectedEmail,expectedFaeEmail:body.expectedFaeEmail,faeEmail:effective.LICENSE_FAE_EMAIL,replyTo:effective.LICENSE_REPLY_TO||effective.LICENSE_FAE_EMAIL,templates:effective.LICENSE_MAIL_TEMPLATES,actor:adminUser})
+    return json(response,200,{data:result})
+  }
   if (request.method === 'GET' && path === '/license-delivery/files') return json(response,200,{data:await listFiles(licensePool,params)})
   if (request.method === 'GET' && path === '/license-delivery/notices') {
     const [records] = await licensePool.query("SELECT id,kind,recipient,state,detail,message_id,attempts,created_at,updated_at FROM dto_license_mail WHERE kind IN ('digest','summary') ORDER BY updated_at DESC LIMIT 20")

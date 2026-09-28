@@ -58,6 +58,23 @@ export async function renderLicenseDelivery(content,request){
       const file=data.file
       body.append(node('h3',file.original_name),badge(file.state),node('p',file.reason),node('p',`MAC：${file.mac||'未识别'} · 申请：${file.application_id||'尚未关联'} · 尝试次数：${file.attempts}`))
       const download=node('a','下载文件核对');download.href=`/local-api/license-delivery/files/${id}/content`;download.className='feedback-detail-link';body.append(download)
+      if(file.application_id&&['queued','failed'].includes(file.state)){
+        const sendStatus=node('p','','delivery-message');sendStatus.setAttribute('role','status')
+        const sendNow=button('立即发送',async()=>{
+          sendNow.disabled=true;sendStatus.textContent='正在读取收件信息…'
+          try{
+            const workflow=await request(`/license-delivery/applications/${file.application_id}/workflow`)
+            if(!dialog.isConnected)return
+            const row=workflow.application
+            if(!window.confirm(`立即发送此 License？\n\n申请编号：#${row.id}\n附件：${file.original_name}\n发件人：${workflow.faeEmail||'FAE 邮箱未配置'}\n收件人：${row.email}\n\n这会真实发送并保存正式记录。成功后 22 点任务不再重复发放；只处理此文件对应的申请。`)){sendStatus.textContent='已取消，未发送。';return}
+            sendStatus.textContent='正在校对并发送此文件，请稍候…'
+            const result=await request(`/license-delivery/applications/${row.id}/workflow`,{method:'POST',body:JSON.stringify({action:'deliver-license',confirm:true,confirmedApplicationId:String(row.id),expectedFileId:file.id,expectedEmail:row.email,expectedFaeEmail:workflow.faeEmail})})
+            message.textContent=result.state==='accepted'?'邮件服务已接受，请核对实际收件与附件；本申请已记录发放结果，定时任务不会重复发放。':`${labels[result.state]||result.state}：${result.detail||'请查看文件与邮件记录'}`
+            dialog.close();await reload()
+          }catch(error){if(!error.authentication)sendStatus.textContent=error.message||'发送失败，请核对后再试'}finally{sendNow.disabled=false}
+        },'export-button')
+        body.append(node('p','可立即发送已匹配的这份真实附件，不用等到 22 点；会保存正式发放记录。暂停、冲突或结果待核查的文件需先处理。','delivery-warning'),sendNow,sendStatus)
+      }
       if(data.candidates.length)body.append(table(['申请编号','申请人 / 公司','系统 / 版本','类型 / 年限','客户邮箱'],data.candidates.map(row=>[row.id,`${row.applicant_name}\n${row.company_name}`,`${row.operating_system} / ${row.software_version}`,`${row.license_type} / ${row.duration_years}年`,row.email])))
       if(!['accepted','cancelled','duplicate','sending'].includes(file.state)){
         const form=node('div','','delivery-action-form');const select=document.createElement('select');select.setAttribute('aria-label','选择匹配申请');const blank=node('option','按 MAC 自动匹配');blank.value='';select.append(blank);for(const row of data.candidates){const option=node('option',`#${row.id} ${row.applicant_name} · ${row.company_name}`);option.value=String(row.id);select.append(option)}if(file.application_id)select.value=String(file.application_id)

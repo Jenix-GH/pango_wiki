@@ -120,7 +120,7 @@ def resolve_security(raw: str, port: int, receiver: bool) -> str:
         if port in {587, 2587}:
             return "starttls" if not receiver else "stls"
         return "none"  # 25 / 110：TurboEx 明文，且不广播 STARTTLS
-    if value in {"plain", "off", "false", "0", "no"}:
+    if value in {"none", "plain", "off", "false", "0", "no"}:
         return "none"
     if value in {"tls", "starttls"}:
         return "starttls"
