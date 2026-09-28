@@ -47,7 +47,20 @@ export async function renderLicenseApplications(content,request,openDelivery){
       const data=await request(`/license-delivery/rejections/${row.id}`);if(!d.isConnected)return;body.replaceChildren()
       const record=data.record
       body.append(el('h3','拒绝理由'),el('p',record.reason,'rejection-reason'),el('p',`操作人：${record.requested_by} · ${time(record.created_at)}`),el('p',`收件人：${record.recipient}`),el('p',`邮件状态：${mailLabels[record.state]||record.state}`),el('p',record.detail))
-      for(const mail of data.mails)body.append(el('p',`${mail.current_cycle?'本次拒绝邮件':'历史拒绝邮件'} · Message-ID：${mail.message_id}\n${time(mail.updated_at)} · ${mailLabels[mail.state]||mail.state}\n${mail.detail}`,'rejection-reason'))
+      for(const mail of data.mails)body.append(el('p',`${Number(mail.current_cycle)===1?'本次拒绝邮件':'历史拒绝邮件'} · Message-ID：${mail.message_id}\n${time(mail.updated_at)} · ${mailLabels[mail.state]||mail.state}\n${mail.detail}`,'rejection-reason'))
+      if(['queued','failed','paused'].includes(record.state)){
+        const error=el('p','','delivery-message');error.setAttribute('role','alert')
+        const cancel=button('屏蔽此拒绝通知',async()=>{
+          if(!window.confirm(`屏蔽申请 #${row.id} 的拒绝通知？\n收件人：${record.recipient}\n\n这条拒绝邮件将不再自动发送；申请保持“已拒绝”，拒绝理由和历史记录保留。`))return
+          body.querySelectorAll('button').forEach(b=>b.disabled=true)
+          try{
+            await request(`/license-delivery/rejections/${row.id}/cancel`,{method:'POST',body:JSON.stringify({confirm:true,expectedUpdatedAt:record.updated_at})})
+            d.close();message.textContent=`申请 #${row.id} 的拒绝通知已屏蔽，不再自动发送；拒绝状态和理由保留。`;await load()
+          }catch(err){if(!err.authentication)error.textContent=err.message}finally{body.querySelectorAll('button').forEach(b=>b.disabled=false)}
+        },'license-reject-button')
+        body.append(el('p','若这条通知无需发送，可单独屏蔽；不会更改其他申请。','delivery-warning'),cancel,error)
+      }
+      if(record.state==='cancelled')body.append(el('p','此拒绝通知已取消，不会进入自动发送队列。','delivery-warning'))
       if(['failed','paused','unknown'].includes(record.state)){
         const note=document.createElement('textarea');note.setAttribute('aria-label','邮件核查说明');note.placeholder='填写核查依据或已修正信息的说明';note.rows=3
         const error=el('p','','delivery-message');error.setAttribute('role','alert');const group=el('div','','delivery-action-buttons')

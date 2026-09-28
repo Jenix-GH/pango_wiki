@@ -5,7 +5,7 @@ import mysql from 'mysql2/promise'
 import {readFile} from 'node:fs/promises'
 import {runApplicationStep,applicationWorkflow} from '../licenseDelivery.mjs'
 import {createWorkflowMailSender} from '../licenseMail.mjs'
-import {uploadFiles,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,resolveWorkflowMail,listApplications,listFiles,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
+import {uploadFiles,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,cancelRejection,resolveWorkflowMail,listApplications,listFiles,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
 const night={faeEmail:'fae@example.com',replyTo:'fae@example.com',now:new Date('2026-09-23T14:00:00Z')}
 const morning={...night,now:new Date('2026-09-23T01:00:00Z')}
 const input=(content='license one',name='new_pds_1A2B3C4D5F60.lic')=>({name,base64:Buffer.from(content).toString('base64')})
@@ -27,6 +27,50 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   const sender=async message=>{sent.push(message);return {state:'accepted',detail:'fake accepted'}}
   const customerCount=()=>sent.filter(m=>m.to!=='fae@example.com').length
   const manual=(action,extra={})=>runApplicationStep(pool,sender,{...night,now:new Date('2026-09-24T05:00:00Z'),applicationId:'1',action,expectedEmail:'customer@example.com',expectedFaeEmail:'fae@example.com',actor:'tester',...extra})
+  const cancelNotice=async(id=1,extra={})=>cancelRejection(pool,String(id),{confirm:true,expectedUpdatedAt:(await rejectionDetail(pool,id)).record.updated_at,...extra},'tester')
+  await t.test('cancel one queued rejection preserves rejected application and reason, skips nightly, and leaves others sendable',async()=>{
+   await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
+   await rejectApplication(pool,1,'历史记录，不再通知','tester',0);await rejectApplication(pool,2,'第二条原因','tester',0)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'")
+   const original=(await pool.query('SELECT * FROM dto_license_application WHERE id=1'))[0][0]
+   assert.equal((await cancelNotice()).state,'cancelled');assert.equal((await cancelNotice()).state,'cancelled')
+   assert.deepEqual((await pool.query('SELECT * FROM dto_license_application WHERE id=1'))[0][0],original)
+   assert.equal((await rejectionDetail(pool,1)).record.reason,'历史记录，不再通知')
+   assert.equal((await rejectionDetail(pool,2)).record.state,'queued')
+   assert.equal((await rejectApplication(pool,1,'历史记录，不再通知','tester',3)).state,'cancelled')
+   await assert.rejects(retryRejection(pool,1,'try','tester'),/仅明确失败/)
+   await runNightly(pool,sender,night)
+   assert.equal(sent.some(m=>m.to==='customer@example.com'),false);assert.equal(sent.filter(m=>m.to==='other@example.com').length,1)
+   assert.equal(Number((await pool.query("SELECT COUNT(*) total FROM dto_license_delivery_audit WHERE action='cancel-rejection'"))[0][0].total),1)
+  })
+  await t.test('cancel failed rejection stops retry but preserves previously sent rejection cycle',async()=>{
+   await reset();sent=[];await application();await rejectApplication(pool,1,'第一次理由','tester',0)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'");await runNightly(pool,sender,night)
+   await setApplicationStatus(pool,1,{status:0,expectedStatus:3},'tester');await rejectApplication(pool,1,'第二次理由','tester',0)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'");await runNightly(pool,async()=>({state:'failed',detail:'fake failure'}),night)
+   assert.equal((await rejectionDetail(pool,1)).record.state,'failed');await cancelNotice()
+   const detail=await rejectionDetail(pool,1);assert.equal(detail.record.state,'cancelled');assert.equal(detail.mails.find(m=>Number(m.current_cycle)===1).state,'cancelled');assert.equal(detail.mails.find(m=>Number(m.current_cycle)===0).state,'accepted')
+   sent=[];await runNightly(pool,sender,night);assert.equal(customerCount(),0)
+  })
+  await t.test('cancel rejects stale views, unconfirmed actions, uncertain/sent notices and concurrent worker',async()=>{
+   await reset();await application();await rejectApplication(pool,1,'原因','tester',0)
+   await assert.rejects(cancelNotice(1,{confirm:false}),/请确认/)
+   await assert.rejects(cancelNotice(1,{expectedUpdatedAt:'stale'}),/已变化/)
+   await assert.rejects(withDeliveryLock(pool,()=>cancelNotice()),/正在处理/)
+   for(const state of ['accepted','sending','unknown']){
+    await pool.query('UPDATE dto_license_rejection SET state=? WHERE application_id=1',[state]);await assert.rejects(cancelNotice(),/不能直接屏蔽/)
+   }
+   await pool.query("UPDATE dto_license_rejection SET state='paused' WHERE application_id=1")
+   assert.equal((await cancelNotice()).state,'cancelled')
+  })
+  await t.test('cancel checks current mail uncertainty even if rejection state has become inconsistent',async()=>{
+   await reset();await application();await rejectApplication(pool,1,'原因','tester',0)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'")
+   await runNightly(pool,async()=>({state:'unknown'}),night)
+   await pool.query("UPDATE dto_license_rejection SET state='queued' WHERE application_id=1")
+   await assert.rejects(cancelNotice(),/待核查记录/)
+   assert.equal((await rejectionDetail(pool,1)).record.state,'queued')
+  })
   await t.test('cancelled identical upload reuses original ID, preserves history and sends only once',async()=>{
    await reset();sent=[];await application();const first=(await upload()).records[0]
    await fileAction(pool,first.id,{action:'cancel',note:'重新核对'},'tester')

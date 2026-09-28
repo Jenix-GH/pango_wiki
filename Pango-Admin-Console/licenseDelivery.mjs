@@ -556,6 +556,29 @@ export async function rejectionDetail(pool,id){
   const [mails]=await pool.query("SELECT id,recipient,state,detail,message_id,attempts,updated_at,(dedupe_key=CONCAT('rejection:',application_id)) current_cycle FROM dto_license_mail WHERE application_id=? AND kind='rejection' ORDER BY (dedupe_key=CONCAT('rejection:',application_id)) DESC,created_at DESC",[id])
   return {record,mails}
 }
+export async function cancelRejection(pool,id,body,actor){
+  id=validApplicationId(id)
+  if(body.confirm!==true||typeof body.expectedUpdatedAt!=='string'||!body.expectedUpdatedAt)throw problem('请确认要屏蔽的拒绝通知，并刷新核对当前记录')
+  return withDeliveryLock(pool,async db=>{
+    await db.beginTransaction()
+    try{
+      const [[row]]=await db.query('SELECT * FROM dto_license_application WHERE id=? FOR UPDATE',[id])
+      const [[rejected]]=await db.query('SELECT * FROM dto_license_rejection WHERE application_id=? FOR UPDATE',[id])
+      if(!row||!rejected)throw problem('拒绝通知不存在',404)
+      if(Number(row.status)!==3)throw problem('申请已不处于已拒绝状态，请刷新核对',409)
+      if(rejected.state==='cancelled'){await db.commit();return {applicationId:id,state:'cancelled'}}
+      if(String(rejected.updated_at)!==body.expectedUpdatedAt)throw problem('拒绝通知已变化，请刷新后再屏蔽',409)
+      if(!['queued','failed','paused'].includes(rejected.state))throw problem('邮件已发送、正在发送或结果待核查，不能直接屏蔽；请先核查邮件记录',409)
+      const [[mail]]=await db.query('SELECT state FROM dto_license_mail WHERE dedupe_key=? FOR UPDATE',[`rejection:${id}`])
+      if(mail&&mail.state!=='failed')throw problem('当前拒绝邮件已有发送或待核查记录，不能直接屏蔽',409)
+      const detail='管理员已屏蔽此拒绝通知，不再自动发送；申请仍为已拒绝，拒绝理由保留'
+      await db.query("UPDATE dto_license_rejection SET state='cancelled',detail=?,updated_at=NOW(6) WHERE application_id=?",[detail,id])
+      await db.query("UPDATE dto_license_mail SET state='cancelled',detail=?,updated_at=NOW(6) WHERE dedupe_key=? AND state='failed'",[detail,`rejection:${id}`])
+      await audit(db,null,actor,'cancel-rejection',`申请 #${id}：${detail}`)
+      await db.commit();return {applicationId:id,state:'cancelled'}
+    }catch(error){await db.rollback();throw error}
+  })
+}
 export async function retryRejection(pool,id,note,actor){
   if(typeof note!=='string'||!note.trim())throw problem('请填写核对说明')
   return withDeliveryLock(pool,async db=>{
