@@ -21,7 +21,7 @@ try {
     console.log('License 发放表已创建；未发送邮件。')
   }else{
     const sender=createWorkflowMailSender(config)
-    const options={faeEmail:config.LICENSE_FAE_EMAIL,replyTo:config.LICENSE_REPLY_TO||config.LICENSE_FAE_EMAIL,templates:config.LICENSE_MAIL_TEMPLATES}
+    const options={faeEmail:config.LICENSE_FAE_EMAIL,replyTo:config.LICENSE_REPLY_TO||config.LICENSE_FAE_EMAIL,templates:config.LICENSE_MAIL_TEMPLATES,logo:config.LICENSE_MAIL_LOGO}
     const result=await (mode==='digest'?runDigest:runNightly)(pool,sender,options)
     console.log(JSON.stringify({mode,...result}))
     if(['failed','unknown'].includes(result.state)||['failed','unknown'].includes(result.summary?.state)||result.results?.some(item=>['failed','unknown'].includes(item.state)))process.exitCode=1

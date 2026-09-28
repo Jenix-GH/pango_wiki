@@ -145,3 +145,10 @@ select.application-badge { border:1px solid #d5dde7; font:inherit; min-width:92p
 .mail-preview p { font-size:13px; color:#64748b; overflow-wrap:anywhere; }
 .mail-preview pre { font-family:inherit; font-size:14px; line-height:1.8; white-space:pre-wrap; overflow-wrap:anywhere; }
 @media(max-width:640px){.mail-account-grid{grid-template-columns:1fr}.mail-settings-status{display:block;margin-left:0}.mail-actions .mail-button{flex:1}.mail-preview:not(:empty){padding:14px}}
+
+.mail-logo-editor { display:grid; gap:12px; padding:20px 0; border-top:1px solid #dbe3ed; }
+.mail-logo-editor h3,.mail-logo-editor p { margin:0; }
+.mail-logo-paste { min-height:72px; border:1px dashed #a5b4ca; background:#f6f8fb; text-align:center; }
+.mail-logo-paste:focus-visible { outline:2px solid #c10b6d; outline-offset:2px; }
+.mail-logo-image { display:block; max-width:100%; height:auto; }
+.mail-logo-image[hidden] { display:none; }

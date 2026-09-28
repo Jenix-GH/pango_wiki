@@ -68,15 +68,27 @@ export async function renderLicenseApplications(content,request,openDelivery){
   }
   async function notifyFae(row,target){
     target.disabled=true
+    const originalLabel=target.textContent
+    const actions=target.closest('.license-row-actions')
+    let feedback=actions.querySelector('.fae-send-feedback')
+    if(!feedback){feedback=el('p','','delivery-message fae-send-feedback');feedback.setAttribute('role','status');actions.append(feedback)}
+    const status=text=>{message.textContent=text;feedback.textContent=text}
+    let waiting,submitted=false
     try{
+      target.textContent='正在核对…';status(`申请 #${row.id}：正在读取 FAE 收件信息，尚未发送。`)
       const workflow=await request(`/license-delivery/applications/${row.id}/workflow`)
       const current=workflow.application
       if(!workflow.faeEmail)throw new Error('请先配置 FAE 邮箱')
-      if(!window.confirm(`立即通知 FAE？\n申请 #${current.id} · ${current.applicant_name}\n公司或学校：${current.company_name}\nFAE 收件邮箱：${workflow.faeEmail}\n\n平台邮箱将发送这一条申请。成功后转为“处理中”，早间汇总会跳过已通知的申请。`))return
+      if(!window.confirm(`确认发送申请给 FAE？\n申请 #${current.id} · ${current.applicant_name}\n公司或学校：${current.company_name}\nFAE 收件邮箱：${workflow.faeEmail}\n\n当前尚未发送。点击“确定”后，平台邮箱才会发送这一条申请；只有邮件服务器接受后才转为“处理中”。`)){status(`申请 #${row.id}：已取消，未提交发送请求。`);return}
+      submitted=true;target.textContent='发送中…';status(`申请 #${row.id}：正在向 ${workflow.faeEmail} 发送，请等待实际结果，勿重复点击。`)
+      waiting=setTimeout(()=>status(`申请 #${row.id}：仍在等待服务器响应，发送结果尚未确认。请勿重复点击；可在“License 发放”底部查看最近 FAE 汇总邮件记录。`),20000)
       const result=await request(`/license-delivery/applications/${row.id}/workflow`,{method:'POST',body:JSON.stringify({action:'notify-fae',confirm:true,confirmedApplicationId:String(row.id),expectedEmail:current.email,expectedFaeEmail:workflow.faeEmail})})
-      message.textContent=result.state==='accepted'?`申请 #${row.id} 已通知 FAE，状态已转为处理中。邮件服务器已接受，请核对收件箱。`:`申请 #${row.id}：${mailLabels[result.state]||result.state}。${result.detail||'请查看 FAE 通知记录。'}`
+      clearTimeout(waiting)
+      status(result.state==='accepted'?`申请 #${row.id} 已通知 FAE，状态已转为处理中。邮件服务器已接受，请核对收件箱。`:`申请 #${row.id}：${mailLabels[result.state]||result.state}。${result.detail||'请查看 FAE 通知记录。'}`)
       await load()
-    }catch(error){report(error)}finally{target.disabled=false}
+    }catch(error){
+      if(!error.authentication)status(`申请 #${row.id}：${error.message||'请求失败'}${submitted?'。若请求中断，请先核对“License 发放”中的 FAE 邮件记录，勿直接重复发送。':''}`)
+    }finally{clearTimeout(waiting);target.disabled=false;target.textContent=originalLabel}
   }
   async function showHistory(row){
     const {d,body}=dialog(`状态记录 · 申请 #${row.id}`);body.append(el('p','读取中…'))

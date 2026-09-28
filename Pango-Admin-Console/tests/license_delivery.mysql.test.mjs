@@ -14,7 +14,7 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
  pool.on('connection',c=>c.query("SET time_zone='+08:00'"))
  try{
   assert.equal((await pool.query('SELECT DATABASE() name'))[0][0].name,'pango_license_test')
-  await pool.query(`CREATE TABLE IF NOT EXISTS dto_license_application (id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,userinfo_id BIGINT NULL,mac_address VARCHAR(50),email VARCHAR(254),applicant_name VARCHAR(100),company_name VARCHAR(200),operating_system VARCHAR(50),software_version VARCHAR(50),license_type VARCHAR(30),duration_years INT,status INT DEFAULT 0,dotime DATETIME DEFAULT CURRENT_TIMESTAMP,uptime DATETIME DEFAULT CURRENT_TIMESTAMP,phone VARCHAR(50),address VARCHAR(500)) ENGINE=InnoDB`)
+  await pool.query(`CREATE TABLE IF NOT EXISTS dto_license_application (id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,userinfo_id BIGINT NULL,official_submitted TINYINT NULL,mac_address VARCHAR(50),email VARCHAR(254),applicant_name VARCHAR(100),company_name VARCHAR(200),operating_system VARCHAR(50),software_version VARCHAR(50),license_type VARCHAR(30),duration_years INT,status INT DEFAULT 0,dotime DATETIME DEFAULT CURRENT_TIMESTAMP,uptime DATETIME DEFAULT CURRENT_TIMESTAMP,phone VARCHAR(50),address VARCHAR(500)) ENGINE=InnoDB`)
   for (const name of ['20260923_license_delivery.sql','20260923_license_workflow.sql','20260924_license_manual_status.sql']) {
     const migration=await readFile(new URL(`../database/${name}`,import.meta.url),'utf8')
     for(const sql of migration.split(';').map(s=>s.trim()).filter(Boolean))await pool.query(sql)
@@ -87,6 +87,33 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
    assert.equal(row.attempts,3);assert.ok(new Date(row.uploaded_at.replace(' ','T')+'+08:00').getTime()>=before-1000)
    await assert.rejects(manual('deliver-license'),/重试超限/)
    await runNightly(pool,sender,night);assert.equal(customerCount(),0)
+  })
+  await t.test('logo follows customer, rejection, summary and digest paths; failed digest retains saved logo',async()=>{
+   const logo={mimeType:'image/png',base64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j6QAAAABJRU5ErkJggg==',width:180}
+   await reset();sent=[];await application();await upload();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF');await rejectApplication(pool,2,'test reason','tester',0)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'")
+   await runNightly(pool,sender,{...night,logo})
+   assert.deepEqual(sent.map(m=>m.mailKind),['customer','rejection','summary'])
+   assert.ok(sent.every(m=>m.html.includes('cid:pango-company-logo')&&m.inlineImages.length===1))
+   await reset();sent=[];await application()
+   await runApplicationStep(pool,async()=>({state:'failed'}),{...night,applicationId:'1',action:'notify-fae',expectedEmail:'customer@example.com',expectedFaeEmail:'fae@example.com',logo})
+   await runDigest(pool,sender,{...morning,logo:null})
+   assert.ok(sent[0].html.includes('cid:pango-company-logo'));assert.equal(sent[0].inlineImages[0].base64,logo.base64)
+   const [[batch]]=await pool.query('SELECT payload FROM dto_license_digest_batch');assert.equal(JSON.parse(batch.payload).inlineImages[0].base64,logo.base64)
+  })
+  await t.test('manual and morning FAE digest both persist complete application data including official declaration',async()=>{
+   await reset();sent=[];await application();await application(2,'second@example.com','AA-BB-CC-DD-EE-FF')
+   await pool.query("UPDATE dto_license_application SET phone='12345678901',address='完整地址',official_submitted=1 WHERE id=1")
+   await pool.query("UPDATE dto_license_application SET phone='10987654321',address='另一地址',official_submitted=0 WHERE id=2")
+   const templates={digest:{subject:'待办 {{日期}}',text:'请审批\n{{原始正文}}'}}
+   await manual('notify-fae',{templates});await runDigest(pool,sender,{...morning,templates})
+   for(const [i,label] of ['是','否'].entries()){
+    assert.ok(sent[i].html.includes('<table '));assert.ok(sent[i].html.includes('是否已在官网提交'));assert.ok(sent[i].text.startsWith('请审批'));assert.ok(sent[i].text.includes(`是否已在官网提交：${label}`))
+    assert.ok(sent[i].text.includes(i===0?'完整地址':'另一地址'));assert.ok(sent[i].text.includes(i===0?'12345678901':'10987654321'))
+    assert.ok(Buffer.from(sent[i].attachments[0].base64,'base64').toString().includes('是否已在官网提交'))
+   }
+   const [batches]=await pool.query('SELECT payload FROM dto_license_digest_batch')
+   assert.equal(batches.length,2);assert.ok(batches.every(b=>JSON.parse(b.payload).text.includes('是否已在官网提交')));assert.ok(batches.every(b=>JSON.parse(b.payload).html.includes('<table ')))
   })
   await t.test('immediate FAE sends only selected application and daily digest skips it even after status reset',async()=>{
    await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
@@ -164,7 +191,7 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
    const failed=async message=>{messages.push(message);return {state:'failed',detail:'test rejection'}}
    await runDigest(pool,failed,{...morning,templates:{digest:{subject:'旧标题 {{日期}}',text:'旧正文\n{{原始正文}}'}}})
    await runDigest(pool,failed,{...morning,templates:{digest:{subject:'新标题 {{日期}}',text:'新正文\n{{原始正文}}'}}})
-   assert.equal(messages.length,2);assert.equal(messages[1].subject,messages[0].subject);assert.equal(messages[1].text,messages[0].text)
+   assert.equal(messages.length,2);assert.equal(messages[1].subject,messages[0].subject);assert.equal(messages[1].text,messages[0].text);assert.equal(messages[1].html,messages[0].html)
   })
   await t.test('database workflows tag digest/summary for platform and customer/rejection for FAE',async()=>{
    await reset();const delivered=[]

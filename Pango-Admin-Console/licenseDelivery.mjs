@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { applyMailTemplate, mailVariables } from './licenseMailTemplates.mjs'
+import { applyMailTemplate, mailVariables, escapeMailHtml, mailTextToHtml } from './licenseMailTemplates.mjs'
 
 export const MAX_FILE_BYTES = 1024 * 1024
 export const MAX_BATCH_BYTES = 10 * 1024 * 1024
@@ -198,10 +198,19 @@ function csvCell(value) {
   return `"${text.replaceAll('"','""')}"`
 }
 export function digestMessage(rows, exceptions, date, recipient) {
-  const columns = [['id','申请编号'],['dotime','申请时间'],['applicant_name','申请人'],['company_name','公司'],['operating_system','系统'],['software_version','版本'],['license_type','类型'],['duration_years','年限'],['mac_address','MAC'],['email','邮箱'],['phone','电话'],['address','地址']]
-  const csv = '\ufeff' + [columns.map(([,label]) => csvCell(label)).join(','),...rows.map(row => columns.map(([key])=>csvCell(row[key])).join(','))].join('\r\n')
-  const text = [`待处理 License 申请：${rows.length} 条。这些申请尚未通知 FAE；发送成功后自动转为处理中。`,...rows.map(row=>`#${row.id} | ${row.company_name} | ${row.applicant_name} | ${row.mac_address}`), '',`发放异常：${exceptions.length} 条。`,...exceptions.map(file=>`${file.original_name}：${file.reason}`),'','请登录管理后台处理。'].join('\n')
-  return { to:recipient,subject:`Pango License 待办汇总 ${date}`,text,attachments:[{name:`license_applications_${date}.csv`,base64:Buffer.from(csv).toString('base64')}] }
+  const columns = [['id','申请编号'],['dotime','申请时间'],['applicant_name','申请人'],['company_name','公司或学校'],['operating_system','操作系统'],['software_version','软件版本'],['license_type','授权类型'],['duration_years','使用年限（年）'],['mac_address','MAC 地址'],['email','电子邮箱'],['phone','联系电话'],['address','地址'],['official_submitted','是否已在官网提交']]
+  const value=(row,key)=>key==='official_submitted'?(row[key]==null?'未记录':Number(row[key])===1?'是':'否'):(row[key]??'')
+  const csv = '\ufeff' + [columns.map(([,label]) => csvCell(label)).join(','),...rows.map(row => columns.map(([key])=>csvCell(value(row,key))).join(','))].join('\r\n')
+  const details=rows.flatMap(row=>[`#${row.id} | ${row.company_name||''} | ${row.applicant_name||''} | ${row.mac_address||''}`,...columns.map(([key,label])=>`${label}：${value(row,key)}`),''])
+  const text = [`待处理 License 申请：${rows.length} 条。这些申请尚未通知 FAE；发送成功后自动转为处理中。`,'',...details,`发放异常：${exceptions.length} 条。`,...exceptions.map(file=>`${file.original_name}：${file.reason}`),'','请登录管理后台处理。'].join('\n')
+  const cellStyle='border:1px solid #dbe3ed;padding:10px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;'
+  const widths=[80,135,85,150,80,105,105,90,155,180,115,200,120]
+  const tableHead=columns.map(([,label])=>`<th scope="col" style="${cellStyle}background:#eaf0f8;font-weight:600;">${escapeMailHtml(label)}</th>`).join('')
+  const tableRows=rows.map((row,index)=>`<tr style="background:${index%2?'#f6f8fb':'#ffffff'};">${columns.map(([key])=>`<td style="${cellStyle}">${mailTextToHtml(value(row,key))||'—'}</td>`).join('')}</tr>`).join('')
+  const tables=`<div style="max-width:100%;overflow-x:auto;margin:16px 0 24px;"><table width="1700" cellspacing="0" cellpadding="0" style="width:1700px;min-width:1700px;table-layout:fixed;border-collapse:collapse;font-size:13px;line-height:1.6;"><colgroup>${widths.map(width=>`<col style="width:${width}px;">`).join('')}</colgroup><thead><tr>${tableHead}</tr></thead><tbody>${tableRows}</tbody></table></div>`
+  const exceptionHtml=exceptions.length?`<ul>${exceptions.map(file=>`<li>${mailTextToHtml(file.original_name)}：${mailTextToHtml(file.reason)}</li>`).join('')}</ul>`:''
+  const html=`<div style="font-family:Arial,'Microsoft YaHei',sans-serif;color:#172b4d;font-size:14px;line-height:1.6;width:100%;"><h2 style="font-size:20px;margin:0 0 12px;">Pango License 待处理申请</h2><p>${escapeMailHtml(date)} · 共 ${rows.length} 条申请</p><p>这些申请尚未通知 FAE；发送成功后自动转为处理中。</p>${tables}<p>发放异常：${exceptions.length} 条。</p>${exceptionHtml}<p>请登录管理后台处理。完整申请信息也已附在 CSV 附件中。</p></div>`
+  return { to:recipient,subject:`Pango License 待办汇总 ${date}`,text,html,attachments:[{name:`license_applications_${date}.csv`,base64:Buffer.from(csv).toString('base64')}] }
 }
 export function customerMessage(row, file, replyTo) {
   return { variables:mailVariables(row),to:row.email,replyTo,subject:`Pango License 发放 · 申请 #${row.id}`,text:[`${row.applicant_name || '您好'}：`,'', '您申请的 License 文件已附在本邮件中。',`申请编号：${row.id}`,`软件版本：${row.software_version}`,`授权类型：${row.license_type}`,`使用年限：${row.duration_years} 年`,`MAC 地址：${row.mac_address}`,'','如有问题，请联系对接 FAE。'].join('\n'),attachments:[{name:file.original_name,base64:file.content.toString('base64')}] }
@@ -275,7 +284,7 @@ async function dispatchDigest(db,sender,mail,batch,firstAttempt) {
     return {...result,count:items.length}
   }catch(error){await db.rollback();throw error}
 }
-export async function runDigest(pool,sender,{faeEmail,now=new Date(),templates={}}) {
+export async function runDigest(pool,sender,{faeEmail,now=new Date(),templates={},logo=null}) {
   const {date,hour}=chinaTime(now)
   if(hour!==9)throw problem('早间任务仅在北京时间 09:00–09:59 执行')
   if(!validEmail(faeEmail))throw problem('FAE 收件邮箱配置无效')
@@ -294,7 +303,7 @@ export async function runDigest(pool,sender,{faeEmail,now=new Date(),templates={
     const [rejected]=await db.query("SELECT application_id,detail FROM dto_license_rejection WHERE state IN ('failed','unknown','paused')")
     exceptions.push(...rejected.map(row=>({original_name:`申请 #${row.application_id} 拒绝邮件`,reason:row.detail})))
     if(!rows.length&&!exceptions.length)return {state:'empty',count:0}
-    const message=applyMailTemplate(digestMessage(rows,exceptions,date,faeEmail),'digest',templates,date)
+    const message=applyMailTemplate(digestMessage(rows,exceptions,date,faeEmail),'digest',templates,date,logo)
     let prepared
     await db.beginTransaction()
     try{
@@ -306,7 +315,7 @@ export async function runDigest(pool,sender,{faeEmail,now=new Date(),templates={
     return dispatchDigest(db,sender,{id:prepared.id,message_id:prepared.messageId},{payload:JSON.stringify(message)},true)
   })
 }
-async function deliverLicenseFile(db,sender,id,{date,replyTo,templates={},actor='nightly',expectedApplicationId,expectedEmail}) {
+async function deliverLicenseFile(db,sender,id,{date,replyTo,templates={},logo=null,actor='nightly',expectedApplicationId,expectedEmail}) {
       const [[file]] = await db.query('SELECT * FROM dto_license_file WHERE id=?',[id])
       if (createHash('sha256').update(file.content).digest('hex') !== file.sha256 || file.content.length !== file.byte_length) {
         await setFile(db,id,'paused','文件完整性校验失败，请取消并重新上传')
@@ -318,7 +327,7 @@ async function deliverLicenseFile(db,sender,id,{date,replyTo,templates={},actor=
       if(expectedEmail && match.application.email!==expectedEmail)throw problem('申请邮箱已变化，请刷新核对',409)
       await persistMatch(db,file,match,{advanceStatus:false})
       const row = match.application
-      const message = applyMailTemplate(customerMessage(row,file,replyTo),'customer',templates,date)
+      const message = applyMailTemplate(customerMessage(row,file,replyTo),'customer',templates,date,logo)
       let mail
       await db.beginTransaction()
       try {
@@ -348,7 +357,7 @@ async function deliverLicenseFile(db,sender,id,{date,replyTo,templates={},actor=
       }
 }
 
-export async function runNightly(pool,sender,{faeEmail,replyTo,now=new Date(),templates={}}) {
+export async function runNightly(pool,sender,{faeEmail,replyTo,now=new Date(),templates={},logo=null}) {
   const {date,hour} = chinaTime(now)
   if (hour !== 22) throw problem('夜间任务仅在北京时间 22:00–22:59 执行')
   if (!validEmail(faeEmail)) throw problem('FAE 收件邮箱配置无效')
@@ -358,13 +367,13 @@ export async function runNightly(pool,sender,{faeEmail,replyTo,now=new Date(),te
     const cutoff = `${date} 22:00:00.000000`
     const [files] = await db.query("SELECT id FROM dto_license_file WHERE uploaded_at<=? AND state IN ('queued','conflict','unmatched','failed') AND attempts<3 ORDER BY uploaded_at,id LIMIT 500",[cutoff])
     const results=[]
-    for (const {id} of files) results.push(await deliverLicenseFile(db,sender,id,{date,replyTo,templates}))
-    const rejectionResults=await dispatchRejections(db,sender,{cutoff,replyTo,templates,date})
+    for (const {id} of files) results.push(await deliverLicenseFile(db,sender,id,{date,replyTo,templates,logo}))
+    const rejectionResults=await dispatchRejections(db,sender,{cutoff,replyTo,templates,date,logo})
     results.push(...rejectionResults)
     const [counts] = await db.query('SELECT state,COUNT(*) count FROM dto_license_file WHERE uploaded_at<=? GROUP BY state',[cutoff])
     let summaryResult = null
     if (files.length || rejectionResults.length || counts.some(item=>['unknown','failed','conflict','unmatched'].includes(item.state))) {
-      summaryResult = await sendNotice(db,sender,`nightly-summary:${date}`,'summary',applyMailTemplate({to:faeEmail,subject:`Pango License 夜间发放结果 ${date}`,text:[`本次检查 ${files.length} 个文件，处理 ${rejectionResults.length} 条拒绝通知。`,'拒绝通知结果：',...rejectionResults.map(item=>`申请 #${item.applicationId}：${item.state}`),'截至本批截止时间的文件状态（累计）：',...counts.map(item=>`${item.state}: ${item.count}`),'','请登录管理后台查看异常及邮件记录。SMTP 接受不等于收件人已收到。'].join('\n'),attachments:[]},'summary',templates,date))
+      summaryResult = await sendNotice(db,sender,`nightly-summary:${date}`,'summary',applyMailTemplate({to:faeEmail,subject:`Pango License 夜间发放结果 ${date}`,text:[`本次检查 ${files.length} 个文件，处理 ${rejectionResults.length} 条拒绝通知。`,'拒绝通知结果：',...rejectionResults.map(item=>`申请 #${item.applicationId}：${item.state}`),'截至本批截止时间的文件状态（累计）：',...counts.map(item=>`${item.state}: ${item.count}`),'','请登录管理后台查看异常及邮件记录。SMTP 接受不等于收件人已收到。'].join('\n'),attachments:[]},'summary',templates,date,logo))
     }
     return {date,cutoff,results,summary:summaryResult}
   })
@@ -382,7 +391,7 @@ export async function applicationWorkflow(pool,id,faeEmail){
 }
 // Explicit administrator action: scope every query/transition to this application.
 // It uses the same dispatch functions and durable dedupe keys as scheduled jobs.
-export async function runApplicationStep(pool,sender,{applicationId,action,expectedFileId,expectedEmail,expectedFaeEmail,faeEmail,replyTo,templates={},actor='admin',now=new Date()}){
+export async function runApplicationStep(pool,sender,{applicationId,action,expectedFileId,expectedEmail,expectedFaeEmail,faeEmail,replyTo,templates={},logo=null,actor='admin',now=new Date()}){
   const id=validApplicationId(applicationId)
   if(!['deliver-license','notify-fae'].includes(action))throw problem('请选择立即发送 License 或通知 FAE')
   if(!validEmail(faeEmail)||expectedFaeEmail!==faeEmail)throw problem('FAE 邮箱已变化或未配置，请刷新核对',409)
@@ -410,7 +419,7 @@ export async function runApplicationStep(pool,sender,{applicationId,action,expec
         result=await dispatchDigest(db,sender,mail,mail,false)
       }else{
         const date=chinaTime(now).date
-        const message=applyMailTemplate(digestMessage([row],[],date,faeEmail),'digest',templates,date)
+        const message=applyMailTemplate(digestMessage([row],[],date,faeEmail),'digest',templates,date,logo)
         let prepared
         await db.beginTransaction()
         try{
@@ -434,7 +443,7 @@ export async function runApplicationStep(pool,sender,{applicationId,action,expec
     const file=files[0]
     if(expectedFileId && String(file.id)!==String(expectedFileId))throw problem('关联文件已变化，请刷新核对',409)
     if(!['queued','failed'].includes(file.state)||Number(file.attempts)>=3)throw problem('文件未处于可发放状态；暂停、冲突、结果待核查或重试超限时需先处理',409)
-    const result=await deliverLicenseFile(db,sender,file.id,{date:chinaTime(now).date,replyTo,templates,actor,expectedApplicationId:id,expectedEmail})
+    const result=await deliverLicenseFile(db,sender,file.id,{date:chinaTime(now).date,replyTo,templates,logo,actor,expectedApplicationId:id,expectedEmail})
     return {...result,detail:result.detail||'已完成这条申请的校对，请查看文件状态；其他申请未处理'}
   })
 }
@@ -508,7 +517,7 @@ export async function rejectApplication(pool,id,reason,actor,expectedStatus){
     }catch(error){await db.rollback();throw error}
   })
 }
-async function dispatchRejections(db,sender,{cutoff,replyTo,templates,date}){
+async function dispatchRejections(db,sender,{cutoff,replyTo,templates,date,logo}){
   const [requests]=await db.query("SELECT * FROM dto_license_rejection WHERE created_at<=? AND state IN ('queued','failed') AND attempts<3 ORDER BY created_at,application_id LIMIT 500",[cutoff])
   const results=[]
   for(const rejected of requests){
@@ -518,7 +527,7 @@ async function dispatchRejections(db,sender,{cutoff,replyTo,templates,date}){
       await db.query("UPDATE dto_license_rejection SET state='paused',detail='申请状态或联系信息已变化，或邮箱无效；请核对后重试',updated_at=NOW(6) WHERE application_id=?",[id])
       results.push({applicationId:id,kind:'rejection',state:'paused'});continue
     }
-    const message=applyMailTemplate(rejectionMessage(row,rejected.reason,replyTo),'rejection',templates,date)
+    const message=applyMailTemplate(rejectionMessage(row,rejected.reason,replyTo),'rejection',templates,date,logo)
     let mail
     await db.beginTransaction()
     try{

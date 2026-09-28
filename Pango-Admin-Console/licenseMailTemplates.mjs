@@ -1,3 +1,5 @@
+import { withMailLogo } from './licenseMailLogo.mjs'
+
 export const TEMPLATE_DEFAULTS = {
   customer: { label:'客户 License', subject:'Pango License 发放 · 申请 #{{申请编号}}', text:'{{申请人}}：\n\n您申请的 License 文件已附在本邮件中。\n申请编号：{{申请编号}}\n软件版本：{{软件版本}}\n授权类型：{{授权类型}}\n使用年限：{{年限}} 年\nMAC 地址：{{MAC地址}}\n\n如有问题，请联系对接 FAE。' },
   rejection: { label:'客户拒绝说明', subject:'Pango License 申请未通过 · 申请 #{{申请编号}}', text:'{{申请人}}：\n\n您的 License 申请 #{{申请编号}} 未通过处理。\nMAC 地址：{{MAC地址}}\n\n拒绝原因：\n{{拒绝原因}}\n\n如需补充资料或有疑问，请联系对接 FAE。' },
@@ -23,12 +25,26 @@ export function validateTemplates(templates) {
   }
   return result
 }
-export function applyMailTemplate(message,kind,templates={},date='') {
-  if(!templates[kind])return message
+export function escapeMailHtml(value) {
+  return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))
+}
+export function mailTextToHtml(value) { return escapeMailHtml(value).replace(/\r\n|\r|\n/g,'<br>') }
+export function applyMailTemplate(message,kind,templates={},date='',logo=null) {
+  if(!templates[kind])return withMailLogo(message,logo,mailTextToHtml(message.text))
   const template=validateTemplates({[kind]:templates[kind]})[kind]
   const values={...message.variables,'原始正文':message.text,'日期':date}
   const render=(text,subject=false)=>text.replace(/{{(.*?)}}/g,(_,key)=>subject?String(values[key]??'').replace(/[\r\n]+/g,' '):String(values[key]??''))
   const subject=render(template.subject,true)
   if(subject.length>300)throw new Error('替换变量后的邮件标题过长')
-  return {...message,subject,text:render(template.text)}
+  let html
+  if(message.html){
+    // Escape the template and every variable; only the server-generated original body is HTML.
+    const pieces=template.text.split(/({{.*?}})/g)
+    html=pieces.map(piece=>{
+      const token=/^{{(.*?)}}$/.exec(piece)
+      return token?(token[1]==='原始正文'?message.html:mailTextToHtml(values[token[1]]??'')):mailTextToHtml(piece)
+    }).join('')
+  }
+  const result={...message,subject,text:render(template.text),...(html?{html}:{})}
+  return withMailLogo(result,logo,mailTextToHtml(result.text))
 }

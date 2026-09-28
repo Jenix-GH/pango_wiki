@@ -28,6 +28,29 @@ class TransportTests(unittest.TestCase):
                 pass
         self.assertEqual(send_mail.dispatch(self.cfg,self.payload,lambda *a,**k:SMTP())['state'],'accepted')
 
+    def test_html_alternative_preserves_plain_text_and_attachment(self):
+        self.payload['html'] = '<table><tr><th>是否已在官网提交</th><td>是</td></tr></table>'
+        msg = send_mail.build_message(self.cfg, self.payload)
+        self.assertEqual(msg.get_content_type(), 'multipart/mixed')
+        self.assertEqual(msg.get_body(preferencelist=('plain',)).get_content().strip(), '正文')
+        self.assertEqual(msg.get_body(preferencelist=('html',)).get_content().strip(), self.payload['html'])
+        self.assertEqual(len(list(msg.iter_attachments())), 1)
+        self.assertEqual(next(msg.iter_attachments()).get_payload(decode=True), b'license bytes')
+        del self.payload['html']
+        self.assertIsNone(send_mail.build_message(self.cfg, self.payload).get_body(preferencelist=('html',)))
+
+    def test_logo_is_related_to_html_and_does_not_replace_license_attachment(self):
+        self.payload['html'] = '<img src="cid:pango-company-logo"><p>正文</p>'
+        self.payload['inlineImages'] = [dict(cid='pango-company-logo', mimeType='image/png', base64=base64.b64encode(b'png fixture').decode())]
+        msg = send_mail.build_message(self.cfg, self.payload)
+        self.assertIn('cid:pango-company-logo', msg.get_body(preferencelist=('html',)).get_content())
+        images = [part for part in msg.walk() if part.get_content_type() == 'image/png']
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0]['Content-ID'], '<pango-company-logo>')
+        self.assertEqual(images[0].get_content_disposition(), 'inline')
+        self.assertEqual(len(list(msg.iter_attachments())), 1)
+        self.assertEqual(next(msg.iter_attachments()).get_payload(decode=True), b'license bytes')
+
     def test_failures_are_classified_before_or_during_data(self):
         def connection_failure(*a,**k):
             raise OSError('unreachable')

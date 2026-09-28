@@ -527,13 +527,13 @@ async function handleLicenseDelivery(request, response, path, params) {
     return json(response,200,{data:await mailSettingsView(config,configPath)})
   }
   if (path === '/license-delivery/mail-settings' && request.method === 'POST') {
-    const body=await readLicenseJson(request,256000)
+    const body=await readLicenseJson(request,512000)
     const data=await withDeliveryLock(licensePool,()=>saveMailSettings(config,configPath,body,adminUser))
     response.setHeader('Cache-Control','no-store')
     return json(response,200,{data})
   }
   if (['/license-delivery/mail-preview','/license-delivery/mail-test'].includes(path) && request.method==='POST') {
-    const body=await readLicenseJson(request,256000)
+    const body=await readLicenseJson(request,512000)
     const effective=await applySavedMailSettings(config,configPath)
     const message=sampleMail(effective,body)
     response.setHeader('Cache-Control','no-store')
@@ -560,7 +560,7 @@ async function handleLicenseDelivery(request, response, path, params) {
     const body=await readLicenseJson(request)
     if(body.confirm!==true||String(body.confirmedApplicationId)!==workflowMatch[1]||(body.action==='deliver-license'&&!/^[a-f0-9-]{36}$/.test(body.expectedFileId||'')))throw problem('请确认选中的申请、文件及真实发送',400)
     assertMailConfiguration(effective,{requireFae:body.action==='deliver-license'})
-    const result=await runApplicationStep(licensePool,createWorkflowMailSender(effective),{applicationId:workflowMatch[1],action:body.action,expectedFileId:body.expectedFileId,expectedEmail:body.expectedEmail,expectedFaeEmail:body.expectedFaeEmail,faeEmail:effective.LICENSE_FAE_EMAIL,replyTo:effective.LICENSE_REPLY_TO||effective.LICENSE_FAE_EMAIL,templates:effective.LICENSE_MAIL_TEMPLATES,actor:adminUser})
+    const result=await runApplicationStep(licensePool,createWorkflowMailSender(effective),{applicationId:workflowMatch[1],action:body.action,expectedFileId:body.expectedFileId,expectedEmail:body.expectedEmail,expectedFaeEmail:body.expectedFaeEmail,faeEmail:effective.LICENSE_FAE_EMAIL,replyTo:effective.LICENSE_REPLY_TO||effective.LICENSE_FAE_EMAIL,templates:effective.LICENSE_MAIL_TEMPLATES,logo:effective.LICENSE_MAIL_LOGO,actor:adminUser})
     return json(response,200,{data:result})
   }
   if (request.method === 'GET' && path === '/license-delivery/files') return json(response,200,{data:await listFiles(licensePool,params)})

@@ -28,6 +28,18 @@ def build_message(cfg, payload):
     if payload.get('replyTo'):
         msg['Reply-To'] = payload['replyTo']
     msg.set_content(payload['text'], charset='utf-8')
+    if payload.get('html'):
+        msg.add_alternative(payload['html'], subtype='html', charset='utf-8')
+    images = payload.get('inlineImages', [])
+    if images and not payload.get('html'):
+        raise ValueError('Inline images require HTML')
+    for image in images:
+        if image.get('cid') != 'pango-company-logo' or image.get('mimeType') not in ('image/png', 'image/jpeg'):
+            raise ValueError('Invalid inline logo')
+        content = base64.b64decode(image['base64'], validate=True)
+        if not content or len(content) > 256 * 1024:
+            raise ValueError('Invalid logo size')
+        msg.get_payload()[-1].add_related(content, maintype='image', subtype=image['mimeType'].split('/')[1], cid='<pango-company-logo>', disposition='inline')
     for item in payload.get('attachments', []):
         msg.add_attachment(base64.b64decode(item['base64'], validate=True), maintype='application', subtype='octet-stream', filename=item['name'])
     return msg

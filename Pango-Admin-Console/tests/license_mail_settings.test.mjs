@@ -1,3 +1,4 @@
+import {validateMailLogo} from '../licenseMailLogo.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
@@ -48,4 +49,32 @@ test('test preview uses only synthetic records and draft templates; never includ
  assert.equal(preview.from,'fae@example.com');assert.ok(!JSON.stringify(preview).includes('never-render-this'))
  assert.ok(!JSON.stringify(preview).includes('base64'))
  assert.deepEqual(sampleMail(config,{kind:'rejection',templates:{rejection:TEMPLATE_DEFAULTS.rejection}}).attachments,[])
+})
+
+const testLogo={mimeType:'image/png',base64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j6QAAAABJRU5ErkJggg==',width:220}
+test('logo save, preview and removal preserve account/templates and protect stale settings',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'pango-logo-')),path=join(dir,'database.env'),config={LICENSE_FAE_EMAIL:'fae@example.com'}
+ try{
+  const initial=await mailSettingsView(config,path)
+  const saved=await saveMailSettings(config,path,{revision:initial.revision,logo:testLogo,templates:{digest:TEMPLATE_DEFAULTS.digest}},'tester')
+  assert.deepEqual(saved.logo,testLogo)
+  assert.deepEqual((await applySavedMailSettings(config,path)).LICENSE_MAIL_LOGO,testLogo)
+  const effective=await applySavedMailSettings(config,path)
+  for(const kind of Object.keys(TEMPLATE_DEFAULTS)){
+   const sample=sampleMail(effective,{kind})
+   assert.ok(sample.html.includes('src="cid:pango-company-logo"'));assert.ok(sample.html.includes('width="220"'))
+   assert.equal(sample.inlineImages.length,1);assert.equal(sample.inlineImages[0].base64,testLogo.base64)
+   const preview=publicMailPreview(effective,sample)
+   assert.ok(preview.html.includes('data:image/png;base64,'));assert.ok(!preview.html.includes('cid:pango-company-logo'))
+  }
+  const without=sampleMail(effective,{kind:'digest',logo:null});assert.ok(!without.html.includes('cid:'));assert.ok(without.html.includes('<table '))
+  await assert.rejects(saveMailSettings(config,path,{revision:initial.revision,logo:null},'tester'),/刷新/)
+  const removed=await saveMailSettings(config,path,{revision:saved.revision,logo:null},'tester')
+  assert.equal(removed.logo,null);assert.equal(removed.templates.digest.text,TEMPLATE_DEFAULTS.digest.text)
+  assert.equal((await mailSettingsView(config,path)).logo,null)
+ }finally{await rm(dir,{recursive:true,force:true})}
+})
+test('logo validation rejects executable formats, malformed data, oversized images and invalid widths',()=>{
+ for(const logo of [{...testLogo,mimeType:'image/svg+xml'},{...testLogo,base64:Buffer.from('<svg onload="bad">').toString('base64')},{...testLogo,base64:'bad!'},{...testLogo,base64:Buffer.alloc(256*1024+1).toString('base64')},{...testLogo,width:0},{...testLogo,width:401}])assert.throws(()=>validateMailLogo(logo))
+ assert.equal(validateMailLogo(null),null)
 })

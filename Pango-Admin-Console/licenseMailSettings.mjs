@@ -1,3 +1,4 @@
+import { validateMailLogo } from './licenseMailLogo.mjs'
 import { readFile, writeFile, rename, open, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomBytes, randomUUID, createCipheriv, createDecipheriv } from 'node:crypto'
@@ -31,7 +32,7 @@ function cleanAccount(input) {
 export async function mailSettingsView(config,configPath) {
   const stored=await readStored(configPath)
   const {secret,...fae}=stored.fae||{email:config.LICENSE_FAE_EMAIL||'',host:'',port:587,security:'starttls',username:'',displayName:''}
-  return {revision:stored.revision,fae,passwordConfigured:Boolean(secret),savedAccount:Boolean(stored.fae),externalAccountConfigured:Boolean(config.LICENSE_FAE_MAIL_ENV),templates:Object.fromEntries(Object.entries(TEMPLATE_DEFAULTS).map(([key,value])=>[key,{...value,...stored.templates?.[key]}])),defaults:TEMPLATE_DEFAULTS,variables:TEMPLATE_VARIABLES,updatedAt:stored.updatedAt||null}
+  return {revision:stored.revision,logo:stored.logo?validateMailLogo(stored.logo):null,fae,passwordConfigured:Boolean(secret),savedAccount:Boolean(stored.fae),externalAccountConfigured:Boolean(config.LICENSE_FAE_MAIL_ENV),templates:Object.fromEntries(Object.entries(TEMPLATE_DEFAULTS).map(([key,value])=>[key,{...value,...stored.templates?.[key]}])),defaults:TEMPLATE_DEFAULTS,variables:TEMPLATE_VARIABLES,updatedAt:stored.updatedAt||null}
 }
 export async function saveMailSettings(config,configPath,body,actor) {
   const stored=await readStored(configPath)
@@ -44,13 +45,14 @@ export async function saveMailSettings(config,configPath,body,actor) {
     if(!password&&(!stored.fae?.secret||account.email.toLowerCase()!==stored.fae.email.toLowerCase()||account.username!==stored.fae.username||account.host!==stored.fae.host))throw new Error('首次设置或更换邮箱/服务器/登录名时，请重新填写 SMTP 密码或授权码')
     next.fae={...account,secret:password?encrypt(password,await getKey(configPath,true)):stored.fae.secret}
   }
+  if(body.logo!==undefined)next.logo=validateMailLogo(body.logo)
   if(body.templates!==undefined)next.templates=validateTemplates(body.templates)
   const path=locations(configPath).file,temporary=path+'.'+randomUUID()+'.tmp'
   try{await writeFile(temporary,JSON.stringify(next,null,2)+'\n',{mode:0o600,flag:'wx'});await rename(temporary,path)}finally{await rm(temporary,{force:true})}
   return mailSettingsView(config,configPath)
 }
 export async function applySavedMailSettings(config,configPath) {
-  const stored=await readStored(configPath),result={...config,LICENSE_MAIL_TEMPLATES:stored.templates||{}}
+  const stored=await readStored(configPath),result={...config,LICENSE_MAIL_LOGO:stored.logo?validateMailLogo(stored.logo):null,LICENSE_MAIL_TEMPLATES:stored.templates||{}}
   if(stored.fae){
     const account=cleanAccount(stored.fae)
     result.LICENSE_FAE_EMAIL=account.email;result.LICENSE_REPLY_TO=account.email

@@ -77,18 +77,60 @@ if(inlineResult.state!=='accepted')throw new Error(JSON.stringify(inlineResult))
                 server.shutdown()
                 thread.join()
 
+    def test_fae_digest_html_survives_real_node_python_smtp_bridge(self):
+        with socketserver.TCPServer(('127.0.0.1', 0), SMTP) as server, tempfile.TemporaryDirectory() as tmp:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                env_file = Path(tmp) / 'platform.env'
+                env_file.write_text(f'MAIL_ADDRESS=platform@example.com\nMAIL_PASSWORD=test-only\nSMTP_HOST=127.0.0.1\nSMTP_PORT={server.server_address[1]}\nSMTP_SECURITY=none\nSMTP_AUTH=plain\n')
+                root = Path(__file__).resolve().parents[1]
+                config = dict(LICENSE_MAIL_ENV=str(env_file), LICENSE_FAE_EMAIL='fae@example.com', LICENSE_PYTHON=sys.executable)
+                code = f"""
+import {{createWorkflowMailSender}} from {json.dumps((root/'licenseMail.mjs').as_uri())};
+import {{digestMessage}} from {json.dumps((root/'licenseDelivery.mjs').as_uri())};
+import {{applyMailTemplate}} from {json.dumps((root/'licenseMailTemplates.mjs').as_uri())};
+const message=applyMailTemplate(digestMessage([{{id:39,applicant_name:'张三 <测试>',company_name:'测试学校',official_submitted:1,email:'customer@example.com'}}],[],'2026-09-28','fae@example.com'),'digest',{{digest:{{subject:'待办',text:'请审批\\n{{{{原始正文}}}}'}}}});
+const result=await createWorkflowMailSender({json.dumps(config)})({{...message,mailKind:'digest',messageId:'<table-test@localhost>'}});
+if(result.state!=='accepted')throw new Error(JSON.stringify(result));
+"""
+                result = subprocess.run(['node', '--input-type=module', '-e', code], capture_output=True, text=True, timeout=20)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(len(SMTP.accepted), 1)
+                msg = BytesParser(policy=policy.default).parsebytes(SMTP.accepted[0])
+                self.assertEqual(str(msg['From']), 'platform@example.com')
+                self.assertEqual(str(msg['To']), 'fae@example.com')
+                html = msg.get_body(preferencelist=('html',)).get_content()
+                self.assertIn('<table ', html)
+                self.assertIn('是否已在官网提交', html)
+                self.assertIn('张三 &lt;测试&gt;', html)
+                self.assertTrue(html.startswith('请审批<br>'))
+                self.assertIn('张三 <测试>', msg.get_body(preferencelist=('plain',)).get_content())
+                attachments = list(msg.iter_attachments())
+                self.assertEqual(len(attachments), 1)
+                self.assertTrue(attachments[0].get_filename().endswith('.csv'))
+                self.assertIn('是否已在官网提交', attachments[0].get_payload(decode=True).decode('utf-8'))
+            finally:
+                server.shutdown()
+                thread.join()
+
     def test_real_bridge_with_local_fake_smtp(self):
         with socketserver.TCPServer(('127.0.0.1',0),SMTP) as server, tempfile.TemporaryDirectory() as tmp:
             thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
             try:
                 config=Path(tmp)/'mail.env'
                 config.write_text(f'MAIL_ADDRESS=service@example.com\nMAIL_PASSWORD=test-only\nSMTP_HOST=127.0.0.1\nSMTP_PORT={server.server_address[1]}\nSMTP_SECURITY=plain\nSMTP_AUTH=plain\n')
-                payload={'to':'customer@example.com','subject':'License 测试','text':'测试正文','messageId':'<test@localhost>','attachments':[{'name':'new_pds_1a2b3c4d5f60.lic','base64':base64.b64encode(b'fixture-only').decode()}]}
+                payload={'to':'customer@example.com','subject':'License 测试','text':'测试正文','html':'<img src="cid:pango-company-logo"><p>测试正文</p>','inlineImages':[{'cid':'pango-company-logo','mimeType':'image/png','base64':base64.b64encode(b'inline test bytes').decode()}],'messageId':'<test@localhost>','attachments':[{'name':'new_pds_1a2b3c4d5f60.lic','base64':base64.b64encode(b'fixture-only').decode()}]}
                 result=subprocess.run([sys.executable,str(Path(__file__).resolve().parents[1]/'scripts/license-mail/send_mail.py'),'--env',str(config)],input=json.dumps(payload),text=True,capture_output=True,timeout=15)
                 self.assertEqual(result.returncode,0)
                 self.assertEqual(json.loads(result.stdout)['state'],'accepted',result.stdout)
                 self.assertEqual(len(SMTP.accepted),1)
                 self.assertIn(b'To: customer@example.com',SMTP.accepted[0])
+                parsed = BytesParser(policy=policy.default).parsebytes(SMTP.accepted[0])
+                inline = [part for part in parsed.walk() if part.get('Content-ID') == '<pango-company-logo>']
+                self.assertEqual(len(inline), 1)
+                self.assertEqual(inline[0].get_payload(decode=True), b'inline test bytes')
+                self.assertEqual(len(list(parsed.iter_attachments())), 1)
             finally:
                 server.shutdown();thread.join()
 
