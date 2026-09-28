@@ -579,6 +579,30 @@ export async function cancelRejection(pool,id,body,actor){
     }catch(error){await db.rollback();throw error}
   })
 }
+export async function restoreRejection(pool,id,body,actor){
+  id=validApplicationId(id)
+  if(body.confirm!==true||typeof body.expectedUpdatedAt!=='string'||!body.expectedUpdatedAt)throw problem('请确认恢复拒绝通知，并刷新核对当前记录')
+  return withDeliveryLock(pool,async db=>{
+    await db.beginTransaction()
+    try{
+      const [[row]]=await db.query('SELECT * FROM dto_license_application WHERE id=? FOR UPDATE',[id])
+      const [[rejected]]=await db.query('SELECT * FROM dto_license_rejection WHERE application_id=? FOR UPDATE',[id])
+      if(!row||!rejected)throw problem('拒绝通知不存在',404)
+      if(Number(row.status)!==3)throw problem('申请已不处于已拒绝状态，请刷新核对',409)
+      if(rejected.state==='queued'){await db.commit();return {applicationId:id,state:'queued'}}
+      if(String(rejected.updated_at)!==body.expectedUpdatedAt)throw problem('拒绝通知已变化，请刷新后再恢复',409)
+      if(rejected.state!=='cancelled')throw problem('仅已取消的拒绝通知可以恢复；已发出或待核查的邮件请先核查',409)
+      if(!validEmail(row.email)||snapshot(row)!==rejected.application_snapshot||row.email!==rejected.recipient)throw problem('申请信息或收件邮箱已变化，请先核对，不能直接恢复旧通知',409)
+      const [[mail]]=await db.query('SELECT state FROM dto_license_mail WHERE dedupe_key=? FOR UPDATE',[`rejection:${id}`])
+      if(mail&&!['cancelled','failed'].includes(mail.state))throw problem('当前拒绝邮件已发出或结果待核查，不能重新排队',409)
+      const detail='管理员已恢复此拒绝通知，等待夜间发送；拒绝状态和理由保留'
+      await db.query("UPDATE dto_license_rejection SET state='queued',attempts=0,detail=?,updated_at=NOW(6) WHERE application_id=?",[detail,id])
+      await db.query("UPDATE dto_license_mail SET state='failed',attempts=0,detail=?,updated_at=NOW(6) WHERE dedupe_key=? AND state IN ('cancelled','failed')",[detail,`rejection:${id}`])
+      await audit(db,null,actor,'restore-rejection',`申请 #${id}：${detail}`)
+      await db.commit();return {applicationId:id,state:'queued'}
+    }catch(error){await db.rollback();throw error}
+  })
+}
 export async function retryRejection(pool,id,note,actor){
   if(typeof note!=='string'||!note.trim())throw problem('请填写核对说明')
   return withDeliveryLock(pool,async db=>{

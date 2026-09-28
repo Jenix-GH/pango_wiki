@@ -6,7 +6,7 @@ import { extname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import archiver from 'archiver'
 import mysql from 'mysql2/promise'
-import { uploadFiles, listFiles, fileDetail, fileAction, MAX_UPLOAD_BODY, problem, listApplications, setApplicationStatus, applicationStatusHistory, rejectionDetail, retryRejection, cancelRejection, resolveWorkflowMail } from './licenseDelivery.mjs'
+import { uploadFiles, listFiles, fileDetail, fileAction, MAX_UPLOAD_BODY, problem, listApplications, setApplicationStatus, applicationStatusHistory, rejectionDetail, retryRejection, cancelRejection, restoreRejection, resolveWorkflowMail } from './licenseDelivery.mjs'
 import { conversationFileName, groupConversationRecords, imageExtension, renderConversationMarkdown } from './conversationExport.mjs'
 import { mailSettingsView, saveMailSettings, applySavedMailSettings } from './licenseMailSettings.mjs'
 import { createWorkflowMailSender, assertMailConfiguration } from './licenseMail.mjs'
@@ -570,8 +570,9 @@ async function handleLicenseDelivery(request, response, path, params) {
   }
   const historyMatch=/^\/license-delivery\/applications\/(\d+)\/history$/.exec(path)
   if(historyMatch&&request.method==='GET')return json(response,200,{data:await applicationStatusHistory(licensePool,historyMatch[1])})
-  const rejectionMatch=/^\/license-delivery\/rejections\/(\d+)(\/retry|\/cancel)?$/.exec(path)
+  const rejectionMatch=/^\/license-delivery\/rejections\/(\d+)(\/retry|\/cancel|\/restore)?$/.exec(path)
   if(rejectionMatch&&request.method==='GET'&&!rejectionMatch[2])return json(response,200,{data:await rejectionDetail(licensePool,rejectionMatch[1])})
+  if(rejectionMatch&&request.method==='POST'&&rejectionMatch[2]==='/restore')return json(response,200,{data:await restoreRejection(licensePool,rejectionMatch[1],await readLicenseJson(request),adminUser)})
   if(rejectionMatch&&request.method==='POST'&&rejectionMatch[2]==='/cancel')return json(response,200,{data:await cancelRejection(licensePool,rejectionMatch[1],await readLicenseJson(request),adminUser)})
   if(rejectionMatch&&request.method==='POST'&&rejectionMatch[2]==='/retry')return json(response,200,{data:await retryRejection(licensePool,rejectionMatch[1],(await readLicenseJson(request)).note,adminUser)})
   const noticeMatch=/^\/license-delivery\/notices\/([a-f0-9-]{36})\/resolve$/.exec(path)

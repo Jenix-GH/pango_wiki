@@ -60,7 +60,18 @@ export async function renderLicenseApplications(content,request,openDelivery){
         },'license-reject-button')
         body.append(el('p','若这条通知无需发送，可单独屏蔽；不会更改其他申请。','delivery-warning'),cancel,error)
       }
-      if(record.state==='cancelled')body.append(el('p','此拒绝通知已取消，不会进入自动发送队列。','delivery-warning'))
+      if(record.state==='cancelled'){
+        const error=el('p','','delivery-message');error.setAttribute('role','alert')
+        const restore=button('恢复此拒绝通知',async()=>{
+          if(!window.confirm(`恢复申请 #${row.id} 的拒绝通知？\n收件人：${record.recipient}\n拒绝理由：${record.reason}\n\n确认后重新进入待发送队列。开启自动发送后，夜间任务会给客户发送这条拒绝说明。现在不会立即发信。`))return
+          restore.disabled=true
+          try{
+            await request(`/license-delivery/rejections/${row.id}/restore`,{method:'POST',body:JSON.stringify({confirm:true,expectedUpdatedAt:record.updated_at})})
+            d.close();message.textContent=`申请 #${row.id} 的拒绝通知已恢复为待发送，尚未发信；需要时仍可再次屏蔽。`;await load()
+          }catch(err){if(!err.authentication)error.textContent=err.message}finally{restore.disabled=false}
+        },'export-button')
+        body.append(el('p','此拒绝通知已取消，不会进入自动发送队列。若之前误点屏蔽，可恢复后重新排队。','delivery-warning'),restore,error)
+      }
       if(['failed','paused','unknown'].includes(record.state)){
         const note=document.createElement('textarea');note.setAttribute('aria-label','邮件核查说明');note.placeholder='填写核查依据或已修正信息的说明';note.rows=3
         const error=el('p','','delivery-message');error.setAttribute('role','alert');const group=el('div','','delivery-action-buttons')
