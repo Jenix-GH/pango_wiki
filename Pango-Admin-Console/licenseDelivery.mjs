@@ -105,8 +105,18 @@ export async function uploadFiles(pool, body, actor) {
     try {
       const batchId = randomUUID()
       const ids = []
+      const reusedIds = []
       for (const file of files) {
-        const [existing] = await db.query("SELECT id FROM dto_license_file WHERE sha256=? AND mac <=> ? AND state NOT IN ('cancelled','duplicate') LIMIT 1", [file.sha256,file.mac])
+        const [existing] = await db.query("SELECT id,state FROM dto_license_file WHERE sha256=? AND mac <=> ? AND state<>'duplicate' ORDER BY (state='cancelled'),uploaded_at DESC,id LIMIT 1", [file.sha256,file.mac])
+        if(existing[0]?.state==='cancelled'){
+          const id=existing[0].id
+          ids.push(id);reusedIds.push(id)
+          // Re-upload is explicit intent to restore this file; retain its binding, snapshot,
+          // attempt count and history so it cannot silently switch applications or evade retries.
+          await db.query("UPDATE dto_license_file SET batch_id=?,original_name=?,content=?,byte_length=?,state='queued',reason='重新上传，等待重新匹配',uploaded_by=?,uploaded_at=NOW(6),updated_at=NOW(6) WHERE id=?",[batchId,file.name,file.content,file.content.length,actor,id])
+          await audit(db,id,actor,'reuploaded','已取消文件重新上传，复用原记录并重新校对；保留历史邮件及操作记录')
+          continue
+        }
         const id = randomUUID()
         ids.push(id)
         await db.query(`INSERT INTO dto_license_file
@@ -121,7 +131,7 @@ export async function uploadFiles(pool, body, actor) {
       }
       const [records] = await db.query(`SELECT ${FILE_COLUMNS} FROM dto_license_file WHERE batch_id=? ORDER BY uploaded_at,id`,[batchId])
       await db.commit()
-      return { batchId, records }
+      return { batchId, records, reusedIds }
     } catch (error) { await db.rollback(); throw error }
   })
 }
@@ -374,12 +384,47 @@ export async function applicationWorkflow(pool,id,faeEmail){
 // It uses the same dispatch functions and durable dedupe keys as scheduled jobs.
 export async function runApplicationStep(pool,sender,{applicationId,action,expectedFileId,expectedEmail,expectedFaeEmail,faeEmail,replyTo,templates={},actor='admin',now=new Date()}){
   const id=validApplicationId(applicationId)
-  if(action!=='deliver-license')throw problem('请选择立即发送 License')
+  if(!['deliver-license','notify-fae'].includes(action))throw problem('请选择立即发送 License 或通知 FAE')
   if(!validEmail(faeEmail)||expectedFaeEmail!==faeEmail)throw problem('FAE 邮箱已变化或未配置，请刷新核对',409)
   return withDeliveryLock(pool,async db=>{
     const [[row]]=await db.query('SELECT * FROM dto_license_application WHERE id=?',[id])
     if(!row)throw problem('申请不存在',404)
     if(expectedEmail!==row.email||!validEmail(row.email))throw problem('申请邮箱已变化或无效，请刷新核对',409)
+    if(action==='notify-fae'){
+      const [previous]=await db.query(`SELECT m.*,b.payload FROM dto_license_mail m
+        JOIN dto_license_digest_item i ON i.mail_id=m.id JOIN dto_license_digest_batch b ON b.mail_id=m.id
+        WHERE i.application_id=? AND m.state IN ('accepted','sending','unknown','failed') ORDER BY m.created_at`,[id])
+      if(previous.some(mail=>mail.state==='accepted'))return {state:'skipped',detail:'该申请已通知 FAE，本次未重复发送'}
+      if(previous.some(mail=>['sending','unknown'].includes(mail.state)))throw problem('FAE 通知正在处理或结果需核查，本次不重发',409)
+      if(Number(row.status)!==0)throw problem('仅待处理申请可以立即通知 FAE',409)
+      const [[active]]=await db.query(`SELECT id FROM dto_license_file WHERE application_id=? AND state IN ('queued','sending','accepted','unknown','paused') LIMIT 1`,[id])
+      const [[delivered]]=await db.query(`SELECT id FROM dto_license_mail WHERE application_id=? AND kind='customer' AND state IN ('accepted','unknown','sending') LIMIT 1`,[id])
+      if(active||delivered)throw problem('该申请已进入 License 发放流程，请先核对文件和邮件记录',409)
+      let result
+      if(previous.length){
+        const mail=previous[0]
+        const [[members]]=await db.query('SELECT COUNT(*) total FROM dto_license_digest_item WHERE mail_id=?',[mail.id])
+        if(Number(members.total)!==1)throw problem('该申请属于多条申请的失败汇总，请在汇总记录中处理，不能单条重发整封汇总',409)
+        if(Number(mail.attempts)>=3)throw problem('FAE 通知重试次数已达上限，请先核查',409)
+        if(JSON.parse(mail.payload).to!==faeEmail)throw problem('原汇总收件邮箱与当前 FAE 邮箱不同，请先核查',409)
+        result=await dispatchDigest(db,sender,mail,mail,false)
+      }else{
+        const date=chinaTime(now).date
+        const message=applyMailTemplate(digestMessage([row],[],date,faeEmail),'digest',templates,date)
+        let prepared
+        await db.beginTransaction()
+        try{
+          // A cancelled snapshot may be replaced; accepted/uncertain membership above prevents resends.
+          prepared=await prepareMail(db,{key:`digest:application:${id}:${randomUUID()}`,kind:'digest',message})
+          await db.query('INSERT INTO dto_license_digest_batch (mail_id,payload) VALUES (?,?)',[prepared.id,JSON.stringify(message)])
+          await db.query('INSERT INTO dto_license_digest_item (mail_id,application_id,application_snapshot) VALUES (?,?,?)',[prepared.id,id,snapshot(row)])
+          await db.commit()
+        }catch(error){await db.rollback();throw error}
+        result=await dispatchDigest(db,sender,{id:prepared.id,message_id:prepared.messageId},{payload:JSON.stringify(message)},true)
+      }
+      await audit(db,null,actor,'manual-notify-fae',`申请 #${id}: ${result.state}`)
+      return result
+    }
     if(Number(row.status)===3)throw problem('已拒绝申请不能发放 License',409)
     const [[mail]]=await db.query("SELECT state FROM dto_license_mail WHERE dedupe_key=?",[`customer:${id}`])
     if(mail?.state==='accepted')return {state:'skipped',detail:'该申请已成功发放，本次未重复发送'}

@@ -558,7 +558,7 @@ async function handleLicenseDelivery(request, response, path, params) {
     const effective=await applySavedMailSettings(config,configPath)
     if(request.method==='GET')return json(response,200,{data:await applicationWorkflow(licensePool,workflowMatch[1],effective.LICENSE_FAE_EMAIL)})
     const body=await readLicenseJson(request)
-    if(body.confirm!==true||String(body.confirmedApplicationId)!==workflowMatch[1]||!/^[a-f0-9-]{36}$/.test(body.expectedFileId||''))throw problem('请确认选中的申请、文件及真实发送',400)
+    if(body.confirm!==true||String(body.confirmedApplicationId)!==workflowMatch[1]||(body.action==='deliver-license'&&!/^[a-f0-9-]{36}$/.test(body.expectedFileId||'')))throw problem('请确认选中的申请、文件及真实发送',400)
     assertMailConfiguration(effective,{requireFae:body.action==='deliver-license'})
     const result=await runApplicationStep(licensePool,createWorkflowMailSender(effective),{applicationId:workflowMatch[1],action:body.action,expectedFileId:body.expectedFileId,expectedEmail:body.expectedEmail,expectedFaeEmail:body.expectedFaeEmail,faeEmail:effective.LICENSE_FAE_EMAIL,replyTo:effective.LICENSE_REPLY_TO||effective.LICENSE_FAE_EMAIL,templates:effective.LICENSE_MAIL_TEMPLATES,actor:adminUser})
     return json(response,200,{data:result})

@@ -27,6 +27,107 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   const sender=async message=>{sent.push(message);return {state:'accepted',detail:'fake accepted'}}
   const customerCount=()=>sent.filter(m=>m.to!=='fae@example.com').length
   const manual=(action,extra={})=>runApplicationStep(pool,sender,{...night,now:new Date('2026-09-24T05:00:00Z'),applicationId:'1',action,expectedEmail:'customer@example.com',expectedFaeEmail:'fae@example.com',actor:'tester',...extra})
+  await t.test('cancelled identical upload reuses original ID, preserves history and sends only once',async()=>{
+   await reset();sent=[];await application();const first=(await upload()).records[0]
+   await fileAction(pool,first.id,{action:'cancel',note:'重新核对'},'tester')
+   const restored=await upload()
+   assert.equal(restored.records[0].id,first.id);assert.equal(restored.records[0].state,'queued');assert.deepEqual(restored.reusedIds,[first.id])
+   assert.equal(Number((await pool.query('SELECT COUNT(*) total FROM dto_license_file'))[0][0].total),1)
+   const detail=await fileDetail(pool,first.id)
+   assert.ok(detail.history.some(r=>r.action==='cancel'));assert.ok(detail.history.some(r=>r.action==='reuploaded'));assert.ok(detail.history.some(r=>r.action==='uploaded'))
+   assert.equal((await manual('deliver-license',{expectedFileId:first.id})).state,'accepted')
+   await runNightly(pool,sender,night);assert.equal(customerCount(),1)
+  })
+  await t.test('cancelled corrupt storage can be repaired from identical re-upload without creating another record',async()=>{
+   await reset();sent=[];await application();const first=(await upload()).records[0]
+   await pool.query("UPDATE dto_license_file SET content=?,byte_length=999 WHERE id=?",[Buffer.from('corrupt'),first.id])
+   await runNightly(pool,sender,night);assert.equal(await state(first.id),'paused');assert.equal(customerCount(),0)
+   await fileAction(pool,first.id,{action:'cancel'},'tester')
+   const restored=(await upload()).records[0];assert.equal(restored.id,first.id);assert.equal(restored.state,'queued')
+   assert.equal((await manual('deliver-license',{expectedFileId:first.id})).state,'accepted')
+   assert.equal(Buffer.from(sent.find(m=>m.mailKind==='customer').attachments[0].base64,'base64').toString(),'license one')
+   assert.equal(Number((await pool.query('SELECT COUNT(*) total FROM dto_license_file'))[0][0].total),1)
+  })
+  await t.test('reupload of a rejection-cancelled file requires an eligible application',async()=>{
+   await reset();sent=[];await application();const first=(await upload()).records[0]
+   await rejectApplication(pool,1,'资料待核对','tester',2)
+   const blocked=await upload();assert.equal(blocked.records[0].id,first.id);assert.equal(blocked.records[0].state,'unmatched')
+   assert.equal(Number((await pool.query('SELECT status FROM dto_license_application WHERE id=1'))[0][0].status),3)
+   await assert.rejects(manual('deliver-license'),/已拒绝/)
+   await reset();await application();const second=(await upload()).records[0]
+   await rejectApplication(pool,1,'资料待核对','tester',2)
+   await setApplicationStatus(pool,1,{status:0,expectedStatus:3},'tester')
+   const restored=await upload();assert.equal(restored.records[0].id,second.id);assert.equal(restored.records[0].state,'queued')
+  })
+  await t.test('restoring cancelled file does not silently change recipient or bind another same-MAC application',async()=>{
+   await reset();await application();const first=(await upload()).records[0]
+   await fileAction(pool,first.id,{action:'cancel'},'tester')
+   await pool.query("UPDATE dto_license_application SET email='changed@example.com' WHERE id=1")
+   assert.equal((await upload()).records[0].state,'conflict')
+   await fileAction(pool,first.id,{action:'cancel'},'tester')
+   await pool.query('UPDATE dto_license_application SET status=3 WHERE id=1')
+   await application(2,'other@example.com')
+   const restored=(await upload()).records[0];assert.equal(restored.state,'unmatched');assert.equal(String(restored.application_id),'1')
+  })
+  await t.test('different content remains a separate file; repeat identical contents within batch has one active record',async()=>{
+   await reset();await application();const first=(await upload()).records[0]
+   await fileAction(pool,first.id,{action:'cancel'},'tester')
+   const changed=(await upload([input('new license content')])).records[0]
+   assert.notEqual(changed.id,first.id);assert.equal(await state(first.id),'cancelled')
+   await reset();await application();const original=(await upload()).records[0]
+   await fileAction(pool,original.id,{action:'cancel'},'tester')
+   const repeated=await upload([input(),input()]);assert.equal(repeated.records.filter(r=>r.state==='queued').length,1);assert.equal(repeated.records.filter(r=>r.state==='duplicate').length,1)
+  })
+  await t.test('restore uses new upload cutoff and retains retry budget',async()=>{
+   await reset();sent=[];await application();const first=(await upload()).records[0]
+   await fileAction(pool,first.id,{action:'cancel'},'tester')
+   await pool.query('UPDATE dto_license_file SET attempts=3 WHERE id=?',[first.id])
+   const before=Date.now();await uploadFiles(pool,{files:[input()]},'tester')
+   const [[row]]=await pool.query('SELECT uploaded_at,attempts FROM dto_license_file WHERE id=?',[first.id])
+   assert.equal(row.attempts,3);assert.ok(new Date(row.uploaded_at.replace(' ','T')+'+08:00').getTime()>=before-1000)
+   await assert.rejects(manual('deliver-license'),/重试超限/)
+   await runNightly(pool,sender,night);assert.equal(customerCount(),0)
+  })
+  await t.test('immediate FAE sends only selected application and daily digest skips it even after status reset',async()=>{
+   await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
+   assert.equal((await manual('notify-fae')).state,'accepted')
+   assert.equal(sent.length,1);assert.equal(sent[0].mailKind,'digest');assert.equal(sent[0].to,'fae@example.com')
+   assert.ok(sent[0].text.includes('#1'));assert.ok(!sent[0].text.includes('#2'))
+   assert.deepEqual((await pool.query('SELECT status FROM dto_license_application ORDER BY id'))[0].map(r=>r.status),[1,0])
+   assert.equal((await manual('notify-fae')).state,'skipped');assert.equal(sent.length,1)
+   await pool.query('UPDATE dto_license_application SET status=0 WHERE id=1')
+   assert.equal((await runDigest(pool,sender,{...morning,now:new Date('2026-09-25T01:00:00Z')})).count,1)
+   assert.ok(sent[1].text.includes('#2'));assert.ok(!sent[1].text.includes('#1 |'))
+  })
+  await t.test('immediate FAE rejects stale recipient, processed applications and uncertain mail',async()=>{
+   await reset();sent=[];await application()
+   await assert.rejects(manual('notify-fae',{expectedFaeEmail:'wrong@example.com'}),/FAE 邮箱/)
+   for(const status of [1,2,3]){
+    await pool.query('UPDATE dto_license_application SET status=? WHERE id=1',[status])
+    await assert.rejects(manual('notify-fae'),/仅待处理/)
+   }
+   await pool.query('UPDATE dto_license_application SET status=0 WHERE id=1')
+   await runApplicationStep(pool,async()=>({state:'unknown'}),{...night,applicationId:'1',action:'notify-fae',expectedEmail:'customer@example.com',expectedFaeEmail:'fae@example.com'})
+   await assert.rejects(manual('notify-fae'),/需核查/);assert.equal(sent.length,0)
+  })
+  await t.test('manual FAE retries single saved payload but never resends a multi-application batch',async()=>{
+   await reset();sent=[];await application()
+   const failed=[]
+   await runApplicationStep(pool,async message=>{failed.push(message);return {state:'failed'}},{...night,applicationId:'1',action:'notify-fae',expectedEmail:'customer@example.com',expectedFaeEmail:'fae@example.com'})
+   assert.equal((await manual('notify-fae')).state,'accepted')
+   assert.equal(sent[0].messageId,failed[0].messageId);assert.equal(sent[0].text,failed[0].text)
+   await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
+   await runDigest(pool,async()=>({state:'failed'}),morning)
+   await assert.rejects(manual('notify-fae'),/多条申请/);assert.equal(sent.length,0)
+  })
+  await t.test('manual FAE blocks an existing delivery and limits failed retries',async()=>{
+   await reset();sent=[];await application();await upload()
+   await pool.query('UPDATE dto_license_application SET status=0 WHERE id=1')
+   await assert.rejects(manual('notify-fae'),/已进入 License/)
+   await reset();await application()
+   for(let n=0;n<3;n++)await runApplicationStep(pool,async()=>({state:'failed'}),{...night,applicationId:'1',action:'notify-fae',expectedEmail:'customer@example.com',expectedFaeEmail:'fae@example.com'})
+   await assert.rejects(manual('notify-fae'),/上限/);assert.equal(sent.length,0)
+  })
   await t.test('accepted FAE notifications are not repeated after a manual status reset',async()=>{
    await reset();sent=[];await application();await runDigest(pool,sender,morning)
    await pool.query('UPDATE dto_license_application SET status=0 WHERE id=1')

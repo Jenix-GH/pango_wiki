@@ -66,6 +66,18 @@ export async function renderLicenseApplications(content,request,openDelivery){
       }
     }catch(error){body.replaceChildren(el('p',error.message))}
   }
+  async function notifyFae(row,target){
+    target.disabled=true
+    try{
+      const workflow=await request(`/license-delivery/applications/${row.id}/workflow`)
+      const current=workflow.application
+      if(!workflow.faeEmail)throw new Error('请先配置 FAE 邮箱')
+      if(!window.confirm(`立即通知 FAE？\n申请 #${current.id} · ${current.applicant_name}\n公司或学校：${current.company_name}\nFAE 收件邮箱：${workflow.faeEmail}\n\n平台邮箱将发送这一条申请。成功后转为“处理中”，早间汇总会跳过已通知的申请。`))return
+      const result=await request(`/license-delivery/applications/${row.id}/workflow`,{method:'POST',body:JSON.stringify({action:'notify-fae',confirm:true,confirmedApplicationId:String(row.id),expectedEmail:current.email,expectedFaeEmail:workflow.faeEmail})})
+      message.textContent=result.state==='accepted'?`申请 #${row.id} 已通知 FAE，状态已转为处理中。邮件服务器已接受，请核对收件箱。`:`申请 #${row.id}：${mailLabels[result.state]||result.state}。${result.detail||'请查看 FAE 通知记录。'}`
+      await load()
+    }catch(error){report(error)}finally{target.disabled=false}
+  }
   async function showHistory(row){
     const {d,body}=dialog(`状态记录 · 申请 #${row.id}`);body.append(el('p','读取中…'))
     try{
@@ -86,7 +98,7 @@ export async function renderLicenseApplications(content,request,openDelivery){
       const data=await request(`/licenses?${new URLSearchParams({page:String(view.page),status:view.status,startDate:view.startDate,endDate:view.endDate})}`)
       if(!root.isConnected)return
       mode.hidden=Boolean(data.workflowEnabled&&data.sendingEnabled)
-      mode.textContent=data.workflowEnabled?'当前为准备模式：状态和拒绝理由会保存，邮件排队等待启用发送。':'工作流尚未配置：可查询申请，暂不能设置状态或安排拒绝通知。'
+      mode.textContent=data.workflowEnabled?'当前为准备模式：定时发送未启用；状态和拒绝理由会保存，明确确认后可单条立即通知 FAE。':'工作流尚未配置：可查询申请，暂不能设置状态或安排拒绝通知。'
       count.textContent=`共 ${data.total} 条申请 · 按提交时间筛选${view.startDate||view.endDate?`：${view.startDate||'不限'} 至 ${view.endDate||'不限'}（含结束当天）`:''}`
       const table=el('table'),head=el('thead'),hr=el('tr');['申请编号','提交时间','申请人 / 公司','系统 / 版本','类型 / 年限','MAC 地址','联系方式','官网已提交','申请状态','文件 / 邮件','拒绝理由','操作'].forEach(h=>hr.append(el('th',h)));head.append(hr);const tbody=el('tbody');table.append(head,tbody)
       for(const row of data.records){
@@ -108,6 +120,7 @@ export async function renderLicenseApplications(content,request,openDelivery){
         })
         const operation=el('div','','license-row-actions')
         if(data.workflowEnabled){
+          if(Number(row.status)===0)operation.append(button('立即通知 FAE',event=>notifyFae(row,event.currentTarget),'feedback-detail-link'))
           operation.append(button('状态记录',()=>showHistory(row),'feedback-detail-link'))
           if(Number(row.status)===3&&row.rejection_reason)operation.append(button('拒绝详情 / 邮件',()=>showRejection(row),'feedback-detail-link'))
           else if(!['accepted','sending','unknown'].includes(row.delivery_state))operation.append(button(Number(row.status)===3?'补充拒绝理由':'拒绝申请',()=>reject(row),'license-reject-button'))

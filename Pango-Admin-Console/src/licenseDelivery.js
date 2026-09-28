@@ -1,6 +1,6 @@
 export const deliveryLabels={queued:'待夜间发放',conflict:'匹配冲突',unmatched:'无法匹配',duplicate:'重复文件',paused:'已暂停',sending:'发送中',accepted:'邮件服务已接受',failed:'发送失败',unknown:'结果待核查',cancelled:'已取消'}
 const labels=deliveryLabels
-const actions={uploaded:'上传文件',match:'核对并重新匹配',pause:'暂停发放',cancel:'取消此文件','resolve-accepted':'已核实发出','resolve-failed':'已核实未发出'}
+const actions={uploaded:'上传文件',reuploaded:'重新上传并恢复原记录',match:'核对并重新匹配',pause:'暂停发放',cancel:'取消此文件','resolve-accepted':'已核实发出','resolve-failed':'已核实未发出'}
 const displayTime=value=>String(value||'—').replace('T',' ').slice(0,19)
 const node=(tag,text='',className='')=>{const el=document.createElement(tag);el.textContent=text;if(className)el.className=className;return el}
 function button(text,onClick,className=''){const el=node('button',text,className);el.type='button';el.addEventListener('click',onClick);return el}
@@ -21,7 +21,7 @@ export async function renderLicenseDelivery(content,request){
   if(!cfg.enabled){root.append(node('div','自动发放尚未配置。请先执行数据库迁移，再启用 LICENSE_DELIVERY_ENABLED。','panel'));return}
   if(!cfg.sendingEnabled)root.append(node('div','当前为准备模式：可以上传和核对文件，自动发信尚未启用。','delivery-warning'))
   const uploadPanel=node('section','','panel delivery-upload')
-  uploadPanel.append(node('h2','批量上传 License'),node('p','文件名：new_pds_<12位MAC>.lic。上传即加入处理队列，22:00 后上传的文件进入下一晚。请先核对文件内授权信息。'))
+  uploadPanel.append(node('h2','批量上传 License'),node('p','文件名：new_pds_<12位MAC>.lic。上传即加入处理队列，22:00 后上传的文件进入下一晚。请先核对文件内授权信息。已取消的相同内容文件再次上传，会复用原记录并重新匹配。'))
   const fileLabel=node('label','选择文件（每批最多 50 个，单个 1 MB，总计 10 MB）');const input=document.createElement('input');input.type='file';input.multiple=true;input.accept='.lic';input.id='licenseFiles';fileLabel.htmlFor=input.id;uploadPanel.append(fileLabel,input)
   const upload=button('上传并匹配',async()=>{
     const files=Array.from(input.files||[])
@@ -32,7 +32,7 @@ export async function renderLicenseDelivery(content,request){
       const result=await request('/license-delivery/upload',{method:'POST',body:JSON.stringify({files:await Promise.all(files.map(encodeFile))})})
       if(!root.isConnected)return
       const queued=result.records.filter(f=>f.state==='queued').length
-      message.textContent=`本批 ${result.records.length} 个文件：${queued} 个待发放，${result.records.length-queued} 个需查看匹配结果。`
+      message.textContent=`本批 ${result.records.length} 个文件：${queued} 个待发放，${result.records.length-queued} 个需查看匹配结果。${result.reusedIds?.length?`其中 ${result.reusedIds.length} 个复用已取消的原记录，未新增条目。`:''}`
       input.value='';page=1;await reload()
     }catch(error){report(error)}finally{upload.disabled=false;input.disabled=false}
   },'export-button')
