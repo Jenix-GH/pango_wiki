@@ -5,8 +5,8 @@ import mysql from 'mysql2/promise'
 import {readFile} from 'node:fs/promises'
 import {runApplicationStep,applicationWorkflow} from '../licenseDelivery.mjs'
 import {createWorkflowMailSender} from '../licenseMail.mjs'
-import {uploadFiles,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,cancelRejection,restoreRejection,resolveWorkflowMail,listApplications,listFiles,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
-const night={faeEmail:'fae@example.com',replyTo:'fae@example.com',now:new Date('2026-09-23T14:00:00Z')}
+import {uploadFiles,setMailCc,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,cancelRejection,restoreRejection,resolveWorkflowMail,listApplications,listFiles,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
+const night={faeEmail:'fae@example.com',replyTo:'fae@example.com',now:new Date('2026-09-23T12:00:00Z')}
 const morning={...night,now:new Date('2026-09-23T01:00:00Z')}
 const input=(content='license one',name='new_pds_1A2B3C4D5F60.lic')=>({name,base64:Buffer.from(content).toString('base64')})
 test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},async t=>{
@@ -15,13 +15,13 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
  try{
   assert.equal((await pool.query('SELECT DATABASE() name'))[0][0].name,'pango_license_test')
   await pool.query(`CREATE TABLE IF NOT EXISTS dto_license_application (id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,userinfo_id BIGINT NULL,official_submitted TINYINT NULL,mac_address VARCHAR(50),email VARCHAR(254),applicant_name VARCHAR(100),company_name VARCHAR(200),operating_system VARCHAR(50),software_version VARCHAR(50),license_type VARCHAR(30),duration_years INT,status INT DEFAULT 0,dotime DATETIME DEFAULT CURRENT_TIMESTAMP,uptime DATETIME DEFAULT CURRENT_TIMESTAMP,phone VARCHAR(50),address VARCHAR(500)) ENGINE=InnoDB`)
-  for (const name of ['20260923_license_delivery.sql','20260923_license_workflow.sql','20260924_license_manual_status.sql']) {
+  for (const name of ['20260923_license_delivery.sql','20260923_license_workflow.sql','20260924_license_manual_status.sql', '20260928_license_cc.sql']) {
     const migration=await readFile(new URL(`../database/${name}`,import.meta.url),'utf8')
     for(const sql of migration.split(';').map(s=>s.trim()).filter(Boolean))await pool.query(sql)
   }
-  const reset=async()=>{for(const table of ['dto_license_status_change','dto_license_rejection','dto_license_digest_item','dto_license_digest_batch','dto_license_delivery_audit','dto_license_mail','dto_license_file','dto_license_application'])await pool.query(`TRUNCATE TABLE ${table}`)}
+  const reset=async()=>{for(const table of ['dto_license_cc','dto_license_mail_recipients','dto_license_status_change','dto_license_rejection','dto_license_digest_item','dto_license_digest_batch','dto_license_delivery_audit','dto_license_mail','dto_license_file','dto_license_application'])await pool.query(`TRUNCATE TABLE ${table}`)}
   const application=async(id=1,mail='customer@example.com',mac='1a-2b-3c-4d-5f-60')=>pool.query("INSERT INTO dto_license_application(id,mac_address,email,applicant_name,company_name,operating_system,software_version,license_type,duration_years) VALUES(?,?,?,'测试客户','测试公司','Windows','test','STANDALONE',1)",[id,mac,mail])
-  const upload=async(files=[input()])=>{const result=await uploadFiles(pool,{files},'tester');await pool.query("UPDATE dto_license_file SET uploaded_at='2026-09-23 21:00:00'");return result}
+  const upload=async(files=[input()])=>{const result=await uploadFiles(pool,{files},'tester');await pool.query("UPDATE dto_license_file SET uploaded_at='2026-09-23 19:00:00'");return result}
   const state=async id=>(await pool.query('SELECT state FROM dto_license_file WHERE id=?',[id]))[0][0].state
   let sent=[]
   const sender=async message=>{sent.push(message);return {state:'accepted',detail:'fake accepted'}}
@@ -29,10 +29,60 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   const manual=(action,extra={})=>runApplicationStep(pool,sender,{...night,now:new Date('2026-09-24T05:00:00Z'),applicationId:'1',action,expectedEmail:'customer@example.com',expectedFaeEmail:'fae@example.com',actor:'tester',...extra})
   const cancelNotice=async(id=1,extra={})=>cancelRejection(pool,String(id),{confirm:true,expectedUpdatedAt:(await rejectionDetail(pool,id)).record.updated_at,...extra},'tester')
   const restoreNotice=async(id=1,extra={})=>restoreRejection(pool,String(id),{confirm:true,expectedUpdatedAt:(await rejectionDetail(pool,id)).record.updated_at,...extra},'tester')
+  const setCc=async(kind,id,cc,extra={})=>setMailCc(pool,kind,id,{cc,expectedUpdatedAt:kind==='file'?(await fileDetail(pool,id)).file.updated_at:(await rejectionDetail(pool,id)).record.updated_at,...extra},'tester')
+  await t.test('CC remains per file, works for immediate and scheduled mail, and records exact recipients',async()=>{
+   await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
+   const first=(await upload()).records[0],second=(await upload([input('other','new_pds_AABBCCDDEEFF.lic')])).records[0]
+   await setCc('file',first.id,'cc1@example.com;cc2@example.com;customer@example.com;CC1@example.com')
+   assert.deepEqual((await fileDetail(pool,first.id)).file.cc,['cc1@example.com','cc2@example.com'])
+   assert.deepEqual((await listFiles(pool,new URLSearchParams())).records.find(r=>r.id===first.id).cc,['cc1@example.com','cc2@example.com'])
+   await assert.rejects(manual('deliver-license',{expectedCc:[]}),/抄送邮箱已变化/)
+   await manual('deliver-license',{expectedCc:['cc1@example.com','cc2@example.com']})
+   assert.deepEqual(sent[0].cc,['cc1@example.com','cc2@example.com']);assert.equal(sent[0].to,'customer@example.com')
+   assert.deepEqual((await fileDetail(pool,first.id)).mails[0].recipient_history[0].cc,sent[0].cc)
+   await setCc('file',second.id,'other-copy@example.com');await runNightly(pool,sender,night)
+   assert.deepEqual(sent.find(m=>m.to==='other@example.com').cc,['other-copy@example.com'])
+   assert.equal(sent.filter(m=>m.to==='customer@example.com').length,1)
+   await assert.rejects(setCc('file',first.id,''),/不能修改/)
+  })
+  await t.test('CC edits can clear pending copies, reject stale views and keep immutable attempt history',async()=>{
+   await reset();sent=[];await application();const file=(await upload()).records[0]
+   const old=(await fileDetail(pool,file.id)).file.updated_at
+   await setCc('file',file.id,'first@example.com')
+   await assert.rejects(setCc('file',file.id,'new@example.com',{expectedUpdatedAt:old}),/记录已变化/)
+   await runNightly(pool,async()=>({state:'failed',detail:'all recipients rejected'}),night)
+   await setCc('file',file.id,'');assert.deepEqual((await fileDetail(pool,file.id)).file.cc,[])
+   await runNightly(pool,sender,night)
+   const history=(await fileDetail(pool,file.id)).mails[0].recipient_history
+   assert.deepEqual(history.map(r=>r.cc),[[],['first@example.com']]);assert.deepEqual(sent.find(m=>m.mailKind==='customer').cc,[])
+  })
+  await t.test('changed primary applicant pauses saved CC rather than sending to stale parties',async()=>{
+   await reset();sent=[];await application();const file=(await upload()).records[0];await setCc('file',file.id,'copy@example.com')
+   await pool.query("UPDATE dto_license_application SET email='changed@example.com' WHERE id=1")
+   await fileAction(pool,file.id,{action:'match',note:'verified new primary recipient'},'tester')
+   await runNightly(pool,sender,night);assert.equal(await state(file.id),'paused');assert.equal(customerCount(),0)
+   await setCc('file',file.id,'');await fileAction(pool,file.id,{action:'match',note:'clear stale CC'},'tester')
+   await runNightly(pool,sender,night);assert.equal(sent.filter(m=>m.to==='changed@example.com').length,1)
+  })
+  await t.test('partial CC delivery remains unknown and blocks recipient edits or automatic duplicates',async()=>{
+   await reset();sent=[];await application();const file=(await upload()).records[0];await setCc('file',file.id,'copy@example.com')
+   let calls=0;await runNightly(pool,async()=>{calls++;return {state:'unknown',detail:'partial delivery'}},night)
+   const count=calls;await runNightly(pool,async()=>{calls++;return {state:'accepted'}},night)
+   assert.equal(calls,count);assert.equal(await state(file.id),'unknown');await assert.rejects(setCc('file',file.id,''),/不能修改/)
+  })
+  await t.test('rejection CC is optional, persists through suppression/restore, and resets for a new cycle',async()=>{
+   await reset();sent=[];await application();await rejectApplication(pool,1,'first reason','tester',0)
+   await setCc('rejection','1','reviewer@example.com');assert.deepEqual((await rejectionDetail(pool,1)).record.cc,['reviewer@example.com'])
+   await cancelNotice();await restoreNotice();await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'")
+   await runNightly(pool,sender,night);assert.deepEqual(sent.find(m=>m.mailKind==='rejection').cc,['reviewer@example.com'])
+   const prior=(await rejectionDetail(pool,1)).mails[0];assert.deepEqual(prior.cc,['reviewer@example.com'])
+   await setApplicationStatus(pool,1,{status:0,expectedStatus:3},'tester');await rejectApplication(pool,1,'second reason','tester',0)
+   assert.deepEqual((await rejectionDetail(pool,1)).record.cc,[]);assert.deepEqual((await rejectionDetail(pool,1)).mails[0].recipient_history[0].cc,['reviewer@example.com'])
+  })
   await t.test('restore reverses only selected suppression without immediate mail, can cancel again, and later sends once',async()=>{
    await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
    await rejectApplication(pool,1,'原拒绝理由','tester',0);await rejectApplication(pool,2,'其他理由','tester',0)
-   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'")
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'")
    const original=(await pool.query('SELECT * FROM dto_license_application WHERE id=1'))[0][0]
    await cancelNotice();await cancelNotice(2)
    assert.equal((await restoreNotice()).state,'queued');assert.equal((await restoreNotice()).state,'queued');assert.equal(sent.length,0)
@@ -45,9 +95,9 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   })
   await t.test('restoring failed cancelled notice repairs current dedupe state and preserves accepted history',async()=>{
    await reset();sent=[];await application();await rejectApplication(pool,1,'第一次','tester',0)
-   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'");await runNightly(pool,sender,night)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'");await runNightly(pool,sender,night)
    await setApplicationStatus(pool,1,{status:0,expectedStatus:3},'tester');await rejectApplication(pool,1,'第二次','tester',0)
-   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'");await runNightly(pool,async()=>({state:'failed'}),night)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'");await runNightly(pool,async()=>({state:'failed'}),night)
    await cancelNotice();await restoreNotice();const before=await rejectionDetail(pool,1)
    assert.equal(before.record.attempts,0);assert.equal(before.mails.find(m=>Number(m.current_cycle)===1).state,'failed');assert.equal(before.mails.find(m=>Number(m.current_cycle)===0).state,'accepted')
    sent=[];await runNightly(pool,sender,night);assert.equal(customerCount(),1)
@@ -64,7 +114,7 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
    for(const state of ['accepted','sending','unknown']){
     await pool.query('UPDATE dto_license_rejection SET state=? WHERE application_id=1',[state]);await assert.rejects(restoreNotice(),/仅已取消/)
    }
-   await pool.query("UPDATE dto_license_rejection SET state='queued',created_at='2026-09-23 21:00:00' WHERE application_id=1")
+   await pool.query("UPDATE dto_license_rejection SET state='queued',created_at='2026-09-23 19:00:00' WHERE application_id=1")
    await runNightly(pool,async()=>({state:'unknown'}),night)
    await pool.query("UPDATE dto_license_rejection SET state='cancelled' WHERE application_id=1")
    await assert.rejects(restoreNotice(),/结果待核查/)
@@ -72,7 +122,7 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   await t.test('cancel one queued rejection preserves rejected application and reason, skips nightly, and leaves others sendable',async()=>{
    await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
    await rejectApplication(pool,1,'历史记录，不再通知','tester',0);await rejectApplication(pool,2,'第二条原因','tester',0)
-   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'")
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'")
    const original=(await pool.query('SELECT * FROM dto_license_application WHERE id=1'))[0][0]
    assert.equal((await cancelNotice()).state,'cancelled');assert.equal((await cancelNotice()).state,'cancelled')
    assert.deepEqual((await pool.query('SELECT * FROM dto_license_application WHERE id=1'))[0][0],original)
@@ -86,9 +136,9 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   })
   await t.test('cancel failed rejection stops retry but preserves previously sent rejection cycle',async()=>{
    await reset();sent=[];await application();await rejectApplication(pool,1,'第一次理由','tester',0)
-   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'");await runNightly(pool,sender,night)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'");await runNightly(pool,sender,night)
    await setApplicationStatus(pool,1,{status:0,expectedStatus:3},'tester');await rejectApplication(pool,1,'第二次理由','tester',0)
-   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'");await runNightly(pool,async()=>({state:'failed',detail:'fake failure'}),night)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'");await runNightly(pool,async()=>({state:'failed',detail:'fake failure'}),night)
    assert.equal((await rejectionDetail(pool,1)).record.state,'failed');await cancelNotice()
    const detail=await rejectionDetail(pool,1);assert.equal(detail.record.state,'cancelled');assert.equal(detail.mails.find(m=>Number(m.current_cycle)===1).state,'cancelled');assert.equal(detail.mails.find(m=>Number(m.current_cycle)===0).state,'accepted')
    sent=[];await runNightly(pool,sender,night);assert.equal(customerCount(),0)
@@ -106,7 +156,7 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   })
   await t.test('cancel checks current mail uncertainty even if rejection state has become inconsistent',async()=>{
    await reset();await application();await rejectApplication(pool,1,'原因','tester',0)
-   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'")
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'")
    await runNightly(pool,async()=>({state:'unknown'}),night)
    await pool.query("UPDATE dto_license_rejection SET state='queued' WHERE application_id=1")
    await assert.rejects(cancelNotice(),/待核查记录/)
@@ -176,7 +226,7 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   await t.test('logo follows customer, rejection, summary and digest paths; failed digest retains saved logo',async()=>{
    const logo={mimeType:'image/png',base64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j6QAAAABJRU5ErkJggg==',width:180}
    await reset();sent=[];await application();await upload();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF');await rejectApplication(pool,2,'test reason','tester',0)
-   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'")
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'")
    await runNightly(pool,sender,{...night,logo})
    assert.deepEqual(sent.map(m=>m.mailKind),['customer','rejection','summary'])
    assert.ok(sent.every(m=>m.html.includes('cid:pango-company-logo')&&m.inlineImages.length===1))
@@ -255,7 +305,7 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
    assert.equal(Buffer.from(sent[0].attachments[0].base64,'base64').toString(),'license one')
    assert.equal(await state(first.records[0].id),'accepted');assert.equal(await state(second.records[0].id),'queued')
    assert.equal((await manual('deliver-license')).state,'skipped');assert.equal(sent.length,1)
-   await runNightly(pool,sender,{...night,now:new Date('2026-09-25T14:00:00Z')})
+   await runNightly(pool,sender,{...night,now:new Date('2026-09-25T12:00:00Z')})
    assert.equal(sent.filter(m=>m.to==='customer@example.com').length,1)
    assert.equal((await applicationWorkflow(pool,'1','fae@example.com')).mails[0].state,'accepted')
   })
@@ -283,7 +333,7 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
    const routed=createWorkflowMailSender({LICENSE_MAIL_ENV:'/platform.env',LICENSE_FAE_MAIL_ENV:'/fae.env',LICENSE_FAE_EMAIL:'fae@example.com'},{senderFactory:config=>async message=>{delivered.push({path:config.LICENSE_MAIL_ENV,...message});return {state:'accepted',detail:'fake SMTP'}}})
    await application();await upload();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
    await rejectApplication(pool,2,'测试拒绝理由','tester',0)
-   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00'")
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'")
    await runNightly(pool,routed,night)
    assert.deepEqual(delivered.map(m=>[m.mailKind,m.path]),[['customer','/fae.env'],['rejection','/fae.env'],['summary','/platform.env']])
    await reset();delivered.length=0;await application();await runDigest(pool,routed,morning)
@@ -356,9 +406,9 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
    for(let i=0;i<4;i++)await runNightly(pool,fail,night);assert.equal(customerCount(),3);assert.equal(await state(records[0].id),'failed')
   })
   await t.test('late and paused files do not dispatch',async()=>{
-   await reset();sent=[];await application();const {records}=await upload();await pool.query("UPDATE dto_license_file SET uploaded_at='2026-09-23 22:01:00'")
+   await reset();sent=[];await application();const {records}=await upload();await pool.query("UPDATE dto_license_file SET uploaded_at='2026-09-23 20:01:00'")
    await runNightly(pool,sender,night);assert.equal(sent.length,0);await fileAction(pool,records[0].id,{action:'pause'},'tester')
-   await runNightly(pool,sender,{...night,now:new Date('2026-09-24T14:00:00Z')});assert.equal(customerCount(),0)
+   await runNightly(pool,sender,{...night,now:new Date('2026-09-24T12:00:00Z')});assert.equal(customerCount(),0)
   })
   await t.test('corrupted content pauses file',async()=>{
    await reset();sent=[];await application();const {records}=await upload();await pool.query("UPDATE dto_license_file SET content='tampered'");await runNightly(pool,sender,night)
@@ -368,6 +418,18 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
    await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF');await upload()
    assert.equal((await runDigest(pool,sender,morning)).count,1);assert.ok(sent[0].text.includes('#2'));assert.ok(!sent[0].text.includes('#1 |'))
    await runDigest(pool,sender,morning);assert.equal(sent.length,1)
+  })
+  await t.test('20:00 cutoff includes only files/rejections ready at cutoff, with a bounded manual execution window',async()=>{
+   await reset();sent=[];await application();await application(2,'late@example.com','AA-BB-CC-DD-EE-FF');await application(3,'reject@example.com','CC-BB-CC-DD-EE-FF');await application(4,'late-reject@example.com','DD-BB-CC-DD-EE-FF')
+   const first=(await upload()).records[0],late=(await upload([input('late','new_pds_AABBCCDDEEFF.lic')])).records[0]
+   await pool.query("UPDATE dto_license_file SET uploaded_at='2026-09-23 20:00:00.000000' WHERE id=?",[first.id]);await pool.query("UPDATE dto_license_file SET uploaded_at='2026-09-23 20:00:00.000001' WHERE id=?",[late.id])
+   await rejectApplication(pool,3,'cutoff reason','tester',0);await rejectApplication(pool,4,'late reason','tester',0)
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 20:00:00.000000' WHERE application_id=3");await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 20:00:00.000001' WHERE application_id=4")
+   for(const clock of ['11:59:59','13:00:00','14:00:00'])await assert.rejects(runNightly(pool,sender,{...night,now:new Date(`2026-09-23T${clock}Z`)}),/20:00/)
+   assert.equal(sent.length,0);const result=await runNightly(pool,sender,night);assert.equal(result.cutoff,'2026-09-23 20:00:00.000000')
+   assert.deepEqual(sent.filter(m=>m.to!=='fae@example.com').map(m=>m.to),['customer@example.com','reject@example.com'])
+   await runNightly(pool,sender,{...night,now:new Date('2026-09-23T12:59:59Z')});assert.equal(customerCount(),2)
+   await runNightly(pool,sender,{...night,now:new Date('2026-09-24T12:00:00Z')});assert.equal(sent.filter(m=>m.to==='late@example.com').length,1);assert.equal(sent.filter(m=>m.to==='late-reject@example.com').length,1)
   })
   await t.test('empty digest and Beijing execution windows',async()=>{
    await reset();sent=[];assert.equal((await runDigest(pool,sender,morning)).state,'empty');assert.equal(sent.length,0)
@@ -379,7 +441,7 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   const applicationState=async id=>Number((await pool.query('SELECT status FROM dto_license_application WHERE id=?',[id]))[0][0].status)
   const reject=async(id,reason='缺少必要申请资料，请补充后重新申请。')=>{
     const result=await rejectApplication(pool,id,reason,'tester')
-    await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 21:00:00' WHERE application_id=?",[id])
+    await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00' WHERE application_id=?",[id])
     return result
   }
   await t.test('business status advances only after successful FAE digest and valid upload',async()=>{

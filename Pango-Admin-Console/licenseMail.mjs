@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { isAbsolute } from 'node:path'
 import { accessSync, constants, realpathSync } from 'node:fs'
-import { validEmail } from './licenseDelivery.mjs'
+import { validEmail, normalizeCc } from './licenseDelivery.mjs'
 
 export function assertMailConfiguration(config, { requireFae = true } = {}) {
   if (!validEmail(config.LICENSE_FAE_EMAIL)) throw new Error('LICENSE_FAE_EMAIL 必须填写实际 FAE 邮箱')
@@ -28,11 +28,14 @@ export function createWorkflowMailSender(config, { testRecipient, senderFactory 
     if (!validEmail(message.to) || (expectedRecipient && message.to.toLowerCase() !== expectedRecipient.toLowerCase())) {
       return { state: 'failed', detail: '收件人不符合邮件通道配置，未发送' }
     }
+    let cc
+    try{cc=normalizeCc(message.cc,message.to)}catch{return {state:'failed',detail:'抄送邮箱配置无效，未发送'}}
+    if(cc.length&&(platform||testRecipient))return {state:'failed',detail:'此邮件通道不允许向额外抄送人发送'}
     const key = platform ? 'LICENSE_MAIL_ENV' : 'LICENSE_FAE_MAIL_ENV'
     const smtp=fae ? config.LICENSE_FAE_SMTP : undefined
     if (!smtp && (!config[key] || !isAbsolute(config[key]))) return { state: 'failed', detail: `${key} 未配置，未发送；不会切换到其他邮箱` }
     if (!senders.has(key)) senders.set(key, senderFactory({ ...config, LICENSE_MAIL_ENV: config[key], LICENSE_SMTP_SETTINGS:smtp }))
-    return senders.get(key)({ ...message,
+    return senders.get(key)({ ...message, cc,
       expectedFrom: fae ? config.LICENSE_FAE_EMAIL : undefined,
       forbiddenFrom: platform ? config.LICENSE_FAE_EMAIL : undefined,
     })

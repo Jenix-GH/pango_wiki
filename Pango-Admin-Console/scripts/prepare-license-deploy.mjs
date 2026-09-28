@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process'
 import { readWorkerConfig, workerPool } from '../licenseConfig.mjs'
 import { withDeliveryLock } from '../licenseDelivery.mjs'
 
-const migrations = ['20260923_license_delivery.sql', '20260923_license_workflow.sql', '20260924_license_manual_status.sql']
+const migrations = ['20260923_license_delivery.sql', '20260923_license_workflow.sql', '20260924_license_manual_status.sql', '20260928_license_cc.sql']
 
 export function preparationConfig(text) {
   // Remove duplicate definitions, including stale true values. Preserve every other setting.

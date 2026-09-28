@@ -1,7 +1,7 @@
 import test from 'node:test'
 import {applyMailTemplate} from '../licenseMailTemplates.mjs'
 import assert from 'node:assert/strict'
-import {macFromFilename,normalizeMac,validEmail,decodeUpload,chinaTime,customerMessage,digestMessage,snapshot,matchFile,dateConditions,rejectionMessage} from '../licenseDelivery.mjs'
+import {macFromFilename,normalizeCc,normalizeMac,validEmail,decodeUpload,chinaTime,customerMessage,digestMessage,snapshot,matchFile,dateConditions,rejectionMessage} from '../licenseDelivery.mjs'
 
 test('filename matching is anchored, hexadecimal and case insensitive',()=>{
   assert.equal(macFromFilename('new_pds_1a2b3c4d5f60.lic'),'1A2B3C4D5F60')
@@ -21,7 +21,7 @@ test('single recipient validation rejects header injection and lists',()=>{
   for(const email of ['a@example.com,b@example.com','a@example.com\r\nBcc: victim@example.com','Name <a@example.com>','missing@','a @example.com'])assert.equal(validEmail(email),false)
 })
 test('Beijing time is independent of server timezone',()=>{
-  assert.deepEqual(chinaTime(new Date('2026-09-23T14:00:00Z')),{date:'2026-09-23',hour:22,minute:0})
+  assert.deepEqual(chinaTime(new Date('2026-09-23T12:00:00Z')),{date:'2026-09-23',hour:20,minute:0})
   assert.equal(chinaTime(new Date('2026-09-23T01:00:00Z')).hour,9)
 })
 test('customer payload contains exactly the selected recipient and attachment',()=>{
@@ -81,4 +81,10 @@ test('rejection email carries the full customer-facing reason and no license att
   const message=rejectionMessage({id:5,email:'customer@example.com',applicant_name:'客户',mac_address:'AA-BB-CC-DD-EE-FF'},'资料不完整。\n请补充项目用途。','fae@example.com')
   assert.equal(message.to,'customer@example.com');assert.equal(message.replyTo,'fae@example.com')
   assert.ok(message.text.includes('资料不完整。\n请补充项目用途。'));assert.deepEqual(message.attachments,[])
+})
+
+test('CC normalization is optional, deduplicates To and validates every address',()=>{
+ assert.deepEqual(normalizeCc('  cc@example.com；CC@example.com, main@example.com\nsecond@example.com ','main@example.com'),['cc@example.com','second@example.com'])
+ assert.deepEqual(normalizeCc(''),[])
+ for(const cc of ['bad address','good@example.com\r\nBcc: victim@example.com',['valid@example.com\nBcc: victim@example.com'],['Name <test@example.com>'],[{}],Array.from({length:11},(_,i)=>`cc${i}@example.com`)])assert.throws(()=>normalizeCc(cc))
 })

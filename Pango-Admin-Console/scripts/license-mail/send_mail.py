@@ -3,6 +3,7 @@
 import argparse
 import base64
 import json
+import re
 import smtplib
 import sys
 from email.message import EmailMessage
@@ -10,6 +11,24 @@ from email.utils import formataddr, formatdate
 from pathlib import Path
 
 import mail_client
+
+
+def recipients(payload):
+    pattern = r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}"
+    def valid(address):
+        return isinstance(address, str) and len(address) <= 254 and re.fullmatch(pattern, address) is not None
+    to = payload.get('to')
+    raw = payload.get('cc', [])
+    if not valid(to) or not isinstance(raw, list) or len(raw) > 10:
+        raise ValueError('Invalid recipients')
+    cc, seen = [], {to.casefold()}
+    for address in raw:
+        if not valid(address):
+            raise ValueError('Invalid CC recipient')
+        if address.casefold() not in seen:
+            seen.add(address.casefold())
+            cc.append(address)
+    return to, cc
 
 
 def build_message(cfg, payload):
@@ -21,7 +40,10 @@ def build_message(cfg, payload):
         raise ValueError('Platform mail must use a separate sender account')
     msg = EmailMessage()
     msg['From'] = formataddr((cfg.display_name, cfg.address)) if cfg.display_name else cfg.address
-    msg['To'] = payload['to']
+    to, cc = recipients(payload)
+    msg['To'] = to
+    if cc:
+        msg['Cc'] = ', '.join(cc)
     msg['Subject'] = payload['subject']
     msg['Message-ID'] = payload['messageId']
     msg['Date'] = formatdate(localtime=False)
@@ -47,14 +69,18 @@ def build_message(cfg, payload):
 
 def dispatch(cfg, payload, opener=mail_client.open_authenticated_smtp):
     try:
+        to, cc = recipients(payload)
         msg = build_message(cfg, payload)
         server = opener(cfg, quiet=True)
     except Exception as error:
         return {'state': 'failed', 'detail': f'发信准备或连接失败：{type(error).__name__}'}
     try:
-        refused = server.send_message(msg, from_addr=cfg.address, to_addrs=[payload['to']])
+        refused = server.send_message(msg, from_addr=cfg.address, to_addrs=[to, *cc])
         if refused:
-            return {'state': 'failed', 'detail': '收件人被邮件服务拒绝'}
+            refused_addresses = {address.casefold() for address in refused}
+            if any(address.casefold() not in refused_addresses for address in [to, *cc]):
+                return {'state': 'unknown', 'detail': '部分收件人被拒绝，其他收件人可能已收信；请核查主收件人及抄送人，不会自动重发'}
+            return {'state': 'failed', 'detail': '所有收件人被邮件服务拒绝'}
         return {'state': 'accepted', 'detail': '邮件服务已接受'}
     except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused, smtplib.SMTPDataError) as error:
         return {'state': 'failed', 'detail': f'邮件服务明确拒绝：{type(error).__name__}'}

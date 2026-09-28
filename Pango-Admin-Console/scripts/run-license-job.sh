@@ -4,7 +4,7 @@ set -eu
 ADMIN_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 case "$(TZ=Asia/Shanghai date +%H)" in
   09) mode=digest ;;
-  22) mode=nightly ;;
+  20) mode=nightly ;;
   *) exit 0 ;;
 esac
 cd "$ADMIN_ROOT"

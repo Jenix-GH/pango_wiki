@@ -51,6 +51,21 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(len(list(msg.iter_attachments())), 1)
         self.assertEqual(next(msg.iter_attachments()).get_payload(decode=True), b'license bytes')
 
+    def test_cc_headers_envelope_and_partial_delivery_do_not_cause_blind_retry(self):
+        self.payload['cc'] = ['copy@example.com', 'customer@example.com', 'COPY@example.com']
+        parent = self
+        class SMTP:
+            def send_message(self, message, **kwargs):
+                parent.assertEqual(kwargs['to_addrs'], ['customer@example.com', 'copy@example.com'])
+                parent.assertEqual(str(message['Cc']), 'copy@example.com')
+                parent.assertEqual(next(message.iter_attachments()).get_payload(decode=True), b'license bytes')
+                return {'copy@example.com': (550, b'refused')}
+            def quit(self):
+                pass
+        self.assertEqual(send_mail.dispatch(self.cfg, self.payload, lambda *a, **k: SMTP())['state'], 'unknown')
+        self.payload['cc'] = ['copy@example.com\r\nBcc: hidden@example.com']
+        self.assertEqual(send_mail.dispatch(self.cfg, self.payload, lambda *a, **k: self.fail('must not connect'))['state'], 'failed')
+
     def test_failures_are_classified_before_or_during_data(self):
         def connection_failure(*a,**k):
             raise OSError('unreachable')

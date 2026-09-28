@@ -1,3 +1,4 @@
+import { ccEditor, recipientHistory } from './licenseCc.js'
 import { deliveryLabels } from './licenseDelivery.js'
 
 const statuses=['待处理','处理中','已处理','已拒绝']
@@ -33,7 +34,7 @@ export async function renderLicenseApplications(content,request,openDelivery){
   function report(error){if(!error.authentication)message.textContent=error.message||String(error)}
   async function reject(row){
     const {d,body}=dialog(`拒绝申请 #${row.id}`)
-    body.append(el('p',`${row.applicant_name} · ${row.company_name} · ${row.mac_address}`),el('p',`说明邮件将发送至：${row.email}`),el('p','拒绝理由会原文发送给客户。提交后停止此申请的 License 发放，说明邮件进入每晚 22:00 队列。','delivery-warning'))
+    body.append(el('p',`${row.applicant_name} · ${row.company_name} · ${row.mac_address}`),el('p',`说明邮件将发送至：${row.email}`),el('p','拒绝理由会原文发送给客户。提交后停止此申请的 License 发放，说明邮件进入每晚 20:00 队列。','delivery-warning'))
     const form=el('form','','license-reject-form');const label=el('label','拒绝理由');const reason=document.createElement('textarea');reason.required=true;reason.maxLength=2000;reason.rows=5;reason.setAttribute('aria-label','拒绝理由');reason.placeholder='请填写清晰、适合向客户说明的拒绝原因';label.append(reason)
     const error=el('p','','delivery-message');error.setAttribute('role','alert');const submit=el('button','确认拒绝并安排邮件','export-button');submit.type='submit';form.append(label,error,submit);body.append(form)
     form.addEventListener('submit',async event=>{
@@ -47,6 +48,10 @@ export async function renderLicenseApplications(content,request,openDelivery){
       const data=await request(`/license-delivery/rejections/${row.id}`);if(!d.isConnected)return;body.replaceChildren()
       const record=data.record
       body.append(el('h3','拒绝理由'),el('p',record.reason,'rejection-reason'),el('p',`操作人：${record.requested_by} · ${time(record.created_at)}`),el('p',`收件人：${record.recipient}`),el('p',`邮件状态：${mailLabels[record.state]||record.state}`),el('p',record.detail))
+      body.append(ccEditor(record.cc,['queued','failed','paused'].includes(record.state),async cc=>{
+        await request(`/license-delivery/rejections/${row.id}/cc`,{method:'POST',body:JSON.stringify({cc,expectedUpdatedAt:record.updated_at})})
+        message.textContent=`申请 #${row.id} 的拒绝通知抄送设置已保存。`;d.close();await load();await showRejection(row)
+      }),recipientHistory(data.mails))
       for(const mail of data.mails)body.append(el('p',`${Number(mail.current_cycle)===1?'本次拒绝邮件':'历史拒绝邮件'} · Message-ID：${mail.message_id}\n${time(mail.updated_at)} · ${mailLabels[mail.state]||mail.state}\n${mail.detail}`,'rejection-reason'))
       if(['queued','failed','paused'].includes(record.state)){
         const error=el('p','','delivery-message');error.setAttribute('role','alert')
@@ -84,7 +89,7 @@ export async function renderLicenseApplications(content,request,openDelivery){
             d.close();await load()
           }catch(err){error.textContent=err.message}finally{group.querySelectorAll('button').forEach(b=>b.disabled=false)}
         }
-        if(record.state==='unknown'&&data.mails.length){body.append(el('p','先核查邮件服务日志，避免重复通知客户。','delivery-warning'));group.append(button('已核实发出',()=>act('accepted')),button('已核实未发出',()=>act('failed')))}
+        if(record.state==='unknown'&&data.mails.length){body.append(el('p','先核查主收件人和全部抄送人的邮件服务日志，避免重复通知。','delivery-warning'));group.append(button('已核实发出',()=>act('accepted')),button('已核实未发出',()=>act('failed')))}
         else if(record.state!=='unknown')group.append(button('核对后重新排队',()=>act('retry')))
         body.append(note,group,error)
       }

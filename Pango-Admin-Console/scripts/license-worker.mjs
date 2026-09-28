@@ -14,7 +14,7 @@ try {
   if(mode!=='migrate')assertMailConfiguration(config,{requireFae:mode==='nightly'})
   pool=workerPool(config)
   if(mode==='migrate'){
-    for (const name of ['20260923_license_delivery.sql','20260923_license_workflow.sql','20260924_license_manual_status.sql']) {
+    for (const name of ['20260923_license_delivery.sql','20260923_license_workflow.sql','20260924_license_manual_status.sql', '20260928_license_cc.sql']) {
       const sql=await readFile(new URL(`../database/${name}`,import.meta.url),'utf8')
       for(const statement of sql.split(';').map(s=>s.trim()).filter(Boolean))await pool.query(statement)
     }

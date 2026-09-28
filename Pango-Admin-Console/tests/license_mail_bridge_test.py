@@ -14,10 +14,12 @@ from pathlib import Path
 
 class SMTP(socketserver.StreamRequestHandler):
     accepted=[]
+    envelopes=[]
     def handle(self):
         self.wfile.write(b'220 local fake smtp\r\n')
         data=False
         lines=[]
+        recipients=[]
         while True:
             line=self.rfile.readline()
             if not line:
@@ -25,6 +27,7 @@ class SMTP(socketserver.StreamRequestHandler):
             if data:
                 if line==b'.\r\n':
                     self.accepted.append(b''.join(lines))
+                    self.envelopes.append(list(recipients))
                     self.wfile.write(b'250 accepted\r\n');data=False
                 else:
                     lines.append(line)
@@ -32,6 +35,9 @@ class SMTP(socketserver.StreamRequestHandler):
                 self.wfile.write(b'250-localhost\r\n250 AUTH PLAIN LOGIN\r\n')
             elif line.upper().startswith(b'AUTH'):
                 self.wfile.write(b'235 authenticated\r\n')
+            elif line.upper().startswith(b'RCPT TO:'):
+                recipients.append(line.split(b':',1)[1].strip().strip(b'<>').decode())
+                self.wfile.write(b'250 ok\r\n')
             elif line.upper().startswith(b'DATA'):
                 self.wfile.write(b'354 send message\r\n');data=True
             elif line.upper().startswith(b'QUIT'):
@@ -42,6 +48,7 @@ class SMTP(socketserver.StreamRequestHandler):
 class BridgeTests(unittest.TestCase):
     def setUp(self):
         SMTP.accepted = []
+        SMTP.envelopes = []
 
     def test_node_routes_real_subprocesses_to_separate_accounts(self):
         with socketserver.TCPServer(('127.0.0.1', 0), SMTP) as server, tempfile.TemporaryDirectory() as tmp:
@@ -73,6 +80,32 @@ if(inlineResult.state!=='accepted')throw new Error(JSON.stringify(inlineResult))
                 messages = [BytesParser(policy=policy.default).parsebytes(raw) for raw in SMTP.accepted]
                 self.assertEqual([str(msg['From']) for msg in messages], ['platform@example.com', 'platform@example.com', 'fae@example.com', 'fae@example.com', 'fae@example.com'])
                 self.assertTrue(all(str(msg['To']) == 'tester@example.com' and msg['Cc'] is None and msg['Bcc'] is None for msg in messages))
+            finally:
+                server.shutdown()
+                thread.join()
+
+    def test_customer_and_rejection_cc_are_real_smtp_recipients(self):
+        with socketserver.TCPServer(('127.0.0.1', 0), SMTP) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                root = Path(__file__).resolve().parents[1]
+                config = dict(LICENSE_FAE_EMAIL='fae@example.com', LICENSE_PYTHON=sys.executable, LICENSE_FAE_SMTP=dict(address='fae@example.com', password='test-only', smtp_host='127.0.0.1', smtp_port=server.server_address[1], smtp_security='none', username='', display_name=''))
+                code = f"""
+import {{createWorkflowMailSender}} from {json.dumps((root/'licenseMail.mjs').as_uri())};
+const sender=createWorkflowMailSender({json.dumps(config)});
+for(const mailKind of ['customer','rejection']){{
+ const result=await sender({{mailKind,to:'customer@example.com',cc:['copy1@example.com','copy2@example.com'],subject:'CC test',text:'same body',messageId:'<'+mailKind+'-cc@localhost>',attachments:mailKind==='customer'?[{{name:'test.lic',base64:'bGljZW5zZQ=='}}]:[]}});
+ if(result.state!=='accepted')throw new Error(JSON.stringify(result));
+}}
+"""
+                result = subprocess.run(['node', '--input-type=module', '-e', code], capture_output=True, text=True, timeout=20)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(SMTP.envelopes, [['customer@example.com','copy1@example.com','copy2@example.com']] * 2)
+                messages = [BytesParser(policy=policy.default).parsebytes(raw) for raw in SMTP.accepted]
+                self.assertTrue(all(str(m['From']) == 'fae@example.com' and str(m['Cc']) == 'copy1@example.com, copy2@example.com' for m in messages))
+                self.assertEqual(next(messages[0].iter_attachments()).get_payload(decode=True), b'license')
+                self.assertEqual(len(list(messages[1].iter_attachments())), 0)
             finally:
                 server.shutdown()
                 thread.join()

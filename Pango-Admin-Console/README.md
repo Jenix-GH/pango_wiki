@@ -99,7 +99,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/upload-admin-cons
 
 脚本会先执行本地测试和构建，再上传源码压缩包。`config/`、`node_modules/`、`dist/`、`tests/`、`deploy/`、`.env*`、Python 缓存和日志不会进入源码压缩包；`deploy-admin-console.sh` 会作为本次远端部署入口单独上传。远端会在临时目录安装依赖、构建，并检查现有 PM2 工作目录。
 
-随后复制服务器原 `config/` 到临时版本，检查 License 七张工作流表。缺表时先使用服务器上的 `mysqldump` 备份现有数据库，再仅补建缺失表；已有表缺必要字段、邮件唯一索引或不是 InnoDB 时停止，不擅自修改。备份失败或数据库账号没有建表权限时不会切换代码。MySQL `max_allowed_packet` 至少 16 MB。此脚本不执行 Java 个人中心的 ALTER 迁移，不修改申请数据或历史状态。
+随后复制服务器原 `config/` 到临时版本，检查 License 九张工作流表。缺表时先使用服务器上的 `mysqldump` 备份现有数据库，再仅补建缺失表；已有表缺必要字段、邮件唯一索引或不是 InnoDB 时停止，不擅自修改。备份失败或数据库账号没有建表权限时不会切换代码。MySQL `max_allowed_packet` 至少 16 MB。此脚本不执行 Java 个人中心的 ALTER 迁移，不修改申请数据或历史状态。
 
 检查成功后只在新版本配置中设置 `LICENSE_DELIVERY_ENABLED=true`、`LICENSE_SEND_ENABLED=false`，其他配置保留。切换目录、重启配置指定的 PM2 进程，并核对实际网页及认证接口；检查失败恢复原代码及配置，新增数据库表保留。成功后也保留 `.pango-admin-backup-<发布编号>`（原工程及配置）；数据库备份存放在同级 `.pango-admin-database-backup-<发布编号>/database.sql`。备份包含私有数据，应按原服务器权限管理及备份策略保管，代码回退时不要直接恢复旧数据库覆盖新增业务数据。
 
@@ -133,10 +133,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/upload-admin-cons
 
 发信使用两套 SMTP 配置：`LICENSE_MAIL_ENV` 为平台邮箱，只向 `LICENSE_FAE_EMAIL` 发汇总；`LICENSE_FAE_MAIL_ENV` 为 FAE 邮箱，向客户发送 License 和拒绝说明。也可在“License 发放 → 邮件设置与测试”直接保存 FAE 邮箱与 SMTP 凭据，此时保存的同一地址同时用于接收平台通知和给客户发信，优先于文件配置。缺少 FAE 账号时不会用平台账号代发；已保存密码加密存储且不回显。页面支持编辑模板、插入变量、预览和单封测试发送。完整说明见 `deploy/mail-accounts.md`。
 
-新增“License 发放”页面：支持 `new_pds_<12位MAC>.lic` 多文件上传、匹配异常处理、暂停/取消、发送记录及结果核查。每天北京时间 09:00 汇总待办给 FAE，22:00 自动逐封发送客户附件。
+新增“License 发放”页面：支持 `new_pds_<12位MAC>.lic` 多文件上传、匹配异常处理、暂停/取消、发送记录及结果核查。每天北京时间 09:00 汇总待办给 FAE，20:00 自动逐封发送客户附件。
 
-该功能默认关闭。先依次迁移 `database/20260923_license_delivery.sql` 、`database/20260923_license_workflow.sql` 和 `database/20260924_license_manual_status.sql`，按 `config/database.env.example` 配置，再安装服务器计划任务。发送程序复用已有 SMTP `.env`；准备模式不发真实邮件。
+该功能默认关闭。先依次迁移 `database/20260923_license_delivery.sql` 、`database/20260923_license_workflow.sql` 、`database/20260924_license_manual_status.sql` 和 `database/20260928_license_cc.sql`，按 `config/database.env.example` 配置，再安装服务器计划任务。发送程序复用已有 SMTP `.env`；准备模式不发真实邮件。
 
-完整上线、权限、定时任务、回退和测试说明见完整仓库的 `docs/license-delivery-deployment.md`。申请状态为待处理、处理中、已处理、已拒绝：FAE 邮件发送成功后进入处理中，文件上传并匹配后进入已处理。拒绝理由必填，说明邮件在 22:00 队列中发送。支持提交日期与申请状态组合筛选；业务状态和邮件发送结果分别记录。四状态也支持人工下拉设置，修改留痕；选择拒绝仍需填写理由。历史状态迁移请参考部署说明。
+完整上线、权限、定时任务、回退和测试说明见完整仓库的 `docs/license-delivery-deployment.md`。申请状态为待处理、处理中、已处理、已拒绝：FAE 邮件发送成功后进入处理中，文件上传并匹配后进入已处理。拒绝理由必填，说明邮件在 20:00 队列中发送。支持提交日期与申请状态组合筛选；业务状态和邮件发送结果分别记录。四状态也支持人工下拉设置，修改留痕；选择拒绝仍需填写理由。历史状态迁移请参考部署说明。
 
 客户个人中心、两端登录要求和官网提交标记的升级步骤见 [`docs/license-portal-deployment.md`](../docs/license-portal-deployment.md)。需要额外执行一次 Java 目录中的增量迁移。

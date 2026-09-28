@@ -1,6 +1,8 @@
+import { ccEditor, recipientHistory } from './licenseCc.js'
 export const deliveryLabels={queued:'待夜间发放',conflict:'匹配冲突',unmatched:'无法匹配',duplicate:'重复文件',paused:'已暂停',sending:'发送中',accepted:'邮件服务已接受',failed:'发送失败',unknown:'结果待核查',cancelled:'已取消'}
+const fileReason=file=>file.state==='queued'&&file.reason==='唯一匹配；授权内容由上传人员核对，每晚 22:00 自动处理'?'唯一匹配；授权内容由上传人员核对，每晚 20:00 自动处理':file.reason
 const labels=deliveryLabels
-const actions={uploaded:'上传文件',reuploaded:'重新上传并恢复原记录',match:'核对并重新匹配',pause:'暂停发放',cancel:'取消此文件','resolve-accepted':'已核实发出','resolve-failed':'已核实未发出'}
+const actions={uploaded:'上传文件',reuploaded:'重新上传并恢复原记录',match:'核对并重新匹配',pause:'暂停发放',cancel:'取消此文件','set-cc':'修改抄送邮箱','resolve-accepted':'已核实发出','resolve-failed':'已核实未发出'}
 const displayTime=value=>String(value||'—').replace('T',' ').slice(0,19)
 const node=(tag,text='',className='')=>{const el=document.createElement(tag);el.textContent=text;if(className)el.className=className;return el}
 function button(text,onClick,className=''){const el=node('button',text,className);el.type='button';el.addEventListener('click',onClick);return el}
@@ -10,7 +12,7 @@ async function encodeFile(file){const buffer=new Uint8Array(await file.arrayBuff
 
 export async function renderLicenseDelivery(content,request){
   const root=node('section','','delivery-root');content.replaceChildren(root)
-  const heading=node('div','','page-heading');const title=node('div');title.append(node('h1','License 自动发放'),node('p','每天 09:00 汇总给 FAE · 每晚 22:00 校对并发送 · 北京时间'));heading.append(title);root.append(heading)
+  const heading=node('div','','page-heading');const title=node('div');title.append(node('h1','License 自动发放'),node('p','每天 09:00 汇总给 FAE · 每晚 20:00 校对并发送 · 北京时间'));heading.append(title);root.append(heading)
   const message=node('p','','delivery-message');message.setAttribute('role','status');root.append(message)
   const report=error=>{if(!error.authentication)message.textContent=error.message||String(error)}
   let cfg
@@ -21,7 +23,7 @@ export async function renderLicenseDelivery(content,request){
   if(!cfg.enabled){root.append(node('div','自动发放尚未配置。请先执行数据库迁移，再启用 LICENSE_DELIVERY_ENABLED。','panel'));return}
   if(!cfg.sendingEnabled)root.append(node('div','当前为准备模式：可以上传和核对文件，自动发信尚未启用。','delivery-warning'))
   const uploadPanel=node('section','','panel delivery-upload')
-  uploadPanel.append(node('h2','批量上传 License'),node('p','文件名：new_pds_<12位MAC>.lic。上传即加入处理队列，22:00 后上传的文件进入下一晚。请先核对文件内授权信息。已取消的相同内容文件再次上传，会复用原记录并重新匹配。'))
+  uploadPanel.append(node('h2','批量上传 License'),node('p','文件名：new_pds_<12位MAC>.lic。上传即加入处理队列，20:00 后上传的文件进入下一晚。请先核对文件内授权信息。已取消的相同内容文件再次上传，会复用原记录并重新匹配。'))
   const fileLabel=node('label','选择文件（每批最多 50 个，单个 1 MB，总计 10 MB）');const input=document.createElement('input');input.type='file';input.multiple=true;input.accept='.lic';input.id='licenseFiles';fileLabel.htmlFor=input.id;uploadPanel.append(fileLabel,input)
   const upload=button('上传并匹配',async()=>{
     const files=Array.from(input.files||[])
@@ -56,8 +58,12 @@ export async function renderLicenseDelivery(content,request){
     try{
       const data=await request(`/license-delivery/files/${id}`);if(!dialog.isConnected)return;body.replaceChildren()
       const file=data.file
-      body.append(node('h3',file.original_name),badge(file.state),node('p',file.reason),node('p',`MAC：${file.mac||'未识别'} · 申请：${file.application_id||'尚未关联'} · 尝试次数：${file.attempts}`))
+      body.append(node('h3',file.original_name),badge(file.state),node('p',fileReason(file)),node('p',`MAC：${file.mac||'未识别'} · 申请：${file.application_id||'尚未关联'} · 尝试次数：${file.attempts}`))
       const download=node('a','下载文件核对');download.href=`/local-api/license-delivery/files/${id}/content`;download.className='feedback-detail-link';body.append(download)
+      body.append(ccEditor(file.cc,Boolean(file.application_id)&&['queued','failed','paused'].includes(file.state),async cc=>{
+        await request(`/license-delivery/files/${id}/cc`,{method:'POST',body:JSON.stringify({cc,expectedUpdatedAt:file.updated_at})})
+        message.textContent='此文件的抄送设置已保存，立即发送和夜间发放均会使用。';dialog.close();await reload();await detail(id)
+      }))
       if(file.application_id&&['queued','failed'].includes(file.state)){
         const sendStatus=node('p','','delivery-message');sendStatus.setAttribute('role','status')
         const sendNow=button('立即发送',async()=>{
@@ -66,14 +72,15 @@ export async function renderLicenseDelivery(content,request){
             const workflow=await request(`/license-delivery/applications/${file.application_id}/workflow`)
             if(!dialog.isConnected)return
             const row=workflow.application
-            if(!window.confirm(`立即发送此 License？\n\n申请编号：#${row.id}\n附件：${file.original_name}\n发件人：${workflow.faeEmail||'FAE 邮箱未配置'}\n收件人：${row.email}\n\n这会真实发送并保存正式记录。成功后 22 点任务不再重复发放；只处理此文件对应的申请。`)){sendStatus.textContent='已取消，未发送。';return}
+            const cc=workflow.files.find(item=>item.id===file.id)?.cc||[]
+            if(!window.confirm(`立即发送此 License？\n\n申请编号：#${row.id}\n附件：${file.original_name}\n发件人：${workflow.faeEmail||'FAE 邮箱未配置'}\n收件人：${row.email}\n抄送：${cc.join('、')||'无'}\n\n这会真实发送并保存正式记录。成功后 20:00任务不再重复发放；只处理此文件对应的申请。`)){sendStatus.textContent='已取消，未发送。';return}
             sendStatus.textContent='正在校对并发送此文件，请稍候…'
-            const result=await request(`/license-delivery/applications/${row.id}/workflow`,{method:'POST',body:JSON.stringify({action:'deliver-license',confirm:true,confirmedApplicationId:String(row.id),expectedFileId:file.id,expectedEmail:row.email,expectedFaeEmail:workflow.faeEmail})})
+            const result=await request(`/license-delivery/applications/${row.id}/workflow`,{method:'POST',body:JSON.stringify({action:'deliver-license',confirm:true,confirmedApplicationId:String(row.id),expectedFileId:file.id,expectedEmail:row.email,expectedCc:cc,expectedFaeEmail:workflow.faeEmail})})
             message.textContent=result.state==='accepted'?'邮件服务已接受，请核对实际收件与附件；本申请已记录发放结果，定时任务不会重复发放。':`${labels[result.state]||result.state}：${result.detail||'请查看文件与邮件记录'}`
             dialog.close();await reload()
           }catch(error){if(!error.authentication)sendStatus.textContent=error.message||'发送失败，请核对后再试'}finally{sendNow.disabled=false}
         },'export-button')
-        body.append(node('p','可立即发送已匹配的这份真实附件，不用等到 22 点；会保存正式发放记录。暂停、冲突或结果待核查的文件需先处理。','delivery-warning'),sendNow,sendStatus)
+        body.append(node('p','可立即发送已匹配的这份真实附件，不用等到 20:00；会保存正式发放记录。暂停、冲突或结果待核查的文件需先处理。','delivery-warning'),sendNow,sendStatus)
       }
       if(data.candidates.length)body.append(table(['申请编号','申请人 / 公司','系统 / 版本','类型 / 年限','客户邮箱'],data.candidates.map(row=>[row.id,`${row.applicant_name}\n${row.company_name}`,`${row.operating_system} / ${row.software_version}`,`${row.license_type} / ${row.duration_years}年`,row.email])))
       if(!['accepted','cancelled','duplicate','sending'].includes(file.state)){
@@ -87,9 +94,10 @@ export async function renderLicenseDelivery(content,request){
           try{await request(`/license-delivery/files/${id}/action`,{method:'POST',body:JSON.stringify({action,applicationId:select.value||undefined,note:note.value})});dialog.close();await reload()}catch(error){if(!error.authentication)errorBox.textContent=error.message}finally{group.querySelectorAll('button').forEach(el=>el.disabled=false)}
         }))
         if(file.state!=='unknown')form.append(select)
-        else form.append(node('p','请先按 Message-ID 核查邮箱服务记录。登记“未发出”后会暂停，需要重新匹配才会再次排队。','delivery-warning'))
+        else form.append(node('p','请先按 Message-ID 核查主收件人和所有抄送人的邮件服务记录。登记“未发出”后会暂停，需要重新匹配才会再次排队。','delivery-warning'))
         form.append(note,group,errorBox);body.append(form)
       }
+      body.append(recipientHistory(data.mails))
       body.append(node('h3','邮件记录'),table(['收件人','结果','Message-ID','详情','更新时间'],data.mails.map(mail=>[mail.recipient,labels[mail.state]||mail.state,mail.message_id,mail.detail,displayTime(mail.updated_at)])))
       body.append(node('h3','操作记录'),table(['时间','操作人','操作','说明'],data.history.map(row=>[displayTime(row.created_at),row.actor==='nightly'?'夜间任务':row.actor,actions[row.action]||labels[row.action]||row.action,row.note])))
     }catch(error){body.replaceChildren(node('p',error.message))}
@@ -103,7 +111,7 @@ export async function renderLicenseDelivery(content,request){
       const data=await request(`/license-delivery/files?${params}`)
       if(!root.isConnected)return
       summary.replaceChildren(...data.summary.map(item=>node('span',`${labels[item.state]||item.state} ${item.count}`,'delivery-stat')))
-      list.replaceChildren(table(['上传时间','文件 / MAC','申请编号','状态','说明','操作'],data.records.map(file=>[displayTime(file.uploaded_at),`${file.original_name}\n${file.mac||'无法识别 MAC'}`,file.application_id||'—',badge(file.state),file.reason,button('查看 / 处理',()=>detail(file.id),'feedback-detail-link')])))
+      list.replaceChildren(table(['上传时间','文件 / MAC','申请编号','抄送','状态','说明','操作'],data.records.map(file=>[displayTime(file.uploaded_at),`${file.original_name}\n${file.mac||'无法识别 MAC'}`,file.application_id||'—',file.cc?.join('、')||'—',badge(file.state),fileReason(file),button('查看 / 处理',()=>detail(file.id),'feedback-detail-link')])))
       const pager=node('div','','pager');const pages=Math.max(1,Math.ceil(data.total/30));const previous=button('上一页',()=>{page--;reload().catch(report)}),next=button('下一页',()=>{page++;reload().catch(report)});previous.disabled=page<=1;next.disabled=page>=pages;pager.append(node('span',`共 ${data.total} 条 · ${page} / ${pages}`),previous,next);list.append(pager)
       const noticeData=await request('/license-delivery/notices');if(!root.isConnected)return
       notices.replaceChildren(node('h2','最近 FAE 汇总邮件'),table(['时间','类型','收件人','结果','说明 / Message-ID','操作'],noticeData.records.map(row=>{

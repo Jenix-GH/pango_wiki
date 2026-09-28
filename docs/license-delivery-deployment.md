@@ -7,8 +7,8 @@
 - 四个业务状态：0 待处理（刚提交）、1 处理中（FAE 通知发送成功）、2 已处理（License 已上传并唯一匹配）、3 已拒绝（已保存拒绝理由）。业务状态与客户邮件发送结果分开。
 - 09:00 北京时间：把待处理申请汇总给唯一 FAE，附 CSV；邮件服务接受后才把这批申请转为处理中。无新待办或异常不发空邮件。已进入处理中的申请不再作为新申请重复通知。
 - FAE 批量上传 `new_pds_<12位十六进制MAC>.lic`，最多 50 个/批、1 MB/个、10 MB/批。文件私有保存在 MySQL，避免后台换版本时遗失附件；数据库备份需覆盖新表。
-- 初步匹配结果即时显示；22:00 前完整上传的文件进入当晚批次，之后进入下一晚。
-- 22:00 再次核对，正常 License 和拒绝说明分别发送给对应客户；拒绝邮件包含完整理由、不带 License 附件。发送结果反馈给 FAE。
+- 初步匹配结果即时显示；20:00 前完整上传的文件进入当晚批次，之后进入下一晚。
+- 20:00 再次核对，正常 License 和拒绝说明分别发送给对应客户；拒绝邮件包含完整理由、不带 License 附件。发送结果反馈给 FAE。
 - 申请页支持按提交日期（含结束当天）与四状态组合筛选；文件页支持按上传日期与文件状态筛选。
 - 唯一 MAC 匹配、合法邮箱、文件 SHA-256、申请信息快照及重复发送检查。
 - 冲突项可选择申请、取消多余文件并重新匹配；已拒绝申请不发送。文件名校验不等于授权内容校验。
@@ -22,7 +22,7 @@
 
 先备份现有业务库及服务器配置。把后台源码部署到实际后台目录（例如 `/home/sjchen/adminconsole`），保留原 `config/database.env`。
 
-累计七张 InnoDB 表（本次再增加一张状态历史表）：
+累计九张 InnoDB 工作流表：
 
 - `dto_license_file`：上传内容、批次、MAC、申请快照、匹配及发放状态。
 - `dto_license_mail`：客户发放和 FAE 汇总的去重键、Message-ID、结果。
@@ -31,7 +31,9 @@
 - `dto_license_rejection`：拒绝理由、操作人、收件人及说明邮件处理结果。
 - `dto_license_status_change`：人工设置前后状态、操作人、时间及修改前的拒绝记录快照。
 
-按顺序执行 `database/20260923_license_delivery.sql`、`database/20260923_license_workflow.sql`、`database/20260924_license_manual_status.sql`。前两份已执行的升级用户只需补执行第三份，旧迁移不改写。下面的 migrate 命令会按顺序执行全部幂等建表文件：
+另有 `dto_license_cc`（单条邮件抄送设置）和 `dto_license_mail_recipients`（发送收件人历史）。
+
+按顺序执行 `database/20260923_license_delivery.sql`、`database/20260923_license_workflow.sql`、`database/20260924_license_manual_status.sql`、`database/20260928_license_cc.sql`。已执行前三份的升级用户只需补执行第四份，旧迁移不改写。下面的 migrate 命令会按顺序执行全部幂等建表文件：
 
 ```bash
 cd /home/sjchen/adminconsole
@@ -95,14 +97,14 @@ command -v node
 crontab -l
 ```
 
-备份 crontab，编辑时移除或注释旧 `/home/sjchen/license-notify/run-daily.sh` 条目，再为新后台加入一条每小时检查的任务：
+备份 crontab，编辑时移除或注释旧 `/home/sjchen/license-notify/run-daily.sh` 条目，再为新后台加入一条每小时整点检查的任务：
 
 ```cron
 # 以下 /usr/bin/node 和 /home/sjchen/adminconsole 必须替换为实际路径。
 0 * * * * LICENSE_NODE_BIN=/usr/bin/node /bin/sh /home/sjchen/adminconsole/scripts/run-license-job.sh >> /var/lib/pango-license-notify/delivery-cron.log 2>&1
 ```
 
-包装脚本只在北京时间 09 点和 22 点运行对应任务，因此服务器本地时区为 UTC 也可以沿用这条 cron。日志目录须存在且执行账号可写。使用 `LICENSE_CONFIG_FILE` 可指定其他配置文件路径。
+包装脚本只在北京时间 09:00 和 20:00 运行对应任务，因此服务器本地时区为 UTC 也可以沿用这条 cron。日志目录须存在且执行账号可写。使用 `LICENSE_CONFIG_FILE` 可指定其他配置文件路径。
 
 任务是服务器计划任务，不依赖后台页面保持打开。多实例/重复触发使用数据库级命名锁，已发送邮件使用持久化去重键。锁占用时上传或人工操作会提示稍后重试。
 

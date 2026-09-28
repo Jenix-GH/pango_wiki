@@ -6,7 +6,7 @@ import { extname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import archiver from 'archiver'
 import mysql from 'mysql2/promise'
-import { uploadFiles, listFiles, fileDetail, fileAction, MAX_UPLOAD_BODY, problem, listApplications, setApplicationStatus, applicationStatusHistory, rejectionDetail, retryRejection, cancelRejection, restoreRejection, resolveWorkflowMail } from './licenseDelivery.mjs'
+import { uploadFiles, setMailCc, listFiles, fileDetail, fileAction, MAX_UPLOAD_BODY, problem, listApplications, setApplicationStatus, applicationStatusHistory, rejectionDetail, retryRejection, cancelRejection, restoreRejection, resolveWorkflowMail } from './licenseDelivery.mjs'
 import { conversationFileName, groupConversationRecords, imageExtension, renderConversationMarkdown } from './conversationExport.mjs'
 import { mailSettingsView, saveMailSettings, applySavedMailSettings } from './licenseMailSettings.mjs'
 import { createWorkflowMailSender, assertMailConfiguration } from './licenseMail.mjs'
@@ -517,7 +517,7 @@ async function updateLicenseStatus(response, id, body) {
 
 async function handleLicenseDelivery(request, response, path, params) {
   const enabled = config.LICENSE_DELIVERY_ENABLED === 'true'
-  if (request.method === 'GET' && path === '/license-delivery/config') return json(response, 200, {data:{enabled, sendingEnabled:config.LICENSE_SEND_ENABLED === 'true', timezone:'Asia/Shanghai', digestAt:'09:00', deliveryAt:'22:00'}})
+  if (request.method === 'GET' && path === '/license-delivery/config') return json(response, 200, {data:{enabled, sendingEnabled:config.LICENSE_SEND_ENABLED === 'true', timezone:'Asia/Shanghai', digestAt:'09:00', deliveryAt:'20:00'}})
   if (request.method === 'POST') {
     if (!String(request.headers['content-type'] || '').startsWith('application/json')) throw problem('仅接受 JSON 请求',415)
     if (request.headers.origin && new URL(request.headers.origin).host !== request.headers.host) throw problem('请求来源不允许',403)
@@ -558,9 +558,9 @@ async function handleLicenseDelivery(request, response, path, params) {
     const effective=await applySavedMailSettings(config,configPath)
     if(request.method==='GET')return json(response,200,{data:await applicationWorkflow(licensePool,workflowMatch[1],effective.LICENSE_FAE_EMAIL)})
     const body=await readLicenseJson(request)
-    if(body.confirm!==true||String(body.confirmedApplicationId)!==workflowMatch[1]||(body.action==='deliver-license'&&!/^[a-f0-9-]{36}$/.test(body.expectedFileId||'')))throw problem('请确认选中的申请、文件及真实发送',400)
+    if(body.confirm!==true||String(body.confirmedApplicationId)!==workflowMatch[1]||(body.action==='deliver-license'&&(!/^[a-f0-9-]{36}$/.test(body.expectedFileId||'')||!Array.isArray(body.expectedCc))))throw problem('请确认选中的申请、文件及真实发送',400)
     assertMailConfiguration(effective,{requireFae:body.action==='deliver-license'})
-    const result=await runApplicationStep(licensePool,createWorkflowMailSender(effective),{applicationId:workflowMatch[1],action:body.action,expectedFileId:body.expectedFileId,expectedEmail:body.expectedEmail,expectedFaeEmail:body.expectedFaeEmail,faeEmail:effective.LICENSE_FAE_EMAIL,replyTo:effective.LICENSE_REPLY_TO||effective.LICENSE_FAE_EMAIL,templates:effective.LICENSE_MAIL_TEMPLATES,logo:effective.LICENSE_MAIL_LOGO,actor:adminUser})
+    const result=await runApplicationStep(licensePool,createWorkflowMailSender(effective),{applicationId:workflowMatch[1],action:body.action,expectedFileId:body.expectedFileId,expectedEmail:body.expectedEmail,expectedCc:body.expectedCc,expectedFaeEmail:body.expectedFaeEmail,faeEmail:effective.LICENSE_FAE_EMAIL,replyTo:effective.LICENSE_REPLY_TO||effective.LICENSE_FAE_EMAIL,templates:effective.LICENSE_MAIL_TEMPLATES,logo:effective.LICENSE_MAIL_LOGO,actor:adminUser})
     return json(response,200,{data:result})
   }
   if (request.method === 'GET' && path === '/license-delivery/files') return json(response,200,{data:await listFiles(licensePool,params)})
@@ -568,6 +568,8 @@ async function handleLicenseDelivery(request, response, path, params) {
     const [records] = await licensePool.query("SELECT id,kind,recipient,state,detail,message_id,attempts,created_at,updated_at FROM dto_license_mail WHERE kind IN ('digest','summary') ORDER BY updated_at DESC LIMIT 20")
     return json(response,200,{data:{records}})
   }
+  const ccMatch=/^\/license-delivery\/(files|rejections)\/([a-f0-9-]+)\/cc$/.exec(path)
+  if(ccMatch&&request.method==='POST')return json(response,200,{data:await setMailCc(licensePool,ccMatch[1]==='files'?'file':'rejection',ccMatch[2],await readLicenseJson(request),adminUser)})
   const historyMatch=/^\/license-delivery\/applications\/(\d+)\/history$/.exec(path)
   if(historyMatch&&request.method==='GET')return json(response,200,{data:await applicationStatusHistory(licensePool,historyMatch[1])})
   const rejectionMatch=/^\/license-delivery\/rejections\/(\d+)(\/retry|\/cancel|\/restore)?$/.exec(path)

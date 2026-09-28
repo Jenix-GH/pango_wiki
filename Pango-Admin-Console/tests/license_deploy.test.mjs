@@ -12,15 +12,15 @@ test('preparation mode replaces duplicate flags while preserving private setting
   assert.equal(preparationConfig(updated), updated)
 })
 
-test('only the seven additive admin tables are eligible; portal ALTER is excluded', async () => {
+test('only the nine additive admin tables are eligible; portal ALTER is excluded', async () => {
   const definitions = await migrationDefinitions()
-  assert.equal(definitions.length, 7)
+  assert.equal(definitions.length, 9)
   assert.ok(definitions.every(item => item.columns.length && !/\b(?:ALTER|DROP|DELETE|UPDATE|INSERT)\s/i.test(item.sql)))
   const db = { query: async sql => {
     assert.match(sql, /^SELECT TABLE_NAME/)
     return [[{ TABLE_NAME: 'dto_license_application', ENGINE: 'InnoDB' }]]
   } }
-  assert.equal((await missingTables(db, definitions)).length, 7)
+  assert.equal((await missingTables(db, definitions)).length, 9)
 })
 
 test('wrong database and malformed existing tables stop deployment without DDL', async () => {
@@ -48,4 +48,14 @@ test('existing complete tables need no migrations; unique mail deduplication is 
   assert.deepEqual(await missingTables(db, definitions), [])
   indexRows = [{ Key_name: 'wrong', Non_unique: 0, Column_name: 'dedupe_key' }, { Key_name: 'wrong', Non_unique: 0, Column_name: 'id' }]
   await assert.rejects(missingTables(db, definitions), /unique dedupe_key/)
+})
+
+test('upgrading previous schema only adds CC preference and recipient history tables',async()=>{
+ const definitions=await migrationDefinitions(),added=['dto_license_cc','dto_license_mail_recipients']
+ const db={query:async sql=>{
+  if(sql.startsWith('SELECT TABLE_NAME'))return [[{TABLE_NAME:'dto_license_application',ENGINE:'InnoDB'},...definitions.filter(d=>!added.includes(d.table)).map(d=>({TABLE_NAME:d.table,ENGINE:'InnoDB'}))]]
+  if(sql.startsWith('SHOW INDEX'))return [[{Key_name:'dedupe_key',Non_unique:0,Column_name:'dedupe_key'}]]
+  return [[]]
+ }}
+ assert.deepEqual((await missingTables(db,definitions)).map(d=>d.table),added)
 })

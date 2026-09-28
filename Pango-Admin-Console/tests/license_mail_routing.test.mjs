@@ -51,3 +51,14 @@ test('preflight allows platform-only morning jobs but refuses missing or identic
     }
   } finally { await rm(directory,{recursive:true,force:true}) }
 })
+
+test('CC reaches FAE customer/rejection transport only; platform and test channels cannot leak to CC',async()=>{
+ const sent=[],factory=()=>async message=>{sent.push(message);return {state:'accepted'}}
+ const sender=createWorkflowMailSender(config,{senderFactory:factory})
+ for(const mailKind of ['customer','rejection'])assert.equal((await sender({mailKind,to:'client@example.com',cc:['copy@example.com','CLIENT@example.com']})).state,'accepted')
+ assert.deepEqual(sent.map(m=>m.cc),[['copy@example.com'],['copy@example.com']])
+ assert.equal((await sender({mailKind:'digest',to:'fae@example.com',cc:['copy@example.com']})).state,'failed')
+ const tester=createWorkflowMailSender(config,{testRecipient:'tester@example.com',senderFactory:factory})
+ assert.equal((await tester({mailKind:'customer',to:'tester@example.com',cc:['copy@example.com']})).state,'failed')
+ assert.equal((await sender({mailKind:'customer',to:'client@example.com',cc:['bad']})).state,'failed');assert.equal(sent.length,2)
+})
