@@ -8,7 +8,7 @@
     "dev:web": "vite",
     "dev:api": "node --watch server.mjs --api-only",
     "build": "vite build",
-    "test": "node --check server.mjs && node --check conversationExport.mjs && node --check src/main.js && node --check src/licenseApplications.js && node --check src/licenseDelivery.js && node --check src/licenseMailSettings.js && node tests/conversation_export.test.mjs && node --test tests/license_delivery.test.mjs tests/license_deploy.test.mjs tests/license_schedule.test.mjs tests/license_mail_routing.test.mjs tests/license_mail_settings.test.mjs && python3 tests/license_mail_test.py",
+    "test": "node --check server.mjs && node --check conversationExport.mjs && node --check src/main.js && node --check src/licenseApplications.js && node --check src/licenseDelivery.js && node --check src/licenseRejections.js && node --check src/licenseMailSettings.js && node tests/conversation_export.test.mjs && node --test tests/license_delivery.test.mjs tests/license_deploy.test.mjs tests/license_schedule.test.mjs tests/license_mail_routing.test.mjs tests/license_mail_settings.test.mjs && python3 tests/license_mail_test.py",
     "start": "node server.mjs",
     "test:delivery:mysql": "node --test tests/license_delivery.mysql.test.mjs"
   },

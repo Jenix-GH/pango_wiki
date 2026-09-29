@@ -6,7 +6,7 @@ import { extname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import archiver from 'archiver'
 import mysql from 'mysql2/promise'
-import { uploadFiles, setMailCc, listFiles, fileDetail, fileAction, MAX_UPLOAD_BODY, problem, listApplications, setApplicationStatus, applicationStatusHistory, rejectionDetail, retryRejection, cancelRejection, restoreRejection, resolveWorkflowMail } from './licenseDelivery.mjs'
+import { uploadFiles, setMailCc, listFiles, fileDetail, fileAction, MAX_UPLOAD_BODY, problem, listApplications, setApplicationStatus, applicationStatusHistory, listCustomerMail, rejectionDetail, retryRejection, cancelRejection, restoreRejection, resolveWorkflowMail } from './licenseDelivery.mjs'
 import { conversationFileName, groupConversationRecords, imageExtension, renderConversationMarkdown } from './conversationExport.mjs'
 import { mailSettingsView, saveMailSettings, applySavedMailSettings } from './licenseMailSettings.mjs'
 import { createWorkflowMailSender, assertMailConfiguration } from './licenseMail.mjs'
@@ -564,6 +564,7 @@ async function handleLicenseDelivery(request, response, path, params) {
     return json(response,200,{data:result})
   }
   if (request.method === 'GET' && path === '/license-delivery/files') return json(response,200,{data:await listFiles(licensePool,params)})
+  if (request.method === 'GET' && path === '/license-delivery/customer-mail') return json(response,200,{data:await listCustomerMail(licensePool,params)})
   if (request.method === 'GET' && path === '/license-delivery/notices') {
     const [records] = await licensePool.query("SELECT id,kind,recipient,state,detail,message_id,attempts,created_at,updated_at FROM dto_license_mail WHERE kind IN ('digest','summary') ORDER BY updated_at DESC LIMIT 20")
     return json(response,200,{data:{records}})

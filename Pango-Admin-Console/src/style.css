@@ -67,6 +67,16 @@ dialog { width: 440px; padding: 0; border: 0; border-radius: 12px; box-shadow: 0
 .delivery-action-form textarea { min-height:75px; resize:vertical; padding:10px; border:1px solid #ccd6e3; border-radius:7px; font:inherit; }
 .delivery-action-buttons button { color:#9f185c; }
 .delivery-notices { overflow:hidden; }
+.delivery-mail-queue { display:grid; gap:18px; min-width:0; }
+.delivery-queue-header { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
+.delivery-queue-header h2,.delivery-queue-help { margin:0; }
+.delivery-queue-help { color:#667287; font-size:13px; line-height:1.7; }
+.delivery-queue-description { display:grid; gap:6px; overflow-wrap:anywhere; }
+.delivery-queue-description small { color:#667287; font-size:12px; white-space:pre-wrap; }
+.delivery-kind { display:inline-block; padding:5px 8px; border-radius:5px; white-space:nowrap; }
+.delivery-kind-file { color:#235aac; background:#eaf1ff; }
+.delivery-kind-rejection { color:#9f185c; background:#faedf4; }
+.delivery-action-buttons button[aria-pressed=true] { background:#a71967; color:white; border-color:#a71967; }
 @media (max-width: 900px) {
   body:has(.delivery-root) { min-width:0; }
   body:has(.delivery-root) .shell { display:block; }

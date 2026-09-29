@@ -1,4 +1,5 @@
 import { ccEditor, recipientHistory } from './licenseCc.js'
+import { showRejection } from './licenseRejections.js'
 export const deliveryLabels={queued:'待夜间发放',conflict:'匹配冲突',unmatched:'无法匹配',duplicate:'重复文件',paused:'已暂停',sending:'发送中',accepted:'邮件服务已接受',failed:'发送失败',unknown:'结果待核查',cancelled:'已取消'}
 const fileReason=file=>file.state==='queued'&&file.reason==='唯一匹配；授权内容由上传人员核对，每晚 22:00 自动处理'?'唯一匹配；授权内容由上传人员核对，每晚 20:00 自动处理':file.reason
 const labels=deliveryLabels
@@ -39,17 +40,41 @@ export async function renderLicenseDelivery(content,request){
     }catch(error){report(error)}finally{upload.disabled=false;input.disabled=false}
   },'export-button')
   uploadPanel.append(upload);root.append(uploadPanel)
-  const summary=node('div','','delivery-summary');root.append(summary)
-  const filters=node('div','','delivery-filters');const filter=document.createElement('select');filter.setAttribute('aria-label','发放状态');const all=node('option','全部状态');all.value='';filter.append(all);for(const [value,label]of Object.entries(labels)){const option=node('option',label);option.value=value;filter.append(option)}
-  const startDate=document.createElement('input');startDate.type='date';startDate.setAttribute('aria-label','上传开始日期')
-  const endDate=document.createElement('input');endDate.type='date';endDate.setAttribute('aria-label','上传结束日期')
-  const startLabel=node('label','上传开始日期');startLabel.append(startDate)
-  const endLabel=node('label','上传结束日期');endLabel.append(endDate)
-  const search=document.createElement('input');search.placeholder='文件名、MAC 或申请编号';search.setAttribute('aria-label','搜索文件');let page=1,busy=false
+  const queueView=node('section','','panel delivery-mail-queue');queueView.setAttribute('aria-label','客户邮件');root.append(queueView)
+  const queueHeader=node('div','','delivery-queue-header');queueHeader.append(node('h2','客户邮件'))
+  let scope='all',page=1,sequence=0
+  const queueButtons=node('div','','delivery-action-buttons')
+  const changeView=waiting=>{
+    scope=waiting?'waiting':'all';filter.value='';page=1
+    updateScope();reload().catch(report)
+  }
+  const waitingButton=button('待发送邮件',()=>changeView(true)),allButton=button('全部记录',()=>changeView(false))
+  queueButtons.append(waitingButton,allButton);queueHeader.append(queueButtons);queueView.append(queueHeader)
+  const queueHelp=node('p','','delivery-queue-help');queueView.append(queueHelp)
+  const summary=node('div','','delivery-summary');queueView.append(summary)
+  const filters=node('div','','delivery-filters')
+  const kind=document.createElement('select');kind.setAttribute('aria-label','邮件类型筛选')
+  for(const [value,label] of [['','全部类型'],['file','客户 License'],['rejection','拒绝通知']]){const option=node('option',label);option.value=value;kind.append(option)}
+  const filter=document.createElement('select');filter.setAttribute('aria-label','邮件状态筛选')
+  const queueLabels={...labels,queued:'待发送'}
+  const all=node('option','全部状态');all.value='';filter.append(all)
+  for(const [value,label]of Object.entries(queueLabels)){const option=node('option',label);option.value=value;filter.append(option)}
+  function updateScope(){
+    waitingButton.setAttribute('aria-pressed',String(scope==='waiting'));allButton.setAttribute('aria-pressed',String(scope==='all'))
+    queueHelp.textContent=scope==='waiting'?'包含待发送和可自动重试的失败邮件；20:00 处理，发送前仍会校对。20:00 后新增的进入下一晚。异常文件请切换“全部记录”核对。':'统一查看客户 License 和拒绝通知。记录时间：License 为上传时间，拒绝通知为创建时间。'
+    for(const option of filter.options)option.disabled=scope==='waiting'&&option.value!==''&&!['queued','failed'].includes(option.value)
+  }
+  updateScope()
+  const startDate=document.createElement('input');startDate.type='date';startDate.setAttribute('aria-label','记录开始日期')
+  const endDate=document.createElement('input');endDate.type='date';endDate.setAttribute('aria-label','记录结束日期')
+  const startLabel=node('label','记录开始日期');startLabel.append(startDate)
+  const endLabel=node('label','记录结束日期');endLabel.append(endDate)
+  const search=document.createElement('input');search.placeholder='申请编号、姓名、邮箱、文件名或 MAC';search.setAttribute('aria-label','搜索客户邮件')
   const refresh=button('查询 / 刷新',()=>{page=1;reload().catch(report)})
-  filter.addEventListener('change',()=>{page=1;reload().catch(report)});search.addEventListener('keydown',event=>{if(event.key==='Enter'){page=1;reload().catch(report)}})
-  filters.append(startLabel,endLabel,filter,search,refresh);root.append(filters)
-  const list=node('div','','panel table-panel');root.append(list)
+  for(const input of [kind,filter])input.addEventListener('change',()=>{page=1;reload().catch(report)})
+  search.addEventListener('keydown',event=>{if(event.key==='Enter'){page=1;reload().catch(report)}})
+  filters.append(startLabel,endLabel,kind,filter,search,refresh);queueView.append(filters)
+  const list=node('div','','table-panel');queueView.append(list)
   const notices=node('section','','panel delivery-notices');root.append(notices)
   async function detail(id){
     const dialog=document.createElement('dialog');dialog.className='delivery-dialog'
@@ -103,17 +128,28 @@ export async function renderLicenseDelivery(content,request){
     }catch(error){body.replaceChildren(node('p',error.message))}
   }
   async function reload(){
-    if(busy)return
     if(startDate.value&&endDate.value&&startDate.value>endDate.value){message.textContent='开始日期不能晚于结束日期';return}
-    busy=true;refresh.disabled=true
+    const turn=++sequence;refresh.disabled=true
     try{
-      const params=new URLSearchParams({page:String(page),state:filter.value,query:search.value.trim(),startDate:startDate.value,endDate:endDate.value})
-      const data=await request(`/license-delivery/files?${params}`)
-      if(!root.isConnected)return
-      summary.replaceChildren(...data.summary.map(item=>node('span',`${labels[item.state]||item.state} ${item.count}`,'delivery-stat')))
-      list.replaceChildren(table(['上传时间','文件 / MAC','申请编号','抄送','状态','说明','操作'],data.records.map(file=>[displayTime(file.uploaded_at),`${file.original_name}\n${file.mac||'无法识别 MAC'}`,file.application_id||'—',file.cc?.join('、')||'—',badge(file.state),fileReason(file),button('查看 / 处理',()=>detail(file.id),'feedback-detail-link')])))
-      const pager=node('div','','pager');const pages=Math.max(1,Math.ceil(data.total/30));const previous=button('上一页',()=>{page--;reload().catch(report)}),next=button('下一页',()=>{page++;reload().catch(report)});previous.disabled=page<=1;next.disabled=page>=pages;pager.append(node('span',`共 ${data.total} 条 · ${page} / ${pages}`),previous,next);list.append(pager)
-      const noticeData=await request('/license-delivery/notices');if(!root.isConnected)return
+      const params=new URLSearchParams({page:String(page),state:filter.value,kind:kind.value,view:scope,query:search.value.trim(),startDate:startDate.value,endDate:endDate.value})
+      const data=await request(`/license-delivery/customer-mail?${params}`)
+      if(!root.isConnected||turn!==sequence)return
+      page=data.page
+      summary.replaceChildren(...data.summary.map(item=>node('span',`${queueLabels[item.state]||item.state} ${item.count}`,'delivery-stat')))
+      list.replaceChildren(table(['记录时间','邮件类型','申请编号 / 申请人','收件人','抄送','状态','文件 / 拒绝理由','操作'],data.records.map(row=>{
+        const isFile=row.kind==='file'
+        const stateBadge=node('span',queueLabels[row.state]||row.state,`delivery-badge delivery-${row.state}`)
+        const type=node('span',isFile?'客户 License':'拒绝通知',`delivery-kind delivery-kind-${row.kind}`)
+        const description=node('div','','delivery-queue-description')
+        description.append(node('span',isFile?row.original_name:row.reason))
+        const explanation=isFile?`MAC：${row.mac||'未识别'}\n${fileReason(row)}`:row.detail
+        if(explanation)description.append(node('small',explanation))
+        const open=()=>isFile?detail(row.id):showRejection({id:row.application_id},request,{refresh:reload,report:text=>{message.textContent=text}})
+        return [displayTime(row.queued_at),type,`${row.application_id?`#${row.application_id}`:'未关联申请'}\n${row.applicant_name||'—'}${row.company_name?` · ${row.company_name}`:''}`,row.recipient||'—',row.cc?.join('、')||'—',stateBadge,description,button('查看 / 处理',open,'feedback-detail-link')]
+      })))
+      if(!data.records.length)list.querySelector('.empty').textContent=scope==='waiting'?'当前筛选下暂无待发送邮件':'当前筛选下暂无记录'
+      const pager=node('div','','pager');const pages=Math.max(1,Math.ceil(data.total/data.pageSize));const previous=button('上一页',()=>{page--;reload().catch(report)}),next=button('下一页',()=>{page++;reload().catch(report)});previous.disabled=page<=1;next.disabled=page>=pages;pager.append(node('span',`共 ${data.total} 条 · ${page} / ${pages}`),previous,next);list.append(pager)
+      const noticeData=await request('/license-delivery/notices');if(!root.isConnected||turn!==sequence)return
       notices.replaceChildren(node('h2','最近 FAE 汇总邮件'),table(['时间','类型','收件人','结果','说明 / Message-ID','操作'],noticeData.records.map(row=>{
         const group=node('div','','delivery-action-buttons')
         if(row.kind==='digest'&&['unknown','failed'].includes(row.state)){
@@ -124,7 +160,7 @@ export async function renderLicenseDelivery(content,request){
         }
         return [displayTime(row.updated_at),row.kind==='digest'?'早间待办':'夜间结果',row.recipient,badge(row.state),`${row.detail}\n${row.message_id}`,group]
       })))
-    }finally{busy=false;refresh.disabled=false}
+    }finally{if(turn===sequence)refresh.disabled=false}
   }
   await reload().catch(report)
 }

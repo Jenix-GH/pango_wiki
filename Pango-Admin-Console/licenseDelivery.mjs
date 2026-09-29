@@ -627,6 +627,46 @@ async function dispatchRejections(db,sender,{cutoff,replyTo,templates,date,logo}
   }
   return results
 }
+export async function listCustomerMail(pool,params){
+  let page=Math.max(1,Math.min(100000,Number.parseInt(params.get('page'),10)||1))
+  const kind=params.get('kind')||'',state=params.get('state')||'',view=params.get('view')||'all'
+  if(kind&&!['file','rejection'].includes(kind))throw problem('邮件类型不正确')
+  if(state&&!['queued','conflict','unmatched','duplicate','paused','sending','accepted','failed','unknown','cancelled'].includes(state))throw problem('邮件状态不正确')
+  if(!['all','waiting'].includes(view))throw problem('邮件查看范围不正确')
+  // One ordered relation keeps filtering, totals and pagination consistent across both types.
+  // Only project display fields: file bytes and application snapshots stay in detail APIs.
+  // Legacy application columns and newer workflow tables may use different collations.
+  // Normalize display text in the query without changing any stored table or value.
+  const text=(expression,alias)=>`CONVERT(${expression} USING utf8mb4) COLLATE utf8mb4_unicode_ci ${alias}`
+  const source=`(
+    SELECT ${text("'file'",'kind')},${text('f.id','id')},f.application_id,f.uploaded_at queued_at,${text('f.state','state')},f.attempts,
+      ${text('a.applicant_name','applicant_name')},${text('a.company_name','company_name')},${text('a.email','recipient')},
+      ${text('f.original_name','original_name')},${text('f.mac','mac')},${text('f.reason','reason')},${text("''",'detail')}
+      FROM dto_license_file f LEFT JOIN dto_license_application a ON a.id=f.application_id
+    UNION ALL
+    SELECT ${text("'rejection'",'kind')},${text('CAST(r.application_id AS CHAR)','id')},r.application_id,r.created_at queued_at,${text('r.state','state')},r.attempts,
+      ${text('a.applicant_name','applicant_name')},${text('a.company_name','company_name')},${text('r.recipient','recipient')},
+      ${text("''",'original_name')},${text('a.mac_address','mac')},${text('r.reason','reason')},${text('r.detail','detail')}
+      FROM dto_license_rejection r LEFT JOIN dto_license_application a ON a.id=r.application_id
+  ) q`
+  const dates=dateConditions(params,'q.queued_at'),where=['1=1',...dates.conditions],args=[...dates.args]
+  if(view==='waiting')where.push("q.state IN ('queued','failed') AND q.attempts<3")
+  if(kind){where.push('q.kind=?');args.push(kind)}
+  if(state){where.push('q.state=?');args.push(state)}
+  const query=(params.get('query')||'').trim().slice(0,200)
+  if(query){
+    where.push("(CAST(q.application_id AS CHAR)=? OR q.applicant_name LIKE ? OR q.company_name LIKE ? OR q.recipient LIKE ? OR q.original_name LIKE ? OR REPLACE(REPLACE(q.mac,':',''),'-','') LIKE ?)")
+    args.push(query.replace(/^#/,''),...Array(4).fill(`%${query}%`),`%${query.replace(/[:-]/g,'')}%`)
+  }
+  const from=`FROM ${source} WHERE ${where.join(' AND ')}`
+  const [[count]]=await pool.query(`SELECT COUNT(*) total ${from}`,args)
+  page=Math.min(page,Math.max(1,Math.ceil(Number(count.total)/30)))
+  const [records]=await pool.query(`SELECT q.* ${from} ORDER BY q.queued_at DESC,q.kind ASC,q.application_id DESC,q.id DESC LIMIT 30 OFFSET ?`,[...args,(page-1)*30])
+  const [summary]=await pool.query(`SELECT q.state,COUNT(*) count ${from} GROUP BY q.state`,args)
+  await attachCc(pool,'file',records.filter(row=>row.kind==='file'))
+  await attachCc(pool,'rejection',records.filter(row=>row.kind==='rejection'))
+  return {records,total:count.total,page,pageSize:30,summary}
+}
 export async function rejectionDetail(pool,id){
   const [[record]]=await pool.query('SELECT * FROM dto_license_rejection WHERE application_id=?',[id])
   if(!record)throw problem('尚无拒绝理由或通知记录',404)

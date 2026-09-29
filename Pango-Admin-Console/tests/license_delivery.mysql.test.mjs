@@ -5,7 +5,7 @@ import mysql from 'mysql2/promise'
 import {readFile} from 'node:fs/promises'
 import {runApplicationStep,applicationWorkflow} from '../licenseDelivery.mjs'
 import {createWorkflowMailSender} from '../licenseMail.mjs'
-import {uploadFiles,setMailCc,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,cancelRejection,restoreRejection,resolveWorkflowMail,listApplications,listFiles,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
+import {uploadFiles,setMailCc,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,cancelRejection,restoreRejection,resolveWorkflowMail,listApplications,listFiles,listCustomerMail,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
 const night={faeEmail:'fae@example.com',replyTo:'fae@example.com',now:new Date('2026-09-23T12:00:00Z')}
 const morning={...night,now:new Date('2026-09-23T01:00:00Z')}
 const input=(content='license one',name='new_pds_1A2B3C4D5F60.lic')=>({name,base64:Buffer.from(content).toString('base64')})
@@ -30,6 +30,75 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   const cancelNotice=async(id=1,extra={})=>cancelRejection(pool,String(id),{confirm:true,expectedUpdatedAt:(await rejectionDetail(pool,id)).record.updated_at,...extra},'tester')
   const restoreNotice=async(id=1,extra={})=>restoreRejection(pool,String(id),{confirm:true,expectedUpdatedAt:(await rejectionDetail(pool,id)).record.updated_at,...extra},'tester')
   const setCc=async(kind,id,cc,extra={})=>setMailCc(pool,kind,id,{cc,expectedUpdatedAt:kind==='file'?(await fileDetail(pool,id)).file.updated_at:(await rejectionDetail(pool,id)).record.updated_at,...extra},'tester')
+  await t.test('rejection queue lists current notifications, filters dates/state/search and only eligible waiting attempts',async()=>{
+   await reset();sent=[]
+   for(let id=1;id<=8;id++){await application(id,`customer${id}@example.com`);await rejectApplication(pool,id,'test reason','tester',0)}
+   const states=['queued','failed','cancelled','accepted','paused','unknown','sending','failed']
+   for(let i=0;i<states.length;i++)await pool.query("UPDATE dto_license_rejection SET state=?,attempts=?,created_at=? WHERE application_id=?",[states[i],i===7?3:0,i===0?'2026-09-28 23:59:59.999999':'2026-09-29 00:00:00',i+1])
+   await setCc('rejection','1','copy@example.com')
+   await application(9);await pool.query('UPDATE dto_license_application SET status=3 WHERE id=9')
+   const all=await listCustomerMail(pool,new URLSearchParams());assert.equal(Number(all.total),8);assert.equal(all.summary.reduce((n,r)=>n+Number(r.count),0),8)
+   assert.deepEqual(all.records.find(r=>String(r.application_id)==='1').cc,['copy@example.com']);assert.equal(all.records[0].application_snapshot,undefined)
+   const waiting=await listCustomerMail(pool,new URLSearchParams({view:'waiting'}));assert.deepEqual(waiting.records.map(r=>String(r.application_id)).sort(),['1','2'])
+   const day=await listCustomerMail(pool,new URLSearchParams({startDate:'2026-09-28',endDate:'2026-09-28'}));assert.equal(Number(day.total),1)
+   for(const query of ['#1','customer1@example.com'])assert.equal(Number((await listCustomerMail(pool,new URLSearchParams({query}))).total),1)
+   assert.equal(Number((await listCustomerMail(pool,new URLSearchParams({query:'测试公司',state:'failed'}))).total),2)
+   assert.equal(Number((await listCustomerMail(pool,new URLSearchParams({query:"' OR 1=1 --"}))).total),0)
+   await assert.rejects(listCustomerMail(pool,new URLSearchParams({state:'invalid'})),/状态不正确/)
+   await assert.rejects(listCustomerMail(pool,new URLSearchParams({startDate:'2026-02-30'})),/日期格式/)
+   assert.equal(sent.length,0)
+  })
+  await t.test('rejection queue pagination keeps equal timestamps stable and empty search has no side effects',async()=>{
+   await reset()
+   for(let id=1;id<=32;id++){await application(id);await rejectApplication(pool,id,'分页测试','tester',0)}
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-29 08:00:00'")
+   const first=await listCustomerMail(pool,new URLSearchParams()),second=await listCustomerMail(pool,new URLSearchParams({page:'2'}))
+   assert.equal(Number(first.total),32);assert.equal(first.records.length,30);assert.equal(second.records.length,2)
+   assert.equal(String(first.records[0].application_id),'32');assert.equal(String(second.records[1].application_id),'1')
+   assert.equal(new Set([...first.records,...second.records].map(r=>String(r.application_id))).size,32)
+   const last=await listCustomerMail(pool,new URLSearchParams({page:'99'}));assert.equal(last.page,2);assert.equal(last.records.length,2)
+   assert.deepEqual((await listCustomerMail(pool,new URLSearchParams({query:'absent'}))).summary,[])
+  })
+  await t.test('waiting License list excludes settled, paused and exhausted attempts and includes recipient',async()=>{
+   await reset();await application();const file=(await upload()).records[0]
+   const params=new URLSearchParams({view:'waiting'})
+   assert.equal((await listCustomerMail(pool,params)).records[0].recipient,'customer@example.com')
+   for(const state of ['accepted','cancelled','duplicate','paused','unknown','sending','unmatched','conflict']){
+    await pool.query('UPDATE dto_license_file SET state=? WHERE id=?',[state,file.id]);assert.equal(Number((await listCustomerMail(pool,params)).total),0)
+   }
+   await pool.query("UPDATE dto_license_file SET state='failed',attempts=2 WHERE id=?",[file.id]);assert.equal(Number((await listCustomerMail(pool,params)).total),1)
+   await pool.query('UPDATE dto_license_file SET attempts=3 WHERE id=?',[file.id]);assert.equal(Number((await listCustomerMail(pool,params)).total),0)
+  })
+  await t.test('unified customer queue mixes types before sorting and pagination, with consistent filters and CC',async()=>{
+   await reset()
+   for(let id=1;id<=16;id++){
+    await application(id,`rejected${id}@example.com`);await rejectApplication(pool,id,'reason','tester',0)
+    const mac=(100000+id).toString(16).padStart(12,'0')
+    await application(1000+id,`license${id}@example.com`,mac)
+    await upload([input(`license ${id}`,`new_pds_${mac}.lic`)])
+   }
+   await pool.query("UPDATE dto_license_file SET uploaded_at='2026-09-29 10:00:00'")
+   await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-29 10:00:00'")
+   const file=(await listFiles(pool,new URLSearchParams())).records.find(r=>String(r.application_id)==='1001')
+   await setCc('file',file.id,'file-copy@example.com');await setCc('rejection','1','reason-copy@example.com')
+   const params=new URLSearchParams({view:'waiting'}),first=await listCustomerMail(pool,params)
+   params.set('page','2');const second=await listCustomerMail(pool,params)
+   assert.equal(Number(first.total),32);assert.equal(first.records.length,30);assert.equal(second.records.length,2)
+   assert.deepEqual([...new Set(first.records.map(r=>r.kind))],['file','rejection'])
+   assert.equal(new Set([...first.records,...second.records].map(r=>`${r.kind}:${r.id}`)).size,32)
+   assert.equal(first.summary.reduce((n,r)=>n+Number(r.count),0),32)
+   const rows=[...first.records,...second.records]
+   assert.deepEqual(rows.find(r=>r.id===file.id).cc,['file-copy@example.com']);assert.deepEqual(rows.find(r=>r.kind==='rejection'&&String(r.application_id)==='1').cc,['reason-copy@example.com'])
+   for(const kind of ['file','rejection'])assert.equal(Number((await listCustomerMail(pool,new URLSearchParams({kind,view:'waiting'}))).total),16)
+   assert.equal(Number((await listCustomerMail(pool,new URLSearchParams({query:'#1001'}))).total),1)
+   assert.equal(Number((await listCustomerMail(pool,new URLSearchParams({query:'license1@example.com'}))).total),1)
+   assert.equal(Number((await listCustomerMail(pool,new URLSearchParams({query:'00:00:00:01:86:A1'}))).total),1)
+   assert.equal(Number((await listCustomerMail(pool,new URLSearchParams({startDate:'2026-09-29',endDate:'2026-09-29'}))).total),32)
+   assert.equal(Number((await listCustomerMail(pool,new URLSearchParams({startDate:'2026-09-30'}))).total),0)
+   await assert.rejects(listCustomerMail(pool,new URLSearchParams({kind:'digest'})),/类型不正确/)
+   await assert.rejects(listCustomerMail(pool,new URLSearchParams({view:'oops'})),/范围不正确/)
+   assert.ok(rows.every(r=>r.content===undefined&&r.application_snapshot===undefined))
+  })
   await t.test('CC remains per file, works for immediate and scheduled mail, and records exact recipients',async()=>{
    await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
    const first=(await upload()).records[0],second=(await upload([input('other','new_pds_AABBCCDDEEFF.lic')])).records[0]
