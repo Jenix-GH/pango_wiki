@@ -52,6 +52,9 @@ public class ServiceLicensePortal {
             item.put("softwareVersion", row.get("software_version"));
             item.put("licenseType", row.get("license_type"));
             item.put("durationYears", row.get("duration_years"));
+            item.put("emailType", row.get("email_type"));
+            item.put("contactPerson", row.get("contact_person"));
+            item.put("maxUsers", row.get("max_users"));
             item.put("macAddress", row.get("mac_address"));
             Object official = row.get("official_submitted");
             item.put("officialSubmitted", official == null ? null : Boolean.TRUE.equals(official) || "1".equals(String.valueOf(official)));
@@ -91,13 +94,14 @@ public class ServiceLicensePortal {
         Map<String, Object> file = files.get(0);
         // A later upload can introduce ambiguity before the nightly worker revalidates this file.
         Long conflicts = db.queryForObject("SELECT COUNT(*) FROM dto_license_file WHERE mac=? AND id<>? " +
-                "AND state IN ('queued','conflict','unmatched','paused','failed','unknown','sending')", Long.class, file.get("mac"), file.get("id"));
+                "AND (LOWER(original_name) REGEXP ?) " +
+                "AND state IN ('queued','conflict','unmatched','paused','failed','unknown','sending')", Long.class, file.get("mac"), file.get("id"), "SERVER".equals(row.get("license_type")) ? "^new_pds_[0-9a-f]{12}_floating[.]lic$" : "^new_pds_[0-9a-f]{12}[.]lic$");
         if (conflicts == null || conflicts != 0) return null;
         if (!"accepted".equals(file.get("state")) && number(file.get("manual_selection")) != 1) {
             Long candidates = db.queryForObject("SELECT COUNT(*) FROM dto_license_application a WHERE " +
-                    "UPPER(REPLACE(REPLACE(a.mac_address,'-',''),':',''))=? AND a.status IN (0,1,2) " +
+                    "UPPER(REPLACE(REPLACE(a.mac_address,'-',''),':',''))=? AND a.license_type=? AND a.status IN (0,1,2) " +
                     "AND NOT EXISTS (SELECT 1 FROM dto_license_mail m WHERE m.application_id=a.id AND m.kind='customer' AND m.state IN ('accepted','unknown','sending'))",
-                    Long.class, file.get("mac"));
+                    Long.class, file.get("mac"), row.get("license_type"));
             if (candidates == null || candidates != 1) return null;
         }
         return file;
@@ -106,12 +110,22 @@ public class ServiceLicensePortal {
     boolean validMetadata(Map<String, Object> row, Map<String, Object> file) {
         if (!DOWNLOAD_STATES.contains(String.valueOf(file.get("state")))) return false;
         String mac = String.valueOf(row.get("mac_address")).replace("-", "").replace(":", "").toUpperCase(Locale.ROOT);
+        String filename = String.valueOf(file.get("original_name"));
+        String expected = "new_pds_" + mac + ("SERVER".equals(row.get("license_type")) ? "_floating" : "") + ".lic";
+        // Preserve downloads of already delivered historical server files using the old name.
+        boolean deliveredLegacy = "accepted".equals(file.get("state")) && row.get("max_users") == null &&
+                ("new_pds_" + mac + ".lic").equalsIgnoreCase(filename);
         if (!mac.matches("[0-9A-F]{12}") || !mac.equalsIgnoreCase(String.valueOf(file.get("mac"))) ||
-                !("new_pds_" + mac + ".lic").equalsIgnoreCase(String.valueOf(file.get("original_name")))) return false;
+                (!expected.equalsIgnoreCase(filename) && !deliveredLegacy)) return false;
         try {
             Map<String, String> snapshot = json.readValue(String.valueOf(file.get("application_snapshot")), new TypeReference<Map<String, String>>() {});
             for (String key : SNAPSHOT_KEYS) {
                 if (!Objects.equals(String.valueOf(row.getOrDefault(key, "")), snapshot.get(key))) return false;
+            }
+            for (String key : Arrays.asList("email_type", "contact_person", "max_users")) {
+                Object value = row.get(key);
+                String normalized = value == null ? "" : String.valueOf(value);
+                if (!Objects.equals(normalized, snapshot.getOrDefault(key, ""))) return false;
             }
         } catch (Exception e) { return false; }
         return number(file.get("byte_length")) > 0 && number(file.get("byte_length")) <= 1024 * 1024;

@@ -62,6 +62,14 @@ public class ControllerLicenseApplication {
         String email = required(application.getEmail(), "邮箱", 200);
         if (!email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) throw new MyException("邮箱格式不正确");
         application.setEmail(email);
+        application.setEmailType(option(application.getEmailType(), "邮箱类型", "ORGANIZATION", "PERSONAL"));
+        String contact = application.getContactPerson() == null ? "" : application.getContactPerson().trim();
+        if ("PERSONAL".equals(application.getEmailType())) contact = required(contact, "FAE 或渠道负责人", 100);
+        if (contact.length() > 100) throw new MyException("FAE 或渠道负责人长度超过限制");
+        application.setContactPerson(contact.isEmpty() ? null : contact);
+        if ("SERVER".equals(application.getLicenseType())) {
+            if (application.getMaxUsers() == null || application.getMaxUsers() < 1) throw new MyException("最大支持人数必须为正整数");
+        } else application.setMaxUsers(null);
         application.setPhone(required(application.getPhone(), "电话", 50));
         application.setAddress(required(application.getAddress(), "地址", 500));
         return R.ok(serviceLicenseApplication.submit(application));

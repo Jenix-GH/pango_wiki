@@ -20,7 +20,7 @@ class LicenseApplicationControllerTest {
     private MockMvc mvc;
     private ServiceLicensePortal portal;
     private ServiceLicenseApplication applications;
-    private final String body = "{\"userinfoId\":999,\"ownerVerified\":false,\"officialSubmitted\":true,\"operatingSystem\":\"Windows\",\"softwareVersion\":\"PDS2022.2\",\"licenseType\":\"STANDALONE\",\"durationYears\":1,\"macAddress\":\"AA-BB-CC-DD-EE-FF\",\"applicantName\":\"测试\",\"companyName\":\"测试公司\",\"email\":\"user@example.com\",\"phone\":\"13800000000\",\"address\":\"测试地址\"}";
+    private final String body = "{\"emailType\":\"ORGANIZATION\",\"userinfoId\":999,\"ownerVerified\":false,\"officialSubmitted\":true,\"operatingSystem\":\"Windows\",\"softwareVersion\":\"PDS2022.2\",\"licenseType\":\"STANDALONE\",\"durationYears\":1,\"macAddress\":\"AA-BB-CC-DD-EE-FF\",\"applicantName\":\"测试\",\"companyName\":\"测试公司\",\"email\":\"user@example.com\",\"phone\":\"13800000000\",\"address\":\"测试地址\"}";
     @BeforeEach void setup() {
         portal = mock(ServiceLicensePortal.class); applications = mock(ServiceLicenseApplication.class);
         ControllerLicenseApplication controller = new ControllerLicenseApplication();
@@ -35,6 +35,25 @@ class LicenseApplicationControllerTest {
         verify(applications).submit(saved.capture());
         assertEquals(42L,saved.getValue().getUserinfoId());
         assertTrue(saved.getValue().getOwnerVerified()); assertTrue(saved.getValue().getOfficialSubmitted());
+    }
+    @Test void personalEmailRequiresContactAndServerRequiresPositiveInteger() throws Exception {
+        when(portal.requireMember("Bearer member")).thenReturn(42L);
+        String personal = body.replace("ORGANIZATION", "PERSONAL");
+        String server = body.replace("STANDALONE", "SERVER");
+        for (String invalid : new String[]{personal, server, server.replace("{", "{\"maxUsers\":0,"), server.replace("{", "{\"maxUsers\":1.5,"), body.replace("\"emailType\":\"ORGANIZATION\",", "")}) {
+            mvc.perform(post("/license/application/submit").header("Authorization","Bearer member").contentType("application/json").content(invalid)).andExpect(jsonPath("$.code").value(4001));
+        }
+        verifyNoInteractions(applications);
+        String valid = personal.replace("STANDALONE", "SERVER").replace("{", "{\"contactPerson\":\" 王工 \",\"maxUsers\":8,");
+        mvc.perform(post("/license/application/submit").header("Authorization","Bearer member").contentType("application/json").content(valid)).andExpect(jsonPath("$.code").value(2000));
+        ArgumentCaptor<DtoLicenseApplication> saved = ArgumentCaptor.forClass(DtoLicenseApplication.class);
+        verify(applications).submit(saved.capture());
+        assertEquals("王工",saved.getValue().getContactPerson());assertEquals(8,saved.getValue().getMaxUsers());
+    }
+    @Test void standaloneDiscardsHiddenServerCapacity() throws Exception {
+        when(portal.requireMember("Bearer member")).thenReturn(42L);
+        mvc.perform(post("/license/application/submit").header("Authorization","Bearer member").contentType("application/json").content(body.replace("{", "{\"maxUsers\":12,"))).andExpect(jsonPath("$.code").value(2000));
+        ArgumentCaptor<DtoLicenseApplication> saved = ArgumentCaptor.forClass(DtoLicenseApplication.class);verify(applications).submit(saved.capture());assertNull(saved.getValue().getMaxUsers());
     }
     @Test void allEndpointsRequireLogin() throws Exception {
         when(portal.requireMember(null)).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED,"请先登录后继续"));

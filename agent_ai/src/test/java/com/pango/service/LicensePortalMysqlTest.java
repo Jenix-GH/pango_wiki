@@ -40,9 +40,10 @@ class LicensePortalMysqlTest {
         Map<String,Object> row=db.queryForMap("SELECT * FROM dto_license_application WHERE id=?",id);
         Map<String,String> snapshot=new LinkedHashMap<>();
         for(String key:Arrays.asList("id","mac_address","email","operating_system","software_version","license_type","duration_years","applicant_name","company_name"))snapshot.put(key,String.valueOf(row.get(key)));
+        for(String key:Arrays.asList("email_type","contact_person","max_users"))if(row.get(key)!=null)snapshot.put(key,String.valueOf(row.get(key)));
         String mac=String.valueOf(row.get("mac_address")).replace("-","");
         db.update("INSERT INTO dto_license_file (id,batch_id,original_name,mac,sha256,byte_length,content,application_id,application_snapshot,state,uploaded_by) VALUES (?, 'batch',?,?,SHA2('test license',256),12,?,?,?,'queued','tester')",
-                "file-"+id,"new_pds_"+mac+".lic",mac,"test license".getBytes(StandardCharsets.UTF_8),id,new ObjectMapper().writeValueAsString(snapshot));
+                "file-"+id,"new_pds_"+mac+("SERVER".equals(row.get("license_type"))?"_floating":"")+".lic",mac,"test license".getBytes(StandardCharsets.UTF_8),id,new ObjectMapper().writeValueAsString(snapshot));
     }
     @SuppressWarnings("unchecked") List<Map<String,Object>> records(long user) { return (List<Map<String,Object>>)portal.list(user,1).get("records"); }
     boolean available() { return Boolean.TRUE.equals(records(42).get(0).get("canDownload")); }
@@ -87,4 +88,25 @@ class LicensePortalMysqlTest {
     @Test void acceptedLicenseRemainsDownloadable() throws Exception {
         file(1); db.update("UPDATE dto_license_file SET state='accepted'"); assertTrue(available());
     }
+    @Test void floatingDownloadAndDetailsRespectTypeAndCapacity() throws Exception {
+        db.update("UPDATE dto_license_application SET license_type='SERVER',email_type='PERSONAL',contact_person='王工',max_users=12 WHERE id=1");
+        // Same MAC with another authorization type must not make this file ambiguous.
+        db.update("UPDATE dto_license_application SET mac_address='AA-BB-CC-DD-EE-01' WHERE id=2");
+        file(1); file(2);
+        assertTrue(available());
+        Map<String,Object> record=records(42).get(0);
+        assertEquals("PERSONAL",record.get("emailType"));assertEquals("王工",record.get("contactPerson"));assertEquals(12,record.get("maxUsers"));
+        assertTrue(String.valueOf(record.get("filename")).endsWith("_floating.lic"));
+        assertArrayEquals("test license".getBytes(StandardCharsets.UTF_8),portal.download(42,1).getBody());
+        db.update("UPDATE dto_license_application SET max_users=13 WHERE id=1");
+        assertFalse(available());assertThrows(ResponseStatusException.class,()->portal.download(42,1));
+    }
+    @Test void wrongTypeFilenameIsBlockedButDeliveredLegacyServerFileStillDownloads() throws Exception {
+        db.update("UPDATE dto_license_application SET license_type='SERVER' WHERE id=1");file(1);
+        db.update("UPDATE dto_license_file SET original_name='new_pds_AABBCCDDEE01.lic' WHERE application_id=1");
+        assertFalse(available());
+        db.update("UPDATE dto_license_file SET state='accepted' WHERE application_id=1");
+        assertTrue(available());
+    }
+
 }
