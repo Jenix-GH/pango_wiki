@@ -109,3 +109,20 @@ test('License login preserves the same account avatar but never copies it to ano
     assert.equal(saved.avatarUrl,id===42?old.avatarUrl:undefined)
   }
 })
+
+
+test('personal email requires contact; server capacity is numeric and discarded for standalone',()=>{
+ const {instance:p,calls}=page('license',member);p.onLoad();p.onShow()
+ Object.assign(p.data.form,{softwareVersion:'test',macAddress:'AA-BB-CC-DD-EE-FF',applicantName:'测试',companyName:'公司',email:'user@example.com',phone:'13800000000',address:'地址'})
+ p.selectEmailType({detail:{value:'PERSONAL'}});p.submitApplication();assert.equal(calls.requests.length,0);assert.match(p.data.error,/负责人/)
+ p.data.form.contactPerson=' 王工 ';p.selectLicenseType({currentTarget:{dataset:{type:'SERVER'}}})
+ for(const value of ['', '0','1.5','-1','2147483648']){p.data.form.maxUsers=value;p.submitApplication();assert.equal(calls.requests.length,0)}
+ p.data.form.maxUsers='12';p.submitApplication();assert.equal(calls.requests[0].data.maxUsers,12);assert.equal(calls.requests[0].data.contactPerson,'王工')
+ calls.requests[0].complete();p.selectLicenseType({currentTarget:{dataset:{type:'STANDALONE'}}});assert.equal(p.data.form.maxUsers,'')
+ p.selectEmailType({detail:{value:'ORGANIZATION'}});p.data.form.contactPerson='';p.submitApplication();assert.equal(calls.requests[1].data.maxUsers,null)
+})
+test('floating file can be downloaded through the existing authenticated member flow',()=>{
+ const {instance:p,calls}=page('my-licenses',member);p.onShow()
+ const req=calls.requests.pop();req.success({statusCode:200,data:{code:2000,data:{total:1,pageSize:20,records:[{id:1,submittedAt:'2026-10-14T09:00:00+08:00',status:2,licenseType:'SERVER',emailType:'PERSONAL',contactPerson:'王工',maxUsers:12,filename:'new_pds_c85309cb494b_floating.lic',canDownload:true}]}}});req.complete()
+ p.download({currentTarget:{dataset:{id:1}}});assert.equal(calls.requests[0].header.Authorization,'Bearer test-only');assert.ok(calls.requests[0].url.endsWith('/license/application/1/download'))
+})

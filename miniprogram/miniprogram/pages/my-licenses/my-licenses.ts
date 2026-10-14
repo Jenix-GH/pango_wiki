@@ -1,6 +1,7 @@
 export {}
 const app = getApp()
 interface LicenseRecord {
+  emailType: string | null; contactPerson: string | null; maxUsers: number | null
   id: number; submittedAt: string; operatingSystem: string; softwareVersion: string
   licenseType: string; durationYears: number; macAddress: string; officialSubmitted: boolean | null
   status: number; rejectionReason: string | null; canDownload: boolean; filename: string | null
@@ -67,7 +68,7 @@ Page({
   download(event: { currentTarget: { dataset: { id: number } } }) {
     if (this.data.downloading) return
     const row = this.data.records.find(item => String(item.id) === String(event.currentTarget.dataset.id))
-    if (!row?.canDownload || !row.filename || !/^new_pds_[0-9a-f]{12}\.lic$/i.test(row.filename)) return
+    if (!row?.canDownload || !row.filename || !/^new_pds_[0-9a-f]{12}(_floating)?\.lic$/i.test(row.filename)) return
     const token = wx.getStorageSync('pangoAccessToken')
     const filename = row.filename
     const owner = this.currentOwner

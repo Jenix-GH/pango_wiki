@@ -13,6 +13,9 @@
       <view class="detail">提交时间：{{item.dateLabel}}</view><view class="detail">MAC 地址：{{item.macAddress}}</view>
       <view class="detail">授权信息：{{item.operatingSystem}} / {{item.licenseType}} / {{item.durationYears}}年</view>
       <view class="detail">官网已提交：{{item.officialLabel}}</view>
+      <view class="detail">邮箱类型：{{item.emailType === 'PERSONAL' ? '个人邮箱' : item.emailType === 'ORGANIZATION' ? '公司或学校邮箱' : '未填写'}}</view>
+      <view class="detail">FAE 或渠道负责人：{{item.contactPerson || '未填写'}}</view>
+      <view wx:if="{{item.licenseType === 'SERVER'}}" class="detail">最大支持人数：{{item.maxUsers || '未填写'}}</view>
       <view wx:if="{{item.status === 3}}" class="error">拒绝理由：{{item.rejectionReason || '暂无记录，请联系对接人员'}}</view>
       <button wx:if="{{item.canDownload}}" bind:tap="download" data-id="{{item.id}}" disabled="{{downloading}}">{{downloading ? '下载中…' : '下载 License'}}</button>
       <view wx:elif="{{item.status !== 3}}" class="description">文件暂不可下载，请稍后刷新。</view>

@@ -3,6 +3,9 @@ export {}
 const app = getApp()
 
 interface LicenseForm {
+  emailType: 'ORGANIZATION' | 'PERSONAL'
+  contactPerson: string
+  maxUsers: string
   officialSubmitted: boolean
   operatingSystem: 'Windows' | 'Linux'
   softwareVersion: string
@@ -41,6 +44,9 @@ interface StoredUserInfo {
 }
 
 const emptyForm = (): LicenseForm => ({
+  emailType: 'ORGANIZATION',
+  contactPerson: '',
+  maxUsers: '',
   officialSubmitted: false,
   operatingSystem: 'Windows',
   softwareVersion: '',
@@ -97,6 +103,9 @@ Page({
 
   login() { wx.navigateTo({ url: '/pages/license-login/license-login' }) },
   openMine() { wx.navigateTo({ url: '/pages/my-licenses/my-licenses' }) },
+  selectEmailType(event: FieldEvent) {
+    this.setData({ 'form.emailType': String(event.detail.value), error: '' })
+  },
   selectOfficial(event: FieldEvent) {
     this.setData({ 'form.officialSubmitted': String(event.detail.value) === 'true' })
   },
@@ -135,7 +144,7 @@ Page({
 
   selectLicenseType(event: DatasetEvent) {
     const type = String(event.currentTarget.dataset.type || 'STANDALONE') as 'STANDALONE' | 'SERVER'
-    this.setData({ 'form.licenseType': type })
+    this.setData({ 'form.licenseType': type, 'form.maxUsers': type === 'STANDALONE' ? '' : this.data.form.maxUsers })
   },
 
   submitApplication() {
@@ -165,6 +174,12 @@ Page({
       this.setData({ error: '请输入正确的邮箱地址', success: '' })
       return
     }
+    if (form.emailType === 'PERSONAL' && !form.contactPerson.trim()) {
+      this.setData({ error: '请填写 FAE 或渠道负责人姓名', success: '' }); return
+    }
+    if (form.licenseType === 'SERVER' && (!/^[1-9]\d*$/.test(form.maxUsers) || Number(form.maxUsers) > 2147483647)) {
+      this.setData({ error: '最大支持人数必须为有效正整数', success: '' }); return
+    }
     const token = String(wx.getStorageSync('pangoAccessToken') || '').trim()
     this.setData({ submitting: true, error: '', success: '' })
     wx.request<ApiResponse>({
@@ -174,7 +189,7 @@ Page({
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      data: { ...form, macAddress: form.macAddress.toUpperCase() },
+      data: { ...form, contactPerson: form.contactPerson.trim(), maxUsers: form.licenseType === 'SERVER' ? Number(form.maxUsers) : null, macAddress: form.macAddress.toUpperCase() },
       success: result => {
         const response = result.data
         if (result.statusCode === 401 || response.code === 401) {
