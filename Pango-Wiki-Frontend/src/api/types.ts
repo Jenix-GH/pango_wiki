@@ -242,6 +242,9 @@ export interface SSECallbacks {
 }
 
 export interface LicenseApplicationPayload {
+  emailType: 'ORGANIZATION' | 'PERSONAL'
+  contactPerson: string
+  maxUsers: number | null
   officialSubmitted: boolean
   operatingSystem: 'Windows' | 'Linux'
   softwareVersion: string
@@ -256,6 +259,9 @@ export interface LicenseApplicationPayload {
 }
 
 export interface MyLicenseApplication {
+  emailType: 'ORGANIZATION' | 'PERSONAL' | null
+  contactPerson: string | null
+  maxUsers: number | null
   id: number
   submittedAt: string
   operatingSystem: string

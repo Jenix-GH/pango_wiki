@@ -14,6 +14,9 @@ const createInitialForm = (user: UserInfo | null): LicenseApplicationPayload => 
   macAddress: '',
   address: '',
   officialSubmitted: false,
+  emailType: 'ORGANIZATION',
+  contactPerson: '',
+  maxUsers: null,
   applicantName: user?.nickName || '',
   companyName: user?.companyName || '',
   email: user?.mailAddress || '',
@@ -69,10 +72,20 @@ export default function LicenseApplicationPage() {
       setError('请输入正确的邮箱地址')
       return
     }
+    if (form.emailType === 'PERSONAL' && !form.contactPerson.trim()) {
+      setError('请填写 FAE 或渠道负责人姓名')
+      return
+    }
+    if (form.licenseType === 'SERVER' && (!Number.isInteger(form.maxUsers) || !form.maxUsers || form.maxUsers < 1 || form.maxUsers > 2147483647)) {
+      setError('最大支持人数必须为有效正整数')
+      return
+    }
     try {
       setSubmitting(true)
       const response = await api.submitLicenseApplication({
         ...form,
+        contactPerson: form.contactPerson.trim(),
+        maxUsers: form.licenseType === 'SERVER' ? form.maxUsers : null,
         macAddress: form.macAddress.toUpperCase(),
       })
       if (response.code === 401) { logout(); goLogin(); return }
@@ -87,7 +100,7 @@ export default function LicenseApplicationPage() {
   }
 
   return (
-    <div className="license-page">
+    <div className="license-page license-application-page">
       <TopBar
         active="license"
         userLabel={user?.nickName || '访客'}
@@ -117,32 +130,44 @@ export default function LicenseApplicationPage() {
                 {form.officialSubmitted ? <p className="license-official-notice" role="status">正在加急处理中，请勿重复提交</p> : null}
               </div>
               <div className="license-grid">
-                <label>操作系统版本<select value={form.operatingSystem} onChange={(event) => update('operatingSystem', event.target.value as 'Windows' | 'Linux')}><option>Windows</option><option>Linux</option></select></label>
-                <label>软件版本<input required maxLength={50} value={form.softwareVersion} onChange={(event) => update('softwareVersion', event.target.value)} placeholder="请输入软件版本号" /></label>
+                <label><span>操作系统版本 <span className="license-required">*</span></span><select value={form.operatingSystem} onChange={(event) => update('operatingSystem', event.target.value as 'Windows' | 'Linux')}><option>Windows</option><option>Linux</option></select></label>
+                <label><span>软件版本 <span className="license-required">*</span></span><input required maxLength={50} value={form.softwareVersion} onChange={(event) => update('softwareVersion', event.target.value)} placeholder="请输入软件版本号" /></label>
               </div>
               <div className="license-label">授权类型</div>
               <div className="license-options">
-                <label className={form.licenseType === 'STANDALONE' ? 'selected' : ''}><input type="radio" name="licenseType" checked={form.licenseType === 'STANDALONE'} onChange={() => update('licenseType', 'STANDALONE')} /><strong>单机版</strong><span>支持单一用户使用</span></label>
+                <label className={form.licenseType === 'STANDALONE' ? 'selected' : ''}><input type="radio" name="licenseType" checked={form.licenseType === 'STANDALONE'} onChange={() => setForm(previous => ({ ...previous, licenseType: 'STANDALONE', maxUsers: null }))} /><strong>单机版</strong><span>支持单一用户使用</span></label>
                 <label className={form.licenseType === 'SERVER' ? 'selected' : ''}><input type="radio" name="licenseType" checked={form.licenseType === 'SERVER'} onChange={() => update('licenseType', 'SERVER')} /><strong>服务器版</strong><span>支持多用户使用</span></label>
               </div>
+              {form.licenseType === 'SERVER' ? <div className="license-grid license-server-users">
+                <label className="full-row"><span>最大支持人数 <span className="license-required">*</span></span><input required type="number" min={1} max={2147483647} step={1} value={form.maxUsers ?? ''} onChange={event => update('maxUsers', event.target.value === '' ? null : Number(event.target.value))} placeholder="请输入人数" /><small>请填写本次申请所需的最大使用人数。</small></label>
+              </div> : null}
               <div className="license-grid">
-                <label>使用时长<select value={form.durationYears} onChange={(event) => update('durationYears', Number(event.target.value) as 1 | 2 | 3)}><option value={1}>1年</option><option value={2}>2年</option><option value={3}>3年</option></select></label>
-                <label>MAC 地址<input required maxLength={17} value={form.macAddress} onChange={(event) => update('macAddress', event.target.value.toUpperCase())} placeholder="00-1A-2B-3C-4D-5E" /></label>
+                <label><span>使用时长 <span className="license-required">*</span></span><select value={form.durationYears} onChange={(event) => update('durationYears', Number(event.target.value) as 1 | 2 | 3)}><option value={1}>1年</option><option value={2}>2年</option><option value={3}>3年</option></select></label>
+                <label><span>MAC 地址 <span className="license-required">*</span></span><input required maxLength={17} value={form.macAddress} onChange={(event) => update('macAddress', event.target.value.toUpperCase())} placeholder="00-1A-2B-3C-4D-5E" /></label>
               </div>
             </fieldset>
             <fieldset>
               <legend>申请人信息</legend>
               <div className="license-grid">
-                <label>申请人<input required maxLength={100} value={form.applicantName} onChange={(event) => update('applicantName', event.target.value)} placeholder="请输入申请人姓名" /></label>
-                <label>公司或学校<input required maxLength={200} value={form.companyName} onChange={(event) => update('companyName', event.target.value)} placeholder="请输入公司或学校名称" /></label>
-                <label>邮箱<input required type="email" maxLength={200} value={form.email} onChange={(event) => update('email', event.target.value)} placeholder="name@company.com" /></label>
-                <label>电话<input required maxLength={50} value={form.phone} onChange={(event) => update('phone', event.target.value)} placeholder="请输入联系电话" /></label>
-                <label className="full-row">地址<textarea required maxLength={500} value={form.address} onChange={(event) => update('address', event.target.value)} placeholder="请输入详细地址" /></label>
+                <label><span>申请人姓名 <span className="license-required">*</span></span><input required maxLength={100} value={form.applicantName} onChange={(event) => update('applicantName', event.target.value)} placeholder="请输入中文姓名或英文姓名" /></label>
+                <label><span>联系电话 <span className="license-required">*</span></span><input required maxLength={50} value={form.phone} onChange={(event) => update('phone', event.target.value)} placeholder="请输入联系电话" /></label>
+                <label><span>公司或学校 <span className="license-required">*</span></span><input required maxLength={200} value={form.companyName} onChange={(event) => update('companyName', event.target.value)} placeholder="请输入公司或学校名称" /></label>
+                <label><span>联系地址 <span className="license-required">*</span></span><textarea required maxLength={500} value={form.address} onChange={(event) => update('address', event.target.value)} placeholder="请输入详细地址" /></label>
+                <div className="full-row license-email-type" role="group" aria-labelledby="email-type-label">
+                  <div id="email-type-label" className="license-label">邮箱类型 <span className="license-required">*</span></div>
+                  <div className="license-email-options">
+                    <label><input type="radio" name="emailType" value="ORGANIZATION" checked={form.emailType === 'ORGANIZATION'} onChange={() => update('emailType', 'ORGANIZATION')} />公司或学校邮箱</label>
+                    <label><input type="radio" name="emailType" value="PERSONAL" checked={form.emailType === 'PERSONAL'} onChange={() => update('emailType', 'PERSONAL')} />个人邮箱</label>
+                  </div>
+                  <p className="license-field-help">建议优先使用公司或学校邮箱申请，以便更快完成审核。</p>
+                </div>
+                <label className="full-row"><span>联系邮箱 <span className="license-required">*</span></span><input required type="email" maxLength={200} value={form.email} onChange={(event) => update('email', event.target.value)} placeholder={form.emailType === 'PERSONAL' ? '请输入接收 License 的邮箱地址' : '请输入公司或学校邮箱地址'} /></label>
+                <label className="full-row"><span>FAE 或渠道负责人{form.emailType === 'PERSONAL' ? <span className="license-required"> *</span> : '（选填）'}</span><input required={form.emailType === 'PERSONAL'} maxLength={100} value={form.contactPerson} onChange={event => update('contactPerson', event.target.value)} placeholder="请输入对接人姓名" /></label>
               </div>
             </fieldset>
             {error ? <div className="license-message error" role="alert">{error}</div> : null}
             {success ? <div className="license-message success">{success}</div> : null}
-            <div className="license-actions"><button type="submit" disabled={submitting || loading} formNoValidate={!user}>{submitting ? '提交中…' : user ? '提交申请' : '登录后提交申请'}</button></div>
+            <div className="license-actions"><span className="license-field-help">带 <span className="license-required">*</span> 的项目为必填项</span><button type="submit" disabled={submitting || loading} formNoValidate={!user}>{submitting ? '提交中…' : user ? '提交申请' : '登录后提交申请'}</button></div>
           </form>
         </section>
       </main>

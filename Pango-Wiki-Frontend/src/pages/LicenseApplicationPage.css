@@ -52,3 +52,24 @@
 .license-empty { padding:30px 0; text-align:center; color:#62748b; }
 .my-license-item .license-message { white-space:pre-wrap; overflow-wrap:anywhere; }
 @media (max-width:600px) { .my-license-item dl { grid-template-columns:1fr; } .my-license-item { padding:16px; } }
+
+/* Application-only layout: keep the member portal and other pages unchanged. */
+.license-application-page { background: #fff; }
+.license-application-page .license-card { width: min(1120px, 100%); padding: 12px 24px 30px; border: 0; border-radius: 0; box-shadow: none; }
+.license-application-page .license-form { gap: 36px; }
+.license-application-page .license-form fieldset { padding: 24px 0 0; border: 0; border-top: 1px solid #dce4ee; border-radius: 0; }
+.license-application-page .license-form legend { padding: 0 16px 0 0; font-size: 21px; }
+.license-application-page .license-grid { gap: 26px 32px; }
+.license-application-page .license-grid textarea { min-height: 44px; height: 44px; }
+.license-application-page .license-server-users { margin: 0 0 24px; }
+.license-application-page .license-grid small,.license-field-help { font-size: 13px; font-weight: 400; line-height: 1.7; color: #68758a; }
+.license-required { color: #c12638; }
+.license-email-type .license-label { display: block; margin: 0 0 14px; }
+.license-email-options { display: flex; flex-wrap: wrap; gap: 16px 30px; }
+.license-grid .license-email-options label { display: flex; align-items: center; gap: 10px; }
+.license-grid .license-email-options input { width: 18px; height: 18px; margin: 0; accent-color: var(--bg-primary); }
+.license-application-page .license-actions { align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid #dce4ee; padding-top: 24px; }
+@media (max-width: 640px) { .license-application-page .license-card { padding: 8px 4px 24px; } .license-application-page .license-actions { flex-wrap: wrap; } }
+
+.license-application-page .license-options input { accent-color: var(--bg-primary); }
+.license-email-type .license-field-help { margin: 12px 0 0; }
