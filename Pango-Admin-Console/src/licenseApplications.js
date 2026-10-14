@@ -66,6 +66,11 @@ export async function renderLicenseApplications(content,request,openDelivery){
       if(!error.authentication)status(`申请 #${row.id}：${error.message||'请求失败'}${submitted?'。若请求中断，请先核对“License 发放”中的 FAE 邮件记录，勿直接重复发送。':''}`)
     }finally{clearTimeout(waiting);target.disabled=false;target.textContent=originalLabel}
   }
+  function showApplication(row){
+    const {body}=dialog(`申请详情 · #${row.id}`)
+    const fields=[['申请人姓名',row.applicant_name],['公司或学校',row.company_name],['邮箱类型',row.email_type==='PERSONAL'?'个人邮箱':row.email_type==='ORGANIZATION'?'公司或学校邮箱':'未填写'],['联系邮箱',row.email],['联系电话',row.phone],['联系地址',row.address],['FAE 或渠道负责人',row.contact_person||'未填写'],['操作系统',row.operating_system],['软件版本',row.software_version],['授权类型',row.license_type==='SERVER'?'服务器版（浮点）':'单机版'],['最大支持人数',row.license_type==='SERVER'?(row.max_users??'未填写'):'不适用'],['使用时长',`${row.duration_years}年`],['MAC 地址',row.mac_address],['官网已提交',row.official_submitted==null?'未记录':Number(row.official_submitted)===1?'是':'否']]
+    for(const [label,value] of fields)body.append(el('p',`${label}：${value??'未填写'}`))
+  }
   async function showHistory(row){
     const {d,body}=dialog(`状态记录 · 申请 #${row.id}`);body.append(el('p','读取中…'))
     try{
@@ -88,7 +93,7 @@ export async function renderLicenseApplications(content,request,openDelivery){
       mode.hidden=Boolean(data.workflowEnabled&&data.sendingEnabled)
       mode.textContent=data.workflowEnabled?'当前为准备模式：定时发送未启用；状态和拒绝理由会保存，明确确认后可单条立即通知 FAE。':'工作流尚未配置：可查询申请，暂不能设置状态或安排拒绝通知。'
       count.textContent=`共 ${data.total} 条申请 · 按提交时间筛选${view.startDate||view.endDate?`：${view.startDate||'不限'} 至 ${view.endDate||'不限'}（含结束当天）`:''}`
-      const table=el('table'),head=el('thead'),hr=el('tr');['申请编号','提交时间','申请人 / 公司','系统 / 版本','类型 / 年限','MAC 地址','联系方式','官网已提交','申请状态','文件 / 邮件','拒绝理由','操作'].forEach(h=>hr.append(el('th',h)));head.append(hr);const tbody=el('tbody');table.append(head,tbody)
+      const table=el('table'),head=el('thead'),hr=el('tr');['申请编号','提交时间','申请人 / 公司','系统 / 版本','类型 / 年限','MAC 地址','联系方式','邮箱类型 / 对接人','官网已提交','申请状态','文件 / 邮件','拒绝理由','操作'].forEach(h=>hr.append(el('th',h)));head.append(hr);const tbody=el('tbody');table.append(head,tbody)
       for(const row of data.records){
         const state=document.createElement('select')
         state.className=`application-badge application-status-${row.status}`
@@ -107,6 +112,7 @@ export async function renderLicenseApplications(content,request,openDelivery){
           }catch(error){state.value=String(row.status);report(error);await load().catch(report)}finally{state.disabled=!data.workflowEnabled}
         })
         const operation=el('div','','license-row-actions')
+        operation.append(button('申请详情',()=>showApplication(row),'feedback-detail-link'))
         if(data.workflowEnabled){
           if(Number(row.status)===0)operation.append(button('立即通知 FAE',event=>notifyFae(row,event.currentTarget),'feedback-detail-link'))
           operation.append(button('状态记录',()=>showHistory(row),'feedback-detail-link'))
@@ -115,9 +121,9 @@ export async function renderLicenseApplications(content,request,openDelivery){
         }
         const delivery=Number(row.status)===3?(row.rejection_mail_state?`拒绝邮件：${mailLabels[row.rejection_mail_state]||row.rejection_mail_state}`:'历史记录：未保存理由及邮件'):deliveryLabels[row.delivery_state]||'未上传 / 未关联文件'
         const applicationId=el('span',`#${row.id}`,'license-application-id');applicationId.title='与邮件中的申请编号一致'
-        addRow(tbody,[applicationId,time(row.dotime),`${row.applicant_name}\n${row.company_name}`,`${row.operating_system} / ${row.software_version}`,`${row.license_type} / ${row.duration_years}年`,row.mac_address,`${row.email||''}\n${row.phone||''}`,row.official_submitted==null?'未记录':Number(row.official_submitted)===1?'是':'否',state,delivery,row.rejection_reason?(Number(row.status)===3?row.rejection_reason:`历史拒绝：${row.rejection_reason}`):'—',operation])
+        addRow(tbody,[applicationId,time(row.dotime),`${row.applicant_name}\n${row.company_name}`,`${row.operating_system} / ${row.software_version}`,`${row.license_type} / ${row.duration_years}年${row.license_type==='SERVER'?`\n最大支持人数：${row.max_users??'未填写'}`:''}`,row.mac_address,`${row.email||''}\n${row.phone||''}`,`${row.email_type==='PERSONAL'?'个人邮箱':row.email_type==='ORGANIZATION'?'公司或学校邮箱':'未填写'}\n${row.contact_person||'未填写'}`,row.official_submitted==null?'未记录':Number(row.official_submitted)===1?'是':'否',state,delivery,row.rejection_reason?(Number(row.status)===3?row.rejection_reason:`历史拒绝：${row.rejection_reason}`):'—',operation])
       }
-      if(!data.records.length){const row=el('tr'),cell=el('td','该时段及状态下暂无申请','empty');cell.colSpan=12;row.append(cell);tbody.append(row)}
+      if(!data.records.length){const row=el('tr'),cell=el('td','该时段及状态下暂无申请','empty');cell.colSpan=13;row.append(cell);tbody.append(row)}
       const wrap=el('div','','table-wrap');wrap.append(table);const pager=el('div','','pager');const pages=Math.max(1,Math.ceil(data.total/30))
       const previous=button('上一页',()=>{view.page--;load().catch(report)}),next=button('下一页',()=>{view.page++;load().catch(report)});previous.disabled=view.page<=1;next.disabled=view.page>=pages;pager.append(el('span',`${view.page} / ${pages}`),previous,next);panel.replaceChildren(wrap,pager)
     }finally{loading=false;filters.querySelectorAll('input,select,button').forEach(item=>item.disabled=false)}

@@ -162,3 +162,32 @@ select.application-badge { border:1px solid #d5dde7; font:inherit; min-width:92p
 .mail-logo-paste:focus-visible { outline:2px solid #c10b6d; outline-offset:2px; }
 .mail-logo-image { display:block; max-width:100%; height:auto; }
 .mail-logo-image[hidden] { display:none; }
+
+/* License mail preview only; existing detail and queue layout remain unchanged. */
+.license-mail-dialog { width: min(1080px, calc(100vw - 64px)); }
+.license-mail-dialog .delivery-dialog-body { display: block; }
+.license-mail-meta { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px 16px; margin: 0 0 20px; }
+.license-mail-meta dt { font-weight: 600; }
+.license-mail-meta dd { margin: 0; overflow-wrap: anywhere; }
+.license-mail-frame { display: block; width: 100%; height: 520px; border: 1px solid #dce3ed; border-radius: 6px; background: white; }
+.license-mail-dialog label { display: block; margin: 18px 0; font-weight: 600; }
+.license-mail-dialog input, .license-mail-dialog textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; font-weight: 400; }
+.license-mail-dialog textarea { resize: vertical; line-height: 1.7; }
+.license-mail-attachments { padding: 16px 0; border-bottom: 1px solid #dce3ed; overflow-wrap: anywhere; }
+.license-mail-help { color: #657795; font-size: 13px; }
+.license-mail-footer { justify-content: flex-end; margin-top: 16px; }
+
+.application-files { border-top: 1px solid #dce3ed; margin-top: 24px; padding-top: 12px; }
+.application-file-item { padding: 16px; margin: 12px 0; border: 1px solid #dce3ed; border-radius: 6px; overflow-wrap: anywhere; }
+.application-file-item .feedback-detail-link { margin-right: 20px; }
+.application-file-upload { margin-top: 18px; padding: 20px; background: #f7f9fc; border: 1px solid #dce3ed; border-radius: 6px; }
+.application-file-upload[hidden] { display: none; }
+.application-file-upload label { display: block; margin: 16px 0 8px; }
+.application-file-upload input[type=file], .application-file-upload textarea { display: block; margin-top: 8px; max-width: 100%; }
+.application-file-upload textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; }
+.application-file-upload .application-file-confirm { display: flex; gap: 8px; align-items: flex-start; }
+.application-file-history { margin-top: 20px; }
+
+.delivery-manual-application { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.delivery-manual-application label { display: grid; gap: 8px; }
+.delivery-manual-application input { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; }

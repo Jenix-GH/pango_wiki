@@ -12,15 +12,15 @@ test('preparation mode replaces duplicate flags while preserving private setting
   assert.equal(preparationConfig(updated), updated)
 })
 
-test('only the nine additive admin tables are eligible; portal ALTER is excluded', async () => {
+test('only the eleven additive admin tables are eligible; portal ALTER is excluded', async () => {
   const definitions = await migrationDefinitions()
-  assert.equal(definitions.length, 9)
+  assert.equal(definitions.length, 11)
   assert.ok(definitions.every(item => item.columns.length && !/\b(?:ALTER|DROP|DELETE|UPDATE|INSERT)\s/i.test(item.sql)))
   const db = { query: async sql => {
     assert.match(sql, /^SELECT TABLE_NAME/)
     return [[{ TABLE_NAME: 'dto_license_application', ENGINE: 'InnoDB' }]]
   } }
-  assert.equal((await missingTables(db, definitions)).length, 9)
+  assert.equal((await missingTables(db, definitions)).length, 11)
 })
 
 test('wrong database and malformed existing tables stop deployment without DDL', async () => {

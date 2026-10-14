@@ -1,3 +1,4 @@
+import { showQueuedMail } from './licenseQueuedMail.js'
 import { ccEditor, recipientHistory } from './licenseCc.js'
 
 export const rejectionLabels={queued:'待发送',sending:'发送中',accepted:'邮件服务已接受',failed:'发送失败',unknown:'结果待核查',paused:'已暂停',cancelled:'已取消'}
@@ -17,6 +18,7 @@ export async function showRejection(row,request,{refresh=async()=>{},report=()=>
         await request(`/license-delivery/rejections/${row.id}/cc`,{method:'POST',body:JSON.stringify({cc,expectedUpdatedAt:record.updated_at})})
         report(`申请 #${row.id} 的拒绝通知抄送设置已保存。`);d.close();await refresh();await showRejection(row,request,{refresh,report})
       }),recipientHistory(data.mails))
+      if(['queued','failed','paused'].includes(record.state))body.append(button('邮件预览 / 编辑',()=>showQueuedMail('rejection',row.id,request)))
       for(const mail of data.mails)body.append(el('p',`${Number(mail.current_cycle)===1?'本次拒绝邮件':'历史拒绝邮件'} · Message-ID：${mail.message_id}\n${time(mail.updated_at)} · ${mailLabels[mail.state]||mail.state}\n${mail.detail}`,'rejection-reason'))
       if(['queued','failed','paused'].includes(record.state)){
         const error=el('p','','delivery-message');error.setAttribute('role','alert')

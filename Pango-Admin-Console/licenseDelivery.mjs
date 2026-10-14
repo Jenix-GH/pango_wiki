@@ -1,3 +1,5 @@
+import { buildQueuedMessage } from './licenseQueuedMail.mjs'
+import { storeNightlyReport, sentResultRow } from './licenseNightlyReport.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 import { applyMailTemplate, mailVariables, escapeMailHtml, mailTextToHtml } from './licenseMailTemplates.mjs'
 
@@ -12,7 +14,11 @@ export function problem(message, statusCode = 400) {
   return Object.assign(new Error(message), { statusCode })
 }
 export function macFromFilename(name) {
-  return /^new_pds_([a-f\d]{12})\.lic$/i.exec(String(name))?.[1].toUpperCase() || null
+  return /^new_pds_([a-f\d]{12})(?:_floating)?\.lic$/i.exec(String(name))?.[1].toUpperCase() || null
+}
+export function typeFromFilename(name) {
+  const match = /^new_pds_[a-f\d]{12}(_floating)?\.lic$/i.exec(String(name))
+  return match ? (match[1] ? 'SERVER' : 'STANDALONE') : null
 }
 export function normalizeMac(value) {
   const text = String(value || '').trim()
@@ -86,7 +92,10 @@ export async function setMailCc(pool,kind,id,body,actor){
   })
 }
 export function snapshot(row) {
-  return JSON.stringify(Object.fromEntries(['id','mac_address','email','operating_system','software_version','license_type','duration_years','applicant_name','company_name'].map(key => [key, String(row[key] ?? '')])))
+  const keys=['id','mac_address','email','operating_system','software_version','license_type','duration_years','applicant_name','company_name']
+  // Do not invalidate historical snapshots merely because nullable columns were added.
+  for(const key of ['email_type','contact_person','max_users'])if(row[key]!=null&&row[key]!=='')keys.push(key)
+  return JSON.stringify(Object.fromEntries(keys.map(key => [key, String(row[key] ?? '')])))
 }
 export function chinaTime(now = new Date()) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23' }).formatToParts(now).map(p => [p.type,p.value]))
@@ -128,31 +137,28 @@ async function audit(db, fileId, actor, action, note = '') {
 async function setFile(db, id, state, reason) {
   await db.query('UPDATE dto_license_file SET state=?,reason=?,updated_at=NOW(6) WHERE id=?', [state,reason.slice(0,500),id])
 }
-export async function candidates(db, mac) {
-  if (!mac) return []
+export async function candidates(db, mac, licenseType) {
+  if (!mac || !licenseType) return []
   const [rows] = await db.query(`SELECT a.* FROM dto_license_application a
-    WHERE UPPER(REPLACE(REPLACE(a.mac_address,'-',''),':',''))=?
+    WHERE UPPER(REPLACE(REPLACE(a.mac_address,'-',''),':',''))=? AND a.license_type=?
     AND a.status IN (0,1,2)
     AND NOT EXISTS (SELECT 1 FROM dto_license_mail m WHERE m.application_id=a.id AND m.kind='customer' AND m.state IN ('accepted','unknown','sending'))
-    ORDER BY a.id DESC`, [mac])
-  return rows.filter(row => normalizeMac(row.mac_address) === mac)
+    ORDER BY a.id DESC`, [mac,licenseType])
+  return rows.filter(row => normalizeMac(row.mac_address) === mac && row.license_type === licenseType)
 }
-export async function matchFile(db, file, { applicationId, resetSnapshot = false } = {}) {
-  if (!file.mac) return { state:'unmatched', reason:'文件名应为 new_pds_<12位十六进制MAC>.lic', application:null }
-  if(file.state==='conflict'&&!file.application_id&&!resetSnapshot)return {state:'conflict',reason:'该文件曾有多条候选申请，请人工核对后选择申请',application:null}
-  const available = await candidates(db, file.mac)
+export async function matchFile(db, file, { resetSnapshot = false } = {}) {
+  const licenseType=typeFromFilename(file.original_name)
+  if (!file.mac || !licenseType || macFromFilename(file.original_name)!==file.mac) return { state:'unmatched', reason:'文件名应为 new_pds_<12位十六进制MAC>.lic 或 new_pds_<12位十六进制MAC>_floating.lic；请核对后重新上传', application:null }
+  if(file.state==='conflict'&&!file.application_id&&!resetSnapshot)return {state:'conflict',reason:'该文件曾有多条候选申请，请在 License 发放中手动上传文件',application:null}
+  const available = await candidates(db, file.mac, licenseType)
   let row
-  if (applicationId) {
-    row = available.find(item => String(item.id) === String(applicationId))
-    if (!row) throw problem('所选申请不属于此 MAC 的可发放候选，请刷新核对')
-  }
-  else if (file.application_id && (Number(file.manual_selection) === 1 || available.length === 1)) row = available.find(item => String(item.id) === String(file.application_id))
+  if (file.application_id && (Number(file.manual_selection) === 1 || available.length === 1)) row = available.find(item => String(item.id) === String(file.application_id))
   else if (available.length === 1) row = available[0]
-  if (!row) return { state: available.length > 1 ? 'conflict' : 'unmatched', reason: available.length > 1 ? '同一 MAC 有多条申请，请选择并核对' : '未找到可发放申请，或该申请已发放/待核查/被拒绝', application:null }
+  if (!row) return { state: available.length > 1 ? 'conflict' : 'unmatched', reason: available.length > 1 ? '同一 MAC 和授权类型有多条申请，请在 License 发放中指定申请并手动上传' : '未找到可发放申请，或该申请已发放/待核查/被拒绝', application:null }
   if (!validEmail(row.email)) return { state:'conflict', reason:'客户邮箱格式无效，请先核对申请信息', application:row }
   if (!resetSnapshot && file.application_snapshot && file.application_snapshot !== snapshot(row)) return { state:'conflict', reason:'申请信息已变化，请核对后重新匹配', application:row }
-  const [siblings] = await db.query(`SELECT id FROM dto_license_file WHERE mac=? AND id<>? AND state IN (${ACTIVE.map(() => '?').join(',')})`, [file.mac,file.id,...ACTIVE])
-  if (siblings.length) return { state:'conflict', reason:'同一 MAC 有其他待处理文件，请先取消多余文件', application:row }
+  const [siblings] = await db.query(`SELECT id,original_name FROM dto_license_file WHERE mac=? AND id<>? AND state IN (${ACTIVE.map(() => '?').join(',')})`, [file.mac,file.id,...ACTIVE])
+  if (siblings.some(item=>!typeFromFilename(item.original_name)||typeFromFilename(item.original_name)===licenseType)) return { state:'conflict', reason:'同一 MAC 和授权类型有其他待处理文件，请先取消多余文件', application:row }
   return { state:'queued', reason:'唯一匹配；授权内容由上传人员核对，每晚 20:00 自动处理', application:row }
 }
 async function persistMatch(db, file, result, { advanceStatus = true } = {}) {
@@ -170,7 +176,7 @@ export async function uploadFiles(pool, body, actor) {
       const ids = []
       const reusedIds = []
       for (const file of files) {
-        const [existing] = await db.query("SELECT id,state FROM dto_license_file WHERE sha256=? AND mac <=> ? AND state<>'duplicate' ORDER BY (state='cancelled'),uploaded_at DESC,id LIMIT 1", [file.sha256,file.mac])
+        const [existing] = await db.query("SELECT id,state FROM dto_license_file WHERE sha256=? AND mac <=> ? AND (RIGHT(LOWER(original_name),13)='_floating.lic')=(RIGHT(LOWER(?),13)='_floating.lic') AND state<>'duplicate' ORDER BY (state='cancelled'),uploaded_at DESC,id LIMIT 1", [file.sha256,file.mac,file.name])
         if(existing[0]?.state==='cancelled'){
           const id=existing[0].id
           ids.push(id);reusedIds.push(id)
@@ -222,7 +228,8 @@ export async function fileDetail(pool, id) {
   const [mails] = await pool.query('SELECT id,recipient,message_id,state,attempts,detail,created_at,updated_at FROM dto_license_mail WHERE file_id=? ORDER BY created_at DESC',[id])
   const [history] = await pool.query('SELECT actor,action,note,created_at FROM dto_license_delivery_audit WHERE file_id=? ORDER BY id DESC LIMIT 100',[id])
   await attachCc(pool,'file',[file]);await attachRecipientHistory(pool,mails)
-  return {file,candidates:await candidates(pool,file.mac),mails,history}
+  const [[application]]=file.application_id?await pool.query('SELECT * FROM dto_license_application WHERE id=?',[file.application_id]):[[]]
+  return {file,application:application||null,licenseType:typeFromFilename(file.original_name),candidates:await candidates(pool,file.mac,typeFromFilename(file.original_name)),mails,history}
 }
 export async function fileAction(pool,id,body,actor) {
   const note = String(body.note || '').trim().slice(0,500)
@@ -242,9 +249,12 @@ export async function fileAction(pool,id,body,actor) {
       else if (body.action === 'pause') await setFile(db,id,'paused','管理员暂停自动发放')
       else if (body.action === 'match') {
         if (!note) throw problem('请填写已核对申请和文件的说明')
-        const result = await matchFile(db,file,{applicationId:body.applicationId,resetSnapshot:true})
+        if(body.applicationId)throw problem('请在 License 发放中手动上传或替换文件',400)
+        const result = await matchFile(db,file,{resetSnapshot:true})
         await persistMatch(db,file,result)
-        await db.query('UPDATE dto_license_file SET manual_selection=? WHERE id=?',[body.applicationId ? 1 : 0,id])
+        // Rechecking/resuming an existing association must not discard the operator's choice.
+        const manualSelection=Number(file.manual_selection)===1 ? 1 : 0
+        await db.query('UPDATE dto_license_file SET manual_selection=? WHERE id=?',[manualSelection,id])
         if (result.state === 'queued') {
           await db.query('UPDATE dto_license_file SET attempts=0 WHERE id=?',[id])
           await db.query("UPDATE dto_license_mail SET attempts=0,detail='管理员核对后重新排队',updated_at=NOW(6) WHERE application_id=? AND kind='customer' AND state='failed'",[result.application.id])
@@ -263,16 +273,16 @@ function csvCell(value) {
   return `"${text.replaceAll('"','""')}"`
 }
 export function digestMessage(rows, exceptions, date, recipient) {
-  const columns = [['id','申请编号'],['dotime','申请时间'],['applicant_name','申请人'],['company_name','公司或学校'],['operating_system','操作系统'],['software_version','软件版本'],['license_type','授权类型'],['duration_years','使用年限（年）'],['mac_address','MAC 地址'],['email','电子邮箱'],['phone','联系电话'],['address','地址'],['official_submitted','是否已在官网提交']]
-  const value=(row,key)=>key==='official_submitted'?(row[key]==null?'未记录':Number(row[key])===1?'是':'否'):(row[key]??'')
+  const columns = [['id','申请编号'],['dotime','申请时间'],['applicant_name','申请人'],['company_name','公司或学校'],['operating_system','操作系统'],['software_version','软件版本'],['license_type','授权类型'],['duration_years','使用年限（年）'],['mac_address','MAC 地址'],['email','电子邮箱'],['phone','联系电话'],['address','地址'],['official_submitted','是否已在官网提交'],['email_type','邮箱类型'],['contact_person','FAE 或渠道负责人'],['max_users','最大支持人数']]
+  const value=(row,key)=>key==='official_submitted'?(row[key]==null?'未记录':Number(row[key])===1?'是':'否'):key==='email_type'?(row[key]==='PERSONAL'?'个人邮箱':row[key]==='ORGANIZATION'?'公司或学校邮箱':'未填写'):key==='max_users'?(row.license_type==='SERVER'?(row[key]??'未填写'):'不适用'):key==='contact_person'?(row[key]||'未填写'):(row[key]??'')
   const csv = '\ufeff' + [columns.map(([,label]) => csvCell(label)).join(','),...rows.map(row => columns.map(([key])=>csvCell(value(row,key))).join(','))].join('\r\n')
   const details=rows.flatMap(row=>[`#${row.id} | ${row.company_name||''} | ${row.applicant_name||''} | ${row.mac_address||''}`,...columns.map(([key,label])=>`${label}：${value(row,key)}`),''])
   const text = [`待处理 License 申请：${rows.length} 条。这些申请尚未通知 FAE；发送成功后自动转为处理中。`,'',...details,`发放异常：${exceptions.length} 条。`,...exceptions.map(file=>`${file.original_name}：${file.reason}`),'','请登录管理后台处理。'].join('\n')
   const cellStyle='border:1px solid #dbe3ed;padding:10px;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word;'
-  const widths=[80,135,85,150,80,105,105,90,155,180,115,200,120]
+  const widths=[80,135,85,150,80,105,105,90,155,180,115,200,120,130,150,100]
   const tableHead=columns.map(([,label])=>`<th scope="col" style="${cellStyle}background:#eaf0f8;font-weight:600;">${escapeMailHtml(label)}</th>`).join('')
   const tableRows=rows.map((row,index)=>`<tr style="background:${index%2?'#f6f8fb':'#ffffff'};">${columns.map(([key])=>`<td style="${cellStyle}">${mailTextToHtml(value(row,key))||'—'}</td>`).join('')}</tr>`).join('')
-  const tables=`<div style="max-width:100%;overflow-x:auto;margin:16px 0 24px;"><table width="1700" cellspacing="0" cellpadding="0" style="width:1700px;min-width:1700px;table-layout:fixed;border-collapse:collapse;font-size:13px;line-height:1.6;"><colgroup>${widths.map(width=>`<col style="width:${width}px;">`).join('')}</colgroup><thead><tr>${tableHead}</tr></thead><tbody>${tableRows}</tbody></table></div>`
+  const tables=`<div style="max-width:100%;overflow-x:auto;margin:16px 0 24px;"><table width="2080" cellspacing="0" cellpadding="0" style="width:2080px;min-width:2080px;table-layout:fixed;border-collapse:collapse;font-size:13px;line-height:1.6;"><colgroup>${widths.map(width=>`<col style="width:${width}px;">`).join('')}</colgroup><thead><tr>${tableHead}</tr></thead><tbody>${tableRows}</tbody></table></div>`
   const exceptionHtml=exceptions.length?`<ul>${exceptions.map(file=>`<li>${mailTextToHtml(file.original_name)}：${mailTextToHtml(file.reason)}</li>`).join('')}</ul>`:''
   const html=`<div style="font-family:Arial,'Microsoft YaHei',sans-serif;color:#172b4d;font-size:14px;line-height:1.6;width:100%;"><h2 style="font-size:20px;margin:0 0 12px;">Pango License 待处理申请</h2><p>${escapeMailHtml(date)} · 共 ${rows.length} 条申请</p><p>这些申请尚未通知 FAE；发送成功后自动转为处理中。</p>${tables}<p>发放异常：${exceptions.length} 条。</p>${exceptionHtml}<p>请登录管理后台处理。完整申请信息也已附在 CSV 附件中。</p></div>`
   return { to:recipient,subject:`Pango License 待办汇总 ${date}`,text,html,attachments:[{name:`license_applications_${date}.csv`,base64:Buffer.from(csv).toString('base64')}] }
@@ -309,9 +319,24 @@ async function safeSend(sender, message) {
 async function finishMail(db, mail, result) {
   await db.query('UPDATE dto_license_mail SET state=?,detail=?,updated_at=NOW(6) WHERE id=?',[result.state,result.detail,mail.id])
 }
-async function sendNotice(db,sender,key,kind,message) {
+async function sendNotice(db,sender,key,kind,message,reportId=null) {
   if (!validEmail(message.to)) throw problem('FAE 收件邮箱配置无效')
-  const mail = await prepareMail(db,{key,kind,message})
+  let mail
+  await db.beginTransaction()
+  try {
+    const [[priorReport]]=reportId?await db.query('SELECT r.id,r.payload FROM dto_license_nightly_report r JOIN dto_license_mail m ON m.id=r.mail_id WHERE m.dedupe_key=? ORDER BY r.created_at LIMIT 1',[key]):[[]]
+    if(priorReport){
+      const original=JSON.parse(priorReport.payload).message
+      if(original.to!==message.to){
+        await db.query('UPDATE dto_license_nightly_report SET summary_detail=? WHERE id=?',['FAE 收件邮箱已变化，原汇总不自动重试；请核查',reportId])
+        await db.commit();return {state:'skipped',detail:'FAE 收件邮箱已变化，请核查原汇总'}
+      }
+      message=original
+    }
+    mail = await prepareMail(db,{key,kind,message})
+    if(reportId)await db.query('UPDATE dto_license_nightly_report SET mail_id=?,summary_detail=? WHERE id=?',[priorReport?null:mail?.id||null,priorReport?(mail?'已重试当日首份汇总；本次明细保留在后台，未另行发送':'当日汇总已处理或需要人工核查；本次明细保留在后台'):(mail?'':'当日汇总已处理或需要人工核查；本次明细保留在后台'),reportId])
+    await db.commit()
+  }catch(error){await db.rollback();throw error}
   if (!mail) return {state:'skipped',detail:'本次通知已处理或需要人工核查'}
   const result = await safeSend(sender,{...message,messageId:mail.messageId,mailKind:kind})
   await finishMail(db,mail,result)
@@ -381,7 +406,7 @@ export async function runDigest(pool,sender,{faeEmail,now=new Date(),templates={
     return dispatchDigest(db,sender,{id:prepared.id,message_id:prepared.messageId},{payload:JSON.stringify(message)},true)
   })
 }
-async function deliverLicenseFile(db,sender,id,{date,replyTo,templates={},logo=null,actor='nightly',expectedApplicationId,expectedEmail,expectedCc}) {
+async function deliverLicenseFile(db,sender,id,{date,replyTo,faeEmail,templates={},logo=null,actor='nightly',expectedApplicationId,expectedEmail,expectedCc}) {
       const [[file]] = await db.query('SELECT * FROM dto_license_file WHERE id=?',[id])
       if (createHash('sha256').update(file.content).digest('hex') !== file.sha256 || file.content.length !== file.byte_length) {
         await setFile(db,id,'paused','文件完整性校验失败，请取消并重新上传')
@@ -396,7 +421,9 @@ async function deliverLicenseFile(db,sender,id,{date,replyTo,templates={},logo=n
       let cc
       try{cc=await ccForMessage(db,'file',file.id,row)}catch(error){if(!error.statusCode)throw error;await setFile(db,file.id,'paused',error.message);return {id:file.id,state:'paused',detail:error.message}}
       if(expectedCc!==undefined&&JSON.stringify(normalizeCc(expectedCc,row.email))!==JSON.stringify(cc))throw problem('抄送邮箱已变化，请刷新核对后再发送',409)
-      const message = applyMailTemplate(customerMessage(row,file,replyTo,cc),'customer',templates,date,logo)
+      let message
+      try{({message}=await buildQueuedMessage(db,'file',file,row,{replyTo,from:faeEmail,cc,templates,date,logo}))}
+      catch(error){if(!error.statusCode)throw error;await setFile(db,id,'paused',error.message);return {id,state:'paused',detail:error.message}}
       let mail
       await db.beginTransaction()
       try {
@@ -419,7 +446,7 @@ async function deliverLicenseFile(db,sender,id,{date,replyTo,templates={},logo=n
         await setFile(db,id,result.state,result.state==='accepted'?'邮件服务已接受；不代表客户已收件':result.detail)
         await audit(db,id,actor,result.state,result.detail)
         await db.commit()
-        return {id,state:result.state,detail:result.detail}
+        return {id,state:result.state,detail:result.detail,reportRow:sentResultRow('file',row,message,file.original_name,result)}
       } catch(error) {
         await db.rollback()
         throw error
@@ -436,13 +463,14 @@ export async function runNightly(pool,sender,{faeEmail,replyTo,now=new Date(),te
     const cutoff = `${date} 20:00:00.000000`
     const [files] = await db.query("SELECT id FROM dto_license_file WHERE uploaded_at<=? AND state IN ('queued','conflict','unmatched','failed') AND attempts<3 ORDER BY uploaded_at,id LIMIT 500",[cutoff])
     const results=[]
-    for (const {id} of files) results.push(await deliverLicenseFile(db,sender,id,{date,replyTo,templates,logo}))
-    const rejectionResults=await dispatchRejections(db,sender,{cutoff,replyTo,templates,date,logo})
+    for (const {id} of files) results.push(await deliverLicenseFile(db,sender,id,{date,replyTo,faeEmail,templates,logo}))
+    const rejectionResults=await dispatchRejections(db,sender,{cutoff,replyTo,faeEmail,templates,date,logo})
     results.push(...rejectionResults)
     const [counts] = await db.query('SELECT state,COUNT(*) count FROM dto_license_file WHERE uploaded_at<=? GROUP BY state',[cutoff])
     let summaryResult = null
     if (files.length || rejectionResults.length || counts.some(item=>['unknown','failed','conflict','unmatched'].includes(item.state))) {
-      summaryResult = await sendNotice(db,sender,`nightly-summary:${date}`,'summary',applyMailTemplate({to:faeEmail,subject:`Pango License 夜间发放结果 ${date}`,text:[`本次检查 ${files.length} 个文件，处理 ${rejectionResults.length} 条拒绝通知。`,'拒绝通知结果：',...rejectionResults.map(item=>`申请 #${item.applicationId}：${item.state}`),'截至本批截止时间的文件状态（累计）：',...counts.map(item=>`${item.state}: ${item.count}`),'','请登录管理后台查看异常及邮件记录。SMTP 接受不等于收件人已收到。'].join('\n'),attachments:[]},'summary',templates,date,logo))
+      const report=await storeNightlyReport(db,{date,cutoff,files,rejectionResults,counts,results,faeEmail,templates,logo})
+      summaryResult = await sendNotice(db,sender,`nightly-summary:${date}`,'summary',report.message,report.id)
     }
     return {date,cutoff,results,summary:summaryResult}
   })
@@ -513,7 +541,7 @@ export async function runApplicationStep(pool,sender,{applicationId,action,expec
     const file=files[0]
     if(expectedFileId && String(file.id)!==String(expectedFileId))throw problem('关联文件已变化，请刷新核对',409)
     if(!['queued','failed'].includes(file.state)||Number(file.attempts)>=3)throw problem('文件未处于可发放状态；暂停、冲突、结果待核查或重试超限时需先处理',409)
-    const result=await deliverLicenseFile(db,sender,file.id,{date:chinaTime(now).date,replyTo,templates,logo,actor,expectedApplicationId:id,expectedEmail,expectedCc})
+    const result=await deliverLicenseFile(db,sender,file.id,{date:chinaTime(now).date,replyTo,faeEmail,templates,logo,actor,expectedApplicationId:id,expectedEmail,expectedCc})
     return {...result,detail:result.detail||'已完成这条申请的校对，请查看文件状态；其他申请未处理'}
   })
 }
@@ -588,7 +616,7 @@ export async function rejectApplication(pool,id,reason,actor,expectedStatus){
     }catch(error){await db.rollback();throw error}
   })
 }
-async function dispatchRejections(db,sender,{cutoff,replyTo,templates,date,logo}){
+async function dispatchRejections(db,sender,{cutoff,replyTo,faeEmail,templates,date,logo}){
   const [requests]=await db.query("SELECT * FROM dto_license_rejection WHERE created_at<=? AND state IN ('queued','failed') AND attempts<3 ORDER BY created_at,application_id LIMIT 500",[cutoff])
   const results=[]
   for(const rejected of requests){
@@ -604,12 +632,18 @@ async function dispatchRejections(db,sender,{cutoff,replyTo,templates,date,logo}
       await db.query("UPDATE dto_license_rejection SET state='paused',detail=?,updated_at=NOW(6) WHERE application_id=?",[error.message,id])
       results.push({applicationId:id,kind:'rejection',state:'paused'});continue
     }
-    const message=applyMailTemplate(rejectionMessage(row,rejected.reason,replyTo,cc),'rejection',templates,date,logo)
+    let message
+    try{({message}=await buildQueuedMessage(db,'rejection',rejected,row,{replyTo,from:faeEmail,cc,templates,date,logo}))}
+    catch(error){
+      if(!error.statusCode)throw error
+      await db.query("UPDATE dto_license_rejection SET state='paused',detail=?,updated_at=NOW(6) WHERE application_id=?",[error.message,id])
+      results.push({applicationId:id,kind:'rejection',state:'paused',detail:error.message});continue
+    }
     let mail
     await db.beginTransaction()
     try{
       mail=await prepareMail(db,{key:`rejection:${id}`,kind:'rejection',applicationId:id,message})
-      if(!mail){await db.rollback();continue}
+      if(!mail){await db.rollback();results.push({applicationId:id,kind:'rejection',state:'skipped',detail:'已有发送记录或已达重试上限，请核查'});continue}
       await db.query("UPDATE dto_license_rejection SET state='sending',attempts=attempts+1,detail='正在发送拒绝说明',updated_at=NOW(6) WHERE application_id=?",[id])
       await db.commit()
     }catch(error){await db.rollback();throw error}
@@ -622,7 +656,7 @@ async function dispatchRejections(db,sender,{cutoff,replyTo,templates,date,logo}
       await finishMail(db,mail,result)
       await db.query('UPDATE dto_license_rejection SET state=?,detail=?,updated_at=NOW(6) WHERE application_id=?',[result.state,result.detail,id])
       await audit(db,null,'nightly',`rejection-${result.state}`,`申请 #${id}，收件人 ${message.to}，Message-ID ${mail.messageId}`)
-      await db.commit();results.push({applicationId:id,kind:'rejection',state:result.state})
+      await db.commit();results.push({applicationId:id,kind:'rejection',state:result.state,reportRow:sentResultRow('rejection',row,message,rejected.reason,result)})
     }catch(error){await db.rollback();throw error}
   }
   return results

@@ -1,3 +1,7 @@
+import { applicationFiles, uploadApplicationFile } from '../licenseApplicationFiles.mjs'
+import { queuedMailPreview } from '../licenseQueuedMail.mjs'
+import { mailPreviewHtml } from '../licenseMailLogo.mjs'
+import { listNightlyReports, nightlyReportDetail } from '../licenseNightlyReport.mjs'
 // Destructive only in a dedicated, explicitly opted-in local test database.
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -14,12 +18,21 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
  pool.on('connection',c=>c.query("SET time_zone='+08:00'"))
  try{
   assert.equal((await pool.query('SELECT DATABASE() name'))[0][0].name,'pango_license_test')
-  await pool.query(`CREATE TABLE IF NOT EXISTS dto_license_application (id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,userinfo_id BIGINT NULL,official_submitted TINYINT NULL,mac_address VARCHAR(50),email VARCHAR(254),applicant_name VARCHAR(100),company_name VARCHAR(200),operating_system VARCHAR(50),software_version VARCHAR(50),license_type VARCHAR(30),duration_years INT,status INT DEFAULT 0,dotime DATETIME DEFAULT CURRENT_TIMESTAMP,uptime DATETIME DEFAULT CURRENT_TIMESTAMP,phone VARCHAR(50),address VARCHAR(500)) ENGINE=InnoDB`)
-  for (const name of ['20260923_license_delivery.sql','20260923_license_workflow.sql','20260924_license_manual_status.sql', '20260928_license_cc.sql']) {
+  await pool.query(`CREATE TABLE IF NOT EXISTS dto_license_application (id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,userinfo_id BIGINT NULL,owner_verified TINYINT NOT NULL DEFAULT 0,official_submitted TINYINT NULL,mac_address VARCHAR(50),email VARCHAR(254),applicant_name VARCHAR(100),company_name VARCHAR(200),operating_system VARCHAR(50),software_version VARCHAR(50),license_type VARCHAR(30),duration_years INT,status INT DEFAULT 0,dotime DATETIME DEFAULT CURRENT_TIMESTAMP,uptime DATETIME DEFAULT CURRENT_TIMESTAMP,phone VARCHAR(50),address VARCHAR(500)) ENGINE=InnoDB`)
+  for (const name of ['20260923_license_delivery.sql','20260923_license_workflow.sql','20260924_license_manual_status.sql', '20260928_license_cc.sql','20261014_license_mail_preview.sql']) {
     const migration=await readFile(new URL(`../database/${name}`,import.meta.url),'utf8')
     for(const sql of migration.split(';').map(s=>s.trim()).filter(Boolean))await pool.query(sql)
   }
-  const reset=async()=>{for(const table of ['dto_license_cc','dto_license_mail_recipients','dto_license_status_change','dto_license_rejection','dto_license_digest_item','dto_license_digest_batch','dto_license_delivery_audit','dto_license_mail','dto_license_file','dto_license_application'])await pool.query(`TRUNCATE TABLE ${table}`)}
+  const [[column]]=await pool.query("SELECT COUNT(*) n FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='dto_license_application' AND column_name='email_type'")
+  if(!Number(column.n)){
+    const migration=await readFile(new URL('../../agent_ai/database/migrations/20261014_license_application_details.sql',import.meta.url),'utf8')
+    // Prove this additive migration preserves a historical rejected application.
+    await pool.query("INSERT INTO dto_license_application (id,applicant_name,status) VALUES (999999,'历史申请',3)")
+    await pool.query(migration)
+    const [[old]]=await pool.query('SELECT * FROM dto_license_application WHERE id=999999')
+    assert.equal(old.status,3);assert.equal(old.applicant_name,'历史申请');assert.equal(old.email_type,null);assert.equal(old.contact_person,null);assert.equal(old.max_users,null)
+  }
+  const reset=async()=>{for(const table of ['dto_license_mail_draft','dto_license_nightly_report','dto_license_cc','dto_license_mail_recipients','dto_license_status_change','dto_license_rejection','dto_license_digest_item','dto_license_digest_batch','dto_license_delivery_audit','dto_license_mail','dto_license_file','dto_license_application'])await pool.query(`TRUNCATE TABLE ${table}`)}
   const application=async(id=1,mail='customer@example.com',mac='1a-2b-3c-4d-5f-60')=>pool.query("INSERT INTO dto_license_application(id,mac_address,email,applicant_name,company_name,operating_system,software_version,license_type,duration_years) VALUES(?,?,?,'测试客户','测试公司','Windows','test','STANDALONE',1)",[id,mac,mail])
   const upload=async(files=[input()])=>{const result=await uploadFiles(pool,{files},'tester');await pool.query("UPDATE dto_license_file SET uploaded_at='2026-09-23 19:00:00'");return result}
   const state=async id=>(await pool.query('SELECT state FROM dto_license_file WHERE id=?',[id]))[0][0].state
@@ -30,6 +43,211 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   const cancelNotice=async(id=1,extra={})=>cancelRejection(pool,String(id),{confirm:true,expectedUpdatedAt:(await rejectionDetail(pool,id)).record.updated_at,...extra},'tester')
   const restoreNotice=async(id=1,extra={})=>restoreRejection(pool,String(id),{confirm:true,expectedUpdatedAt:(await rejectionDetail(pool,id)).record.updated_at,...extra},'tester')
   const setCc=async(kind,id,cc,extra={})=>setMailCc(pool,kind,id,{cc,expectedUpdatedAt:kind==='file'?(await fileDetail(pool,id)).file.updated_at:(await rejectionDetail(pool,id)).record.updated_at,...extra},'tester')
+  const applicationUpload=async(id=1,file=input(),extra={})=>{
+    const current=await applicationFiles(pool,id)
+    const result=await uploadApplicationFile(pool,id,{file,confirm:true,note:'已核对当前申请及文件实际授权内容',expectedVersion:current.version,...extra},'tester')
+    await pool.query("UPDATE dto_license_file SET uploaded_at='2026-09-23 19:00:00' WHERE id=?",[result.id]);return result
+  }
+  const previewOptions={replyTo:'fae@example.com',from:'fae@example.com',date:'2026-09-23'}
+  const preview=(kind,id,body=null,options={})=>queuedMailPreview(pool,kind,id,{...previewOptions,...options},body,'tester')
+  const savePreview=async(kind,id,changes={},options={})=>{
+    const view=await preview(kind,id,null,options)
+    return preview(kind,id,{expectedVersion:view.version,subject:view.subject,text:view.text,...changes},options)
+  }
+  await t.test('queued title length matches the existing 200 character mail column',async()=>{
+    await reset();sent=[];await application();const file=(await upload()).records[0]
+    await assert.rejects(savePreview('file',file.id,{subject:'长'.repeat(201)}),/200/)
+    const saved=await savePreview('file',file.id,{subject:'长'.repeat(200)})
+    await manual('deliver-license',{expectedFileId:file.id})
+    assert.equal(sent.find(mail=>mail.mailKind==='customer').subject,saved.subject)
+  })
+  await t.test('maximum replacement note is safely retained in bounded audit records',async()=>{
+    await reset();sent=[];await application();const old=(await upload()).records[0]
+    const replacement=await applicationUpload(1,input('new bytes'),{note:'核'.repeat(500)})
+    assert.equal(await state(old.id),'cancelled');assert.equal(await state(replacement.id),'queued')
+    const [audit]=await pool.query("SELECT note FROM dto_license_delivery_audit WHERE action='application-file-replaced'")
+    assert.equal(audit.length,1);assert.ok(audit[0].note.length<=500);assert.match(audit[0].note,/申请 #1/)
+  })
+  await t.test('saved actual preview is identical to immediate payload and survives template/logo changes; nightly dedupe remains',async()=>{
+    await reset();sent=[];await application();const uploaded=await upload(),id=uploaded.records[0].id
+    const logo={mimeType:'image/png',base64:'iVBORw0KGgo=',width:180}
+    const first=await preview('file',id,null,{logo});assert.equal(first.saved,false);assert.equal(customerCount(),0)
+    const saved=await preview('file',id,{expectedVersion:first.version,subject:'已核对标题',text:'您好\n\n正文 <script>alert(1)</script> & 内容'}, {logo})
+    assert.equal(saved.saved,true);assert.equal(customerCount(),0);assert.match(saved.html,/&lt;script&gt;/);assert.match(saved.html,/data:image\/png;base64/)
+    await manual('deliver-license',{expectedFileId:id,templates:{customer:{subject:'后来全局标题',text:'后来全局正文'}},logo:null})
+    const mail=sent.find(m=>m.mailKind==='customer')
+    assert.equal(mail.subject,saved.subject);assert.equal(mail.text,saved.text);assert.equal(mailPreviewHtml(mail),saved.html)
+    assert.equal(mail.attachments[0].name,saved.attachments[0].name)
+    assert.equal(Buffer.from(mail.attachments[0].base64,'base64').toString(),'license one')
+    await assert.rejects(preview('file',id),/仅待发送/)
+    await runNightly(pool,sender,night);assert.equal(customerCount(),1)
+  })
+  await t.test('optimistic versions reject stale editors; saving/restoring never sends and keeps CC/file unchanged',async()=>{
+    await reset();sent=[];await application();const uploaded=await upload(),id=uploaded.records[0].id
+    await setCc('file',id,'review@example.com');const before=await preview('file',id)
+    await savePreview('file',id,{text:'自己的正文'})
+    await assert.rejects(preview('file',id,{expectedVersion:before.version,subject:'覆盖',text:'旧编辑器'}),/已变化/)
+    const edited=await preview('file',id)
+    const restored=await preview('file',id,{expectedVersion:edited.version,action:'reset'})
+    assert.equal(restored.text,before.text);assert.deepEqual(restored.cc,['review@example.com']);assert.deepEqual(restored.attachments,before.attachments)
+    assert.equal(customerCount(),0);assert.equal(await state(id),'queued')
+  })
+  await t.test('CC change pauses an approved mail until explicit reapproval; paused state is retained by content save',async()=>{
+    await reset();sent=[];await application();const uploaded=await upload(),id=uploaded.records[0].id
+    await savePreview('file',id);await setCc('file',id,'changed@example.com')
+    await runNightly(pool,sender,night);assert.equal(customerCount(),0);assert.equal(await state(id),'paused')
+    const stale=await preview('file',id);assert.equal(stale.stale,true)
+    const saved=await savePreview('file',id);assert.equal(saved.stale,false);assert.equal(await state(id),'paused')
+    await fileAction(pool,id,{action:'match',note:'重新核对抄送和正文'},'tester')
+    await manual('deliver-license',{expectedFileId:id});assert.equal(customerCount(),1)
+    assert.deepEqual(sent.find(m=>m.mailKind==='customer').cc,['changed@example.com'])
+  })
+  await t.test('changing applicant data or FAE sender invalidates the saved binding',async()=>{
+    await reset();sent=[];await application();const uploaded=await upload(),id=uploaded.records[0].id
+    await savePreview('file',id)
+    assert.equal((await preview('file',id,null,{from:'another@example.com'})).stale,true)
+    await pool.query("UPDATE dto_license_application SET applicant_name='变更申请人' WHERE id=1")
+    const changed=await preview('file',id);assert.equal(changed.stale,true)
+    await runNightly(pool,sender,night);assert.equal(customerCount(),0)
+  })
+  await t.test('rejection edit preserves full reason, saves literal text, uses nightly same HTML and cannot edit cancelled or unknown',async()=>{
+    await reset();sent=[];await application();await rejectApplication(pool,1,'请补充资料','tester')
+    await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'")
+    await assert.rejects(savePreview('rejection',1,{text:'随便删除理由'}),/完整拒绝理由/)
+    const saved=await savePreview('rejection',1,{subject:'申请审核结果',text:'您好\n请补充资料\n谢谢'})
+    await runNightly(pool,sender,night)
+    const mail=sent.find(m=>m.mailKind==='rejection');assert.equal(mail.subject,saved.subject);assert.equal(mail.text,saved.text);assert.equal(mailPreviewHtml(mail),saved.html)
+    assert.equal(mail.attachments.length,0);await assert.rejects(preview('rejection',1),/仅待发送/)
+    await pool.query("UPDATE dto_license_rejection SET state='unknown'");await assert.rejects(preview('rejection',1),/仅待发送/)
+    await pool.query("UPDATE dto_license_rejection SET state='cancelled'");await assert.rejects(preview('rejection',1),/仅待发送/)
+  })
+  await t.test('fresh rejection cycle does not silently reuse previously saved text',async()=>{
+    await reset();sent=[];await application();await rejectApplication(pool,1,'第一轮原因','tester');await savePreview('rejection',1)
+    await setApplicationStatus(pool,1,{status:0,note:'补充材料重新审核'},'tester')
+    await rejectApplication(pool,1,'第二轮原因','tester')
+    assert.equal((await preview('rejection',1)).stale,true)
+    await assert.rejects(savePreview('rejection',1),/完整拒绝理由/)
+  })
+  await t.test('nightly summary retains original text and shares immutable result table including accepted/failed/unknown/unsent/rejection',async()=>{
+    await reset();sent=[]
+    for(let i=1;i<=5;i++)await application(i,`customer${i}@example.com`,`00112233440${i}`)
+    await upload([1,2,3].map(i=>input(`license ${i}`,`new_pds_00112233440${i}.lic`)).concat(input('unmatched','new_pds_001122334499.lic')))
+    await rejectApplication(pool,4,'资料不完整 <核对>','tester');await rejectApplication(pool,5,'重复申请','tester')
+    await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'")
+    const mixed=async message=>{
+      sent.push(message)
+      if(message.to==='customer4@example.com')await pool.query("UPDATE dto_license_application SET email='later@example.com',applicant_name='之后修改' WHERE id=1")
+      return {state:message.to==='customer2@example.com'?'failed':message.to==='customer3@example.com'?'unknown':'accepted',detail:'test result'}
+    }
+    await runNightly(pool,mixed,night)
+    const list=await listNightlyReports(pool);assert.equal(list.records.length,1)
+    const report=await nightlyReportDetail(pool,list.records[0].id)
+    const mail=sent.find(m=>m.mailKind==='summary')
+    assert.equal(report.message.html,mail.html);assert.equal(report.message.text,mail.text);assert.equal(report.rows.length,6)
+    assert.deepEqual(report.stats,{accepted:3,failed:1,unknown:1,unsent:1})
+    assert.equal(report.rows.find(row=>row.applicationId==='1').recipient,'customer1@example.com');assert.equal(report.rows.find(row=>row.applicationId==='1').applicantName,'测试客户')
+    assert.match(mail.html,/<thead><tr>/);assert.match(mail.html,/License 发放/);assert.match(mail.html,/拒绝通知/)
+    assert.match(mail.html,/资料不完整 &lt;核对&gt;/);assert.match(mail.text,/本次检查 4 个文件，处理 2 条拒绝通知/);assert.match(mail.text,/文件状态（累计）/)
+    assert.equal(report.summaryState,'accepted')
+    await pool.query("UPDATE dto_license_application SET applicant_name='之后修改'")
+    assert.equal((await nightlyReportDetail(pool,list.records[0].id)).message.html,mail.html)
+  })
+  await t.test('retrying failed nightly summary uses its original table, new run is retained without a second summary',async()=>{
+    await reset();sent=[];await application();await upload()
+    const failSummary=async message=>{sent.push(message);return {state:message.mailKind==='summary'?'failed':'accepted',detail:'test'}}
+    await runNightly(pool,failSummary,night)
+    const original=sent.find(m=>m.mailKind==='summary')
+    // A remaining unmatched file causes a later invocation to make another report.
+    await upload([input('unmatched','new_pds_001122334499.lic')])
+    await runNightly(pool,sender,night)
+    const summaries=sent.filter(m=>m.mailKind==='summary');assert.equal(summaries.length,2);assert.equal(summaries[1].html,original.html)
+    const reports=await listNightlyReports(pool);assert.equal(reports.records.length,2)
+    assert.equal(reports.records.filter(r=>r.mail_state==='accepted').length,1)
+    assert.equal(reports.records.filter(r=>r.mail_state===null).length,1)
+    await runNightly(pool,sender,night);assert.equal(sent.filter(m=>m.mailKind==='summary').length,2)
+  })
+  await t.test('floating and standalone files with one MAC match independently and send once',async()=>{
+   await reset();sent=[];await application(1);await application(2,'server@example.com')
+   await pool.query("UPDATE dto_license_application SET license_type='SERVER',max_users=12,email_type='PERSONAL',contact_person='王工' WHERE id=2")
+   const batch=await upload([input('single'),input('server','new_pds_1a2b3c4d5f60_floating.lic')])
+   assert.deepEqual(batch.records.map(r=>r.state),['queued','queued'])
+   assert.equal(new Set(batch.records.map(r=>String(r.application_id))).size,2)
+   await runNightly(pool,sender,night);await runNightly(pool,sender,night)
+   assert.equal(customerCount(),2)
+   assert.equal(sent.find(m=>m.to==='server@example.com').attachments[0].name,'new_pds_1a2b3c4d5f60_floating.lic')
+  })
+  await t.test('application upload reuses the unassigned automatic conflict and dispatches only the selected application',async()=>{
+   await reset();sent=[];await application(1);await application(2,'second@example.com')
+   const file=(await upload()).records[0];assert.equal(file.state,'conflict')
+   await assert.rejects(fileAction(pool,file.id,{action:'match',applicationId:2,note:'旧入口'},'tester'),/License 发放/)
+   const saved=await applicationUpload(2);assert.equal(saved.id,file.id);assert.equal(saved.reused,true)
+   const detail=await fileDetail(pool,file.id);assert.equal(String(detail.file.application_id),'2');assert.equal(detail.file.state,'queued')
+   assert.ok(detail.history.some(row=>row.action==='application-file-upload'));assert.equal(sent.length,0)
+   await runNightly(pool,sender,night);await runNightly(pool,sender,night);assert.equal(customerCount(),1)
+   assert.equal(sent.find(m=>m.to==='second@example.com').attachments.length,1)
+  })
+  await t.test('rechecking a manually selected application preserves that choice during nightly delivery',async()=>{
+   await reset();sent=[];await application(1);await application(2,'second@example.com')
+   const file=(await upload()).records[0]
+   await applicationUpload(2)
+   await fileAction(pool,file.id,{action:'pause'},'tester')
+   await fileAction(pool,file.id,{action:'match',note:'恢复原关联，未选择其他申请'},'tester')
+   const [[saved]]=await pool.query('SELECT application_id,manual_selection FROM dto_license_file WHERE id=?',[file.id])
+   assert.equal(String(saved.application_id),'2');assert.equal(saved.manual_selection,1)
+   await runNightly(pool,sender,night);await runNightly(pool,sender,night)
+   assert.equal(customerCount(),1);assert.equal(sent.find(m=>m.to!=='fae@example.com').to,'second@example.com')
+  })
+  await t.test('manual application upload accepts nonstandard name while preserving bytes and portal metadata',async()=>{
+    await reset();sent=[];await application();await pool.query("UPDATE dto_license_application SET license_type='SERVER',max_users=20 WHERE id=1")
+    const old=(await upload([input('manual bytes','由FAE生成的授权.lic')])).records[0];assert.equal(old.state,'unmatched')
+    const result=await applicationUpload(1,input('manual bytes','由FAE生成的授权.lic'));assert.equal(result.id,old.id)
+    const [[file]]=await pool.query('SELECT * FROM dto_license_file WHERE id=?',[result.id])
+    assert.equal(file.original_name,'new_pds_1a2b3c4d5f60_floating.lic');assert.equal(file.content.toString(),'manual bytes');assert.equal(file.mac,'1A2B3C4D5F60');assert.equal(file.manual_selection,1)
+    assert.equal(JSON.parse(file.application_snapshot).max_users,'20');assert.equal((await applicationFiles(pool,1)).application.status,2)
+    await runNightly(pool,sender,night);assert.equal(customerCount(),1)
+    assert.equal(sent.find(m=>m.mailKind==='customer').attachments[0].name,result.filename)
+  })
+  await t.test('replacement cancels old queue item, keeps history and CC, and sends only new bytes',async()=>{
+    await reset();sent=[];await application();const original=(await upload()).records[0]
+    await setCc('file',original.id,'review@example.com');await savePreview('file',original.id,{text:'旧附件说明'})
+    const replacement=await applicationUpload(1,input('replacement bytes','替换.lic'))
+    assert.notEqual(replacement.id,original.id);assert.deepEqual(replacement.replaced,[original.id]);assert.equal(await state(original.id),'cancelled')
+    const detail=await applicationFiles(pool,1);assert.equal(detail.files.length,2)
+    const [[old]]=await pool.query('SELECT content FROM dto_license_file WHERE id=?',[original.id]);assert.equal(old.content.toString(),'license one')
+    assert.deepEqual((await fileDetail(pool,replacement.id)).file.cc,['review@example.com'])
+    assert.equal((await preview('file',replacement.id)).saved,false)
+    await runNightly(pool,sender,night);await runNightly(pool,sender,night);assert.equal(customerCount(),1)
+    assert.equal(Buffer.from(sent.find(m=>m.mailKind==='customer').attachments[0].base64,'base64').toString(),'replacement bytes')
+    assert.equal((await applicationFiles(pool,1)).canUpload,false)
+    await assert.rejects(applicationUpload(1,input('another')),/不能替换/)
+  })
+  await t.test('stale application detail cannot overwrite a newer upload and acknowledgement is required',async()=>{
+    await reset();await application();const before=await applicationFiles(pool,1)
+    await assert.rejects(applicationUpload(1,input(),{confirm:false}),/确认/)
+    await assert.rejects(applicationUpload(1,input(),{note:''}),/说明/)
+    const first=await applicationUpload(1)
+    await assert.rejects(uploadApplicationFile(pool,1,{file:input('next'),confirm:true,note:'核对',expectedVersion:before.version},'tester'),/已变化/)
+    assert.equal((await applicationFiles(pool,1)).files.length,1);assert.equal(await state(first.id),'queued')
+  })
+  await t.test('rejected, uncertain, foreign-bound files and empty uploads are blocked without losing current attachment',async()=>{
+    await reset();sent=[];await application();await application(2,'second@example.com','001122334455')
+    const original=(await upload()).records[0]
+    await assert.rejects(applicationUpload(2,input()),/关联其他申请/)
+    await assert.rejects(applicationUpload(1,{name:'empty.lic',base64:''}),/不能为空/)
+    await pool.query("UPDATE dto_license_file SET state='unknown' WHERE id=?",[original.id])
+    await assert.rejects(applicationUpload(1,input('replacement')),/不能替换/)
+    await pool.query("UPDATE dto_license_file SET state='paused' WHERE id=?",[original.id]);await rejectApplication(pool,1,'测试拒绝','tester')
+    await assert.rejects(applicationUpload(1,input('replacement')),/已拒绝/)
+    const [[old]]=await pool.query('SELECT content FROM dto_license_file WHERE id=?',[original.id]);assert.equal(old.content.toString(),'license one');assert.equal(customerCount(),0)
+  })
+  await t.test('cancelled floating upload restores same record and changed capacity requires review',async()=>{
+   await reset();await application();await pool.query("UPDATE dto_license_application SET license_type='SERVER',max_users=3 WHERE id=1")
+   const data=input('server','new_pds_1a2b3c4d5f60_floating.lic'),file=(await upload([data])).records[0]
+   await fileAction(pool,file.id,{action:'cancel',note:'test'},'tester')
+   assert.equal((await upload([data])).records[0].id,file.id)
+   await pool.query('UPDATE dto_license_application SET max_users=4 WHERE id=1');sent=[]
+   await runNightly(pool,sender,night);assert.equal(customerCount(),0);assert.equal(await state(file.id),'conflict')
+  })
   await t.test('rejection queue lists current notifications, filters dates/state/search and only eligible waiting attempts',async()=>{
    await reset();sent=[]
    for(let id=1;id<=8;id++){await application(id,`customer${id}@example.com`);await rejectApplication(pool,id,'test reason','tester',0)}
@@ -418,7 +636,7 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
   await t.test('multiple applications require explicit selection',async()=>{
    await reset();sent=[];await application();await application(2,'second@example.com');const {records}=await upload();assert.equal(records[0].state,'conflict')
    await runNightly(pool,sender,night);assert.equal(customerCount(),0)
-   await fileAction(pool,records[0].id,{action:'match',applicationId:2,note:'核对该文件对应第二条申请'},'tester');await runNightly(pool,sender,night)
+   await applicationUpload(2);await runNightly(pool,sender,night)
    assert.equal(sent.filter(m=>m.to==='second@example.com').length,1)
   })
   await t.test('distinct files for one MAC conflict; cancel extra and recheck',async()=>{

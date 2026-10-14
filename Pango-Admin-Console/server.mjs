@@ -1,3 +1,7 @@
+import { applicationFiles, uploadApplicationFile } from './licenseApplicationFiles.mjs'
+import { queuedMailPreview } from './licenseQueuedMail.mjs'
+import { listNightlyReports, nightlyReportDetail } from './licenseNightlyReport.mjs'
+import { mailPreviewHtml } from './licenseMailLogo.mjs'
 import http from 'node:http'
 import { pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -6,7 +10,7 @@ import { extname, isAbsolute, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import archiver from 'archiver'
 import mysql from 'mysql2/promise'
-import { uploadFiles, setMailCc, listFiles, fileDetail, fileAction, MAX_UPLOAD_BODY, problem, listApplications, setApplicationStatus, applicationStatusHistory, listCustomerMail, rejectionDetail, retryRejection, cancelRejection, restoreRejection, resolveWorkflowMail } from './licenseDelivery.mjs'
+import { uploadFiles, setMailCc, listFiles, fileDetail, fileAction,  MAX_UPLOAD_BODY, problem, listApplications, setApplicationStatus, applicationStatusHistory, listCustomerMail, rejectionDetail, retryRejection, cancelRejection, restoreRejection, resolveWorkflowMail } from './licenseDelivery.mjs'
 import { conversationFileName, groupConversationRecords, imageExtension, renderConversationMarkdown } from './conversationExport.mjs'
 import { mailSettingsView, saveMailSettings, applySavedMailSettings } from './licenseMailSettings.mjs'
 import { createWorkflowMailSender, assertMailConfiguration } from './licenseMail.mjs'
@@ -553,6 +557,22 @@ async function handleLicenseDelivery(request, response, path, params) {
     return json(response,200,{data:await promise})
   }
   if (!enabled) throw problem('License 自动发放尚未配置，请先执行数据库迁移并启用配置', 503)
+  const applicationFileMatch=/^\/license-delivery\/applications\/(\d+)\/files$/.exec(path)
+  if(applicationFileMatch&&request.method==='GET')return json(response,200,{data:await applicationFiles(licensePool,applicationFileMatch[1])})
+  if(applicationFileMatch&&request.method==='POST')return json(response,200,{data:await uploadApplicationFile(licensePool,applicationFileMatch[1],await readLicenseJson(request,2*1024*1024),adminUser)})
+  const queuedPreview=/^\/license-delivery\/(files|rejections)\/([a-f0-9-]+)\/mail-content$/.exec(path)
+  if(queuedPreview&&['GET','POST'].includes(request.method)){
+    const effective=await applySavedMailSettings(config,configPath)
+    const options={from:effective.LICENSE_FAE_EMAIL,replyTo:effective.LICENSE_REPLY_TO||effective.LICENSE_FAE_EMAIL,templates:effective.LICENSE_MAIL_TEMPLATES,logo:effective.LICENSE_MAIL_LOGO}
+    const data=await queuedMailPreview(licensePool,queuedPreview[1]==='files'?'file':'rejection',queuedPreview[2],options,request.method==='POST'?await readLicenseJson(request,100000):null,adminUser)
+    return json(response,200,{data})
+  }
+  if(path==='/license-delivery/nightly-reports'&&request.method==='GET')return json(response,200,{data:await listNightlyReports(licensePool)})
+  const reportMatch=/^\/license-delivery\/nightly-reports\/([a-f0-9-]{36})$/.exec(path)
+  if(reportMatch&&request.method==='GET'){
+    const report=await nightlyReportDetail(licensePool,reportMatch[1])
+    return json(response,200,{data:{...report,message:{to:report.message.to,subject:report.message.subject,text:report.message.text,html:mailPreviewHtml(report.message)}}})
+  }
   const workflowMatch=/^\/license-delivery\/applications\/(\d+)\/workflow$/.exec(path)
   if(workflowMatch&&['GET','POST'].includes(request.method)){
     const effective=await applySavedMailSettings(config,configPath)
