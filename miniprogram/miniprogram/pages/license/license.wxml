@@ -9,20 +9,26 @@
         <text class="license-description">请准确填写软件运行环境和申请人信息，我们将在审核后与您联系。</text>
       </view>
 
+      <button class="license-link-button" bind:tap="openMine">查看我的 License 申请</button>
+      <view wx:if="{{!loggedIn}}" class="form-message">登录后才能提交申请，已填写内容会保留。<button bind:tap="login">手机号登录 / 注册</button></view>
       <view class="form-section">
+        <view class="field"><text class="field-label">是否已在官网提交</text>
+          <radio-group class="official-options" bindchange="selectOfficial"><label class="official-choice {{!form.officialSubmitted ? 'selected' : ''}}"><radio color="#a10c79" value="false" checked="{{!form.officialSubmitted}}" /><text>否，尚未提交</text></label><label class="official-choice {{form.officialSubmitted ? 'selected' : ''}}"><radio color="#a10c79" value="true" checked="{{form.officialSubmitted}}" /><text>是，已提交</text></label></radio-group>
+          <text wx:if="{{form.officialSubmitted}}" class="official-notice">正在加急处理中，请勿重复提交</text>
+        </view>
         <view class="section-title"><text>授权信息</text></view>
         <view class="field">
-          <text class="field-label">操作系统版本</text>
+          <text class="field-label">操作系统版本 <text class="required">*</text></text>
           <picker mode="selector" range="{{operatingSystemOptions}}" value="{{operatingSystemIndex}}" bindchange="selectOperatingSystem">
             <view class="picker-field"><text>{{form.operatingSystem}}</text><text>⌄</text></view>
           </picker>
         </view>
         <label class="field">
-          <text class="field-label">软件版本</text>
+          <text class="field-label">软件版本 <text class="required">*</text></text>
           <input value="{{form.softwareVersion}}" data-field="softwareVersion" bindinput="inputField" maxlength="50" placeholder="请输入软件版本号" />
         </label>
         <view class="field">
-          <text class="field-label">授权类型</text>
+          <text class="field-label">授权类型 <text class="required">*</text></text>
           <view class="license-options">
             <view class="license-option {{form.licenseType === 'STANDALONE' ? 'selected' : ''}}" bind:tap="selectLicenseType" data-type="STANDALONE">
               <view class="radio-dot"><view></view></view><view><text class="option-title">单机版</text><text class="option-description">支持单一用户使用</text></view>
@@ -32,30 +38,45 @@
             </view>
           </view>
         </view>
+        <label wx:if="{{form.licenseType === 'SERVER'}}" class="field server-users">
+          <text class="field-label">最大支持人数 <text class="required">*</text></text>
+          <input type="number" value="{{form.maxUsers}}" data-field="maxUsers" bindinput="inputField" maxlength="10" placeholder="请输入人数" />
+          <text class="field-help">请填写本次申请所需的最大使用人数。</text>
+        </label>
         <view class="field">
-          <text class="field-label">使用时长</text>
+          <text class="field-label">使用时长 <text class="required">*</text></text>
           <picker mode="selector" range="{{durationOptions}}" value="{{durationIndex}}" bindchange="selectDuration">
             <view class="picker-field"><text>{{form.durationYears}}年</text><text>⌄</text></view>
           </picker>
         </view>
         <label class="field">
-          <text class="field-label">MAC 地址</text>
+          <text class="field-label">MAC 地址 <text class="required">*</text></text>
           <input value="{{form.macAddress}}" data-field="macAddress" bindinput="inputField" maxlength="17" placeholder="00-1A-2B-3C-4D-5E" />
         </label>
       </view>
 
       <view class="form-section">
         <view class="section-title"><text>申请人信息</text></view>
-        <label class="field"><text class="field-label">申请人</text><input value="{{form.applicantName}}" data-field="applicantName" bindinput="inputField" maxlength="100" placeholder="请输入申请人姓名" /></label>
-        <label class="field"><text class="field-label">公司</text><input value="{{form.companyName}}" data-field="companyName" bindinput="inputField" maxlength="200" placeholder="请输入公司名称" /></label>
-        <label class="field"><text class="field-label">邮箱</text><input value="{{form.email}}" data-field="email" bindinput="inputField" maxlength="200" placeholder="name@company.com" /></label>
-        <label class="field"><text class="field-label">电话</text><input value="{{form.phone}}" data-field="phone" bindinput="inputField" maxlength="50" placeholder="请输入联系电话" /></label>
-        <label class="field"><text class="field-label">地址</text><textarea value="{{form.address}}" data-field="address" bindinput="inputField" maxlength="500" placeholder="请输入详细地址" /></label>
+        <label class="field"><text class="field-label">申请人姓名 <text class="required">*</text></text><input value="{{form.applicantName}}" data-field="applicantName" bindinput="inputField" maxlength="100" placeholder="请输入中文姓名或英文姓名" /></label>
+        <label class="field"><text class="field-label">公司或学校 <text class="required">*</text></text><input value="{{form.companyName}}" data-field="companyName" bindinput="inputField" maxlength="200" placeholder="请输入公司或学校名称" /></label>
+
+        <label class="field"><text class="field-label">电话 <text class="required">*</text></text><input value="{{form.phone}}" data-field="phone" bindinput="inputField" maxlength="50" placeholder="请输入联系电话" /></label>
+        <label class="field"><text class="field-label">地址 <text class="required">*</text></text><textarea value="{{form.address}}" data-field="address" bindinput="inputField" maxlength="500" placeholder="请输入详细地址" /></label>
+        <view class="field">
+          <text class="field-label">邮箱类型 <text class="required">*</text></text>
+          <radio-group class="email-options" bindchange="selectEmailType">
+            <label><radio color="#a10c79" value="ORGANIZATION" checked="{{form.emailType === 'ORGANIZATION'}}" /><text>公司或学校邮箱</text></label>
+            <label><radio color="#a10c79" value="PERSONAL" checked="{{form.emailType === 'PERSONAL'}}" /><text>个人邮箱</text></label>
+          </radio-group>
+          <text class="field-help">建议优先使用公司或学校邮箱申请，以便更快完成审核。</text>
+        </view>
+        <label class="field"><text class="field-label">联系邮箱 <text class="required">*</text></text><input value="{{form.email}}" data-field="email" bindinput="inputField" maxlength="200" placeholder="请输入接收 License 的邮箱地址" /></label>
+        <label class="field"><text class="field-label">FAE 或渠道负责人<text wx:if="{{form.emailType === 'PERSONAL'}}" class="required"> *</text><text wx:else>（选填）</text></text><input value="{{form.contactPerson}}" data-field="contactPerson" bindinput="inputField" maxlength="100" placeholder="请输入对接人姓名" /></label>
       </view>
 
       <view wx:if="{{error}}" class="form-message error">{{error}}</view>
       <view wx:if="{{success}}" class="form-message success">{{success}}</view>
-      <button class="submit-button" loading="{{submitting}}" disabled="{{submitting}}" bind:tap="submitApplication">{{submitting ? '提交中…' : '提交申请'}}</button>
+      <button class="submit-button" loading="{{submitting}}" disabled="{{submitting}}" bind:tap="submitApplication">{{submitting ? '提交中…' : loggedIn ? '提交申请' : '登录后提交申请'}}</button>
     </view>
     <view class="license-bottom-space"></view>
   </view>

@@ -2,6 +2,8 @@ import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import { normalizeMarkdownBlockSpacing, placeMediaAfterCitations } from './answerRendering.js'
 import './style.css'
+import { renderLicenseDelivery } from './licenseDelivery.js'
+import { renderLicenseApplications } from './licenseApplications.js'
 
 marked.setOptions({ gfm: true, breaks: false })
 
@@ -25,6 +27,7 @@ function renderShell() {
       <button data-tab="conversations">问答记录</button>
       <button data-tab="feedback">问题反馈</button>
       <button data-tab="licenses">License 申请</button>
+      <button data-tab="delivery">License 发放</button>
     </nav><p>仅限授权人员使用</p></aside><main id="content"></main></div>`
   content = document.querySelector('#content')
   document.querySelectorAll('[data-tab]').forEach(button => {
@@ -103,6 +106,7 @@ async function loadCurrentTab() {
     if (state.tab === 'conversations') await loadConversations()
     if (state.tab === 'feedback') await loadFeedback()
     if (state.tab === 'licenses') await loadLicenses()
+    if (state.tab === 'delivery') await renderLicenseDelivery(content, request)
   } catch (error) { if (!error.authentication) showError(error) }
 }
 
@@ -335,7 +339,9 @@ function renderMedia(panel,media,origin,title){if(!Array.isArray(media)||!media.
 function renderReferences(panel,reference,origin){const chunks=reference?.chunks||[];if(!chunks.length)return;const section=element('section','detail-references');section.append(element('h3','',`参考资料 · ${chunks.length}`));chunks.forEach((chunk,index)=>{const card=element('article','reference-card');card.append(element('strong','',chunk.citation_label||`[${index+1}]`),element('span','',chunk.display_name||chunk.document_name||chunk.title||'未命名文档'));const url=absoluteUrl(chunk.document_page_url||chunk.document_preview_url,origin);if(url){const link=element('a','','在线阅读');link.href=url;link.target='_blank';link.rel='noopener noreferrer';card.append(link)}section.append(card)});panel.append(section)}
 function showImage(src){const overlay=element('div','image-overlay');const img=document.createElement('img');img.src=src;overlay.append(img);overlay.addEventListener('click',()=>overlay.remove());document.body.append(overlay)}
 
-async function loadLicenses(){const data=await request(`/licenses?page=${state.licensePage}&pageSize=30&status=${state.licenseStatus}`);renderListPage('License 申请',`共 ${number(data.total)} 条申请`,statusFilter());document.querySelector('#statusFilter').value=state.licenseStatus;const table=createTable(['提交时间','申请人','公司','系统 / 版本','类型 / 年限','MAC 地址','联系方式','状态']);(data.records||[]).forEach(row=>{const statusSelect=createStatusSelect(row.status,licenseStatuses,value=>updateStatus('licenses',row.id,value,loadLicenses));appendRow(table,[dateTime(row.dotime),row.applicant_name,row.company_name,`${row.operating_system} / ${row.software_version}`,`${row.license_type} / ${row.duration_years}年`,row.mac_address,`${row.email||''}\n${row.phone||''}`,statusSelect])});content.querySelector('.panel').append(table);document.querySelector('#statusFilter').addEventListener('change',event=>{state.licenseStatus=event.target.value;state.licensePage=1;loadLicenses()});appendPager(data,state.licensePage,page=>{state.licensePage=page;loadLicenses()})}
+async function loadLicenses() {
+  await renderLicenseApplications(content, request, () => switchTab('delivery'))
+}
 
 function renderListPage(title,subtitle,filters){content.innerHTML=`<section class="page-heading"><div><p>DATA MANAGEMENT</p><h1>${title}</h1><span>${subtitle}</span></div><div class="filters">${filters}</div></section><section class="panel table-panel"></section>`}
 function dateRangeFilter(){return `<div class="date-range compact"><label>开始日期<input id="listStartDate" type="date" value="${state.startDate}"></label><span>至</span><label>结束日期<input id="listEndDate" type="date" value="${state.endDate}"></label><button id="applyListDateRange">查询</button></div>`}
@@ -359,7 +365,7 @@ function number(value){return Number(value||0)}
 function date(value){return value?String(value).slice(0,10):'—'}
 function dateTime(value){return value?String(value).replace('T',' ').slice(0,19):'—'}
 function localDate(offsetDays){const value=new Date(Date.now()+offsetDays*86400000);return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(value)}
-const feedbackStatuses=['待处理','处理中','已处理','已关闭'],licenseStatuses=['待处理','处理中','已通过','已拒绝']
+const feedbackStatuses=['待处理','处理中','已处理','已关闭']
 
 async function initialize(){
   try {

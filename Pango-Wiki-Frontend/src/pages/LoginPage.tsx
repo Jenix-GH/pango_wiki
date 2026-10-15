@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import pangoLogo from '../../Logo.png'
 import './LoginPage.css'
@@ -9,6 +9,9 @@ type Mode = 'login' | 'register' | 'reset'
 export default function LoginPage() {
   const { login, register, sendSmsCode, resetPassword, isLoggedIn, user } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const requestedReturn = searchParams.get('returnTo')
+  const returnTo = requestedReturn === '/license-application' || requestedReturn === '/my-licenses' ? requestedReturn : '/'
   const [mode, setMode] = useState<Mode>('login')
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
@@ -93,10 +96,10 @@ export default function LoginPage() {
     try {
       if (mode === 'login') {
         await login(phone, password)
-        navigate('/')
+        navigate(returnTo)
       } else if (mode === 'register') {
         await register(phone, code, password, { nickName, companyName, jobName, mailAddress })
-        navigate('/')
+        navigate(returnTo)
       } else {
         await resetPassword(phone, code, password)
         changeMode('login')
@@ -124,7 +127,7 @@ export default function LoginPage() {
         {isLoggedIn ? (
           <div className="login-logged">
             <p>您已登录：{user?.nickName || user?.phoneNumber}</p>
-            <button className="login-btn" onClick={() => navigate('/')}>进入聊天</button>
+            <button className="login-btn" onClick={() => navigate(returnTo)}>{returnTo === '/' ? '进入聊天' : '继续 License 服务'}</button>
           </div>
         ) : (
           <>

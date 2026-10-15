@@ -91,6 +91,8 @@ try {
     '--exclude=./.env',
     '--exclude=./.env.*',
     '--exclude=*.log',
+    '--exclude=__pycache__',
+    '--exclude=*.pyc',
     '--exclude=._*',
     '-C', $adminRoot,
     '.'
@@ -106,77 +108,11 @@ try {
 
   $remoteArchive = "/tmp/pango-admin-$releaseId.tar.gz"
   $remoteScript = "/tmp/pango-admin-$releaseId.sh"
-  $remoteDeployment = @"
-set -euo pipefail
-target='$remotePath'
-parent=`$(dirname "`$target")
-stage="`$parent/.pango-admin-stage-$releaseId"
-backup="`$parent/.pango-admin-backup-$releaseId"
-failed="`$parent/.pango-admin-failed-$releaseId"
-archive='$remoteArchive'
-
-cleanup() {
-  rm -f "`$archive" '$remoteScript'
-  if [ -d "`$stage" ]; then rm -rf "`$stage"; fi
-}
-trap cleanup EXIT
-
-if [ ! -f "`$target/config/database.env" ]; then
-  echo 'Deployment stopped: config/database.env is missing from the existing server directory.' >&2
-  exit 1
-fi
-
-mkdir -p "`$stage"
-tar -xzf "`$archive" -C "`$stage"
-cd "`$stage"
-npm ci --include=dev
-node --check server.mjs
-node --check conversationExport.mjs
-node --check src/main.js
-npm run build
-npm prune --omit=dev
-cd "`$parent"
-
-rollback() {
-  echo 'The new release failed to start; restoring the previous release...' >&2
-  cd "`$parent"
-  if [ -d "`$target" ] && [ -d "`$backup" ]; then
-    mv "`$target" "`$failed"
-    mv "`$backup" "`$target"
-    rm -rf "`$failed"
-  fi
-}
-
-mv "`$target" "`$backup"
-if ! mv "`$stage" "`$target"; then
-  mv "`$backup" "`$target"
-  exit 1
-fi
-if ! cp -a "`$backup/config" "`$target/config"; then
-  rollback
-  exit 1
-fi
-
-cd "`$target"
-if pm2 describe '$pm2ProcessName' >/dev/null 2>&1; then
-  if ! pm2 restart '$pm2ProcessName' --update-env; then
-    rollback
-    cd "`$target"
-    pm2 restart '$pm2ProcessName' --update-env || true
-    exit 1
-  fi
-else
-  if ! pm2 start npm --name '$pm2ProcessName' --cwd "`$target" -- start; then
-    rollback
-    exit 1
-  fi
-fi
-
-pm2 save
-cd "`$parent"
-rm -rf "`$backup"
-echo 'Admin console deployment completed.'
-"@ -replace "`r`n", "`n"
+  $remoteTemplate = Join-Path $PSScriptRoot 'deploy-admin-console.sh'
+  if (!(Test-Path -LiteralPath $remoteTemplate -PathType Leaf)) {
+    throw 'deploy-admin-console.sh is missing; extract the complete updated admin package.'
+  }
+  $remoteDeployment = [IO.File]::ReadAllText($remoteTemplate) -replace "`r`n", "`n"
   [IO.File]::WriteAllText($remoteScriptPath, $remoteDeployment, [Text.UTF8Encoding]::new($false))
 
   Write-Host "Package created with $($archiveEntries.Count) entries." -ForegroundColor Green
@@ -196,8 +132,8 @@ echo 'Admin console deployment completed.'
   Write-Host "Uploading to $remoteLogin..." -ForegroundColor Cyan
   Invoke-CheckedCommand -Command 'scp' -CommandArguments ($scpArguments + @($archivePath, $remoteScriptPath, "${remoteLogin}:/tmp/"))
   Write-Host 'Building and switching the release on the server...' -ForegroundColor Cyan
-  Invoke-CheckedCommand -Command 'ssh' -CommandArguments ($sshArguments + @($remoteLogin, "bash -n '$remoteScript' && bash '$remoteScript'"))
-  Write-Host 'Upload and deployment succeeded. The PM2 process list was saved.' -ForegroundColor Green
+  Invoke-CheckedCommand -Command 'ssh' -CommandArguments ($sshArguments + @($remoteLogin, "bash -n '$remoteScript' && bash '$remoteScript' '$remotePath' '$pm2ProcessName' '$releaseId'"))
+  Write-Host 'Deployment succeeded in preparation mode. Email sending is disabled; previous code/config backups were retained.' -ForegroundColor Green
 } finally {
   foreach ($temporaryFile in @($archivePath, $remoteScriptPath)) {
     if ($temporaryFile -and (Test-Path -LiteralPath $temporaryFile -PathType Leaf)) {

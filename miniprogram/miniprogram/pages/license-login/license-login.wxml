@@ -1,0 +1,1 @@
+<view class="card"><view class="title">登录 License 服务</view><view class="description">授权手机号后即可提交申请、查看进度和下载 License。首次登录会自动创建账户。</view><view class="description">返回申请页后，已填写的内容会保留。</view><view wx:if="{{error}}" class="error">{{error}}</view><button open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{loading}}" disabled="{{loading}}">手机号登录 / 注册</button></view>

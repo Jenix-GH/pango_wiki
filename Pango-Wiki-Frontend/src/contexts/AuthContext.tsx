@@ -30,6 +30,8 @@ interface AuthState {
   guestLogin: () => void
   updateUser: (user: Partial<UserInfo>) => void
   setFlagCompanyInfo: (v: boolean) => void
+  syncQuestionAccess: (count: number, complete: boolean) => void
+  refreshAccount: () => Promise<UserInfo>
   incrementAnswerCount: () => void
 }
 
@@ -165,6 +167,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const syncQuestionAccess = useCallback((count: number, complete: boolean) => {
+    if (Number.isFinite(count)) setAnswerCount(count)
+    setFlagCompanyInfo(complete)
+  }, [])
+
+  const refreshAccount = useCallback(async () => {
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY)
+    const response = await api.getCurrentUser()
+    if (!token || token !== localStorage.getItem(TOKEN_STORAGE_KEY)) throw new Error('登录状态已变化，请重试')
+    if (response.code !== 2000 || !response.data || response.data.userType === 'GUEST') throw new Error(response.message || '请重新登录')
+    const currentUser = response.data
+    setUser(currentUser)
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(currentUser))
+    syncQuestionAccess(currentUser.count || 0, Boolean(currentUser.companyName?.trim()))
+    return currentUser
+  }, [syncQuestionAccess])
+
   const incrementAnswerCount = useCallback(() => {
     if (user) {
       setAnswerCount((c) => c + 1)
@@ -195,6 +214,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateUser,
       setFlagCompanyInfo,
       incrementAnswerCount,
+      syncQuestionAccess,
+      refreshAccount,
     }}>
       {children}
     </AuthContext.Provider>

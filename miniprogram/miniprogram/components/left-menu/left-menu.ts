@@ -247,6 +247,18 @@ Component({
             });
         },
     },
+    pageLifetimes: {
+        show() {
+            if (!app.globalData.licenseLoginChanged) return
+            app.globalData.licenseLoginChanged = false
+            const info = wx.getStorageSync('userInfo')
+            const loggedIn = Boolean(info?.id && info.userType !== 'GUEST' && wx.getStorageSync('pangoAccessToken'))
+            this.setData({ flagLogin: loggedIn, flagUserInfo: loggedIn, flagUserPhone: loggedIn,
+                avatarUrl: loggedIn ? info.avatarUrl || '' : '', nickName: loggedIn ? info.nickName || '' : '' })
+            app.globalData.flagLogin = loggedIn
+            this.triggerEvent('refresh')
+        }
+    },
     lifetimes: {
         attached() {
             const capsule = wx.getMenuButtonBoundingClientRect()

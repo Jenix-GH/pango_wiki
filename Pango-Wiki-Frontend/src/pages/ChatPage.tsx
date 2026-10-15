@@ -22,12 +22,13 @@ import type { AgentProgressState } from '../utils/agentProgress'
 import './ChatPage.css'
 
 const ANSWER_LIMIT = 10
+const MEMBER_ANSWER_LIMIT = 50
 
 export default function ChatPage() {
   const navigate = useNavigate()
   const {
     user, isLoggedIn, isGuest, loading,
-    guestCount, guestUserId,
+    guestCount, guestUserId, flagCompanyInfo, refreshAccount, syncQuestionAccess,
     incrementAnswerCount,
   } = useAuth()
   const { start, abort } = useSSE()
@@ -47,6 +48,7 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState('')
   const [showLeft, setShowLeft] = useState(() => window.matchMedia('(min-width: 769px)').matches)
   const [showSettings, setShowSettings] = useState(false)
+  const [requireProfile, setRequireProfile] = useState(false)
   const [dayQuestions, setDayQuestions] = useState<QuestionItem[]>([])
   const [weekQuestions, setWeekQuestions] = useState<QuestionItem[]>([])
   const [showTips, setShowTips] = useState(true)
@@ -61,6 +63,7 @@ export default function ChatPage() {
   const ignoreScrollUntil = useRef(0)
   const activeRunRef = useRef(0)
   const streamingRef = useRef(false)
+  const checkingProfileRef = useRef(false)
 
   const isLimitReached = !isLoggedIn && guestCount >= ANSWER_LIMIT
   const recordUserId = user?.id || guestUserId
@@ -79,8 +82,11 @@ export default function ChatPage() {
 
   const loadHistory = async () => {
     if (!recordUserId) return
+    const token = localStorage.getItem('pango_auth_token')
     const res = await api.getHistory({ userinfoId: recordUserId })
+    if (token !== localStorage.getItem('pango_auth_token')) return
     if (res.code === 2000) {
+      if (user) syncQuestionAccess(res.data.count, res.data.flagCompanyInfo)
       setDayQuestions(res.data.todayQuestion || [])
       setWeekQuestions(res.data.weekQuestion || [])
     }
@@ -175,12 +181,30 @@ export default function ChatPage() {
     if (streamContent) smartScroll()
   }, [smartScroll, streamContent])
 
+  const promptProfile = () => {
+    setRequireProfile(true)
+    setShowSettings(true)
+  }
+
   const handleSend = async (question: string) => {
-    if (isStreaming) return
+    if (streamingRef.current || checkingProfileRef.current) return false
 
     if (isLimitReached) {
       setShowLoginPrompt(true)
-      return
+      return false
+    }
+    if (isLoggedIn && !flagCompanyInfo) {
+      checkingProfileRef.current = true
+      const generation = activeRunRef.current
+      try {
+        // Use the existing account endpoint so counts/profile updates from Mini Program are visible.
+        const current = await refreshAccount()
+        if (generation !== activeRunRef.current) return false
+        if (current.count >= MEMBER_ANSWER_LIMIT && !current.companyName?.trim()) { promptProfile(); return false }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : '无法核对个人信息，请重试')
+        return false
+      } finally { checkingProfileRef.current = false }
     }
 
     if (!question) {
@@ -189,7 +213,7 @@ export default function ChatPage() {
       } else {
         showToast('请输入问题内容')
       }
-      return
+      return false
     }
 
     setShowTips(false)
@@ -279,6 +303,7 @@ export default function ChatPage() {
         showToast('请求失败: ' + err.message)
       },
     )
+    return true
   }
 
   const handleStop = () => {
@@ -518,7 +543,9 @@ export default function ChatPage() {
         <div className="chat-workspace">
         <SettingsPanel
           open={showSettings}
-          onClose={() => setShowSettings(false)}
+          requireCompany={requireProfile}
+          onProfileSaved={() => { setRequireProfile(false); setShowSettings(false) }}
+          onClose={() => { setShowSettings(false); setRequireProfile(false) }}
         />
 
         <div className={`chat-main ${conversationStarted ? 'has-conversation' : 'is-empty'}`}>

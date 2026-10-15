@@ -2,6 +2,7 @@
     <view class="setMenuBlock">
         <view class="mark">账户</view>
         <view class="setMenuItem">
+            <view class="item item1" bind:tap="gotoLicenses"><view>我的 License 申请</view><view>›</view></view>
             <view class="item item1" bind:tap="gotoUserinfo">
                 <view>个人信息</view>
                 <view>

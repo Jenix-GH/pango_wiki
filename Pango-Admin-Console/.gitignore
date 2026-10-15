@@ -2,3 +2,7 @@ config/database.env
 deploy/upload-admin-console.psd1
 node_modules/
 dist/
+__pycache__/
+*.pyc
+config/license-mail-settings.json*
+config/.license-mail-settings.key

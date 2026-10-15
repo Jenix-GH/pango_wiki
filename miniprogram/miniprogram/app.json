@@ -4,7 +4,9 @@
         "pages/wiki/wiki",
         "pages/license/license",
         "pages/reference-viewer/reference-viewer",
-        "pages/index/index"
+        "pages/index/index",
+        "pages/my-licenses/my-licenses",
+        "pages/license-login/license-login"
     ],
     "window": {
         "navigationBarTextStyle": "black",

@@ -5,6 +5,7 @@ import AnalyticsTracker from './components/AnalyticsTracker'
 import MiniProgramQaReturn from './components/MiniProgramQaReturn'
 import { detectMiniProgramEntry, isMiniProgramEntry } from './utils/miniProgramBridge'
 
+const MyLicensesPage = lazy(() => import('./pages/MyLicensesPage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const ChatPage = lazy(() => import('./pages/ChatPage'))
 const WikiPage = lazy(() => import('./pages/WikiPage'))
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/" element={<ChatEntry />} />
             <Route path="/docs" element={<WikiPage />} />
             <Route path="/docs/reader" element={<WikiReaderPage />} />
+            <Route path="/my-licenses" element={<MyLicensesPage />} />
             <Route path="/license-application" element={<LicenseApplicationPage />} />
             <Route path="/user-guide" element={<UserGuidePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

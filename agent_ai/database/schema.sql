@@ -78,6 +78,8 @@ CREATE TABLE `dto_feedback` (
 CREATE TABLE `dto_license_application` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '申请ID',
   `userinfo_id` bigint DEFAULT NULL COMMENT '关联用户ID，访客申请可为空',
+  `official_submitted` TINYINT(1) NULL DEFAULT NULL COMMENT '官网已提交，NULL=未记录',
+  `owner_verified` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '服务端验证申请归属',
   `operating_system` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作系统：Windows/Linux',
   `software_version` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '软件版本号',
   `license_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '授权类型：STANDALONE/SERVER',
@@ -88,12 +90,13 @@ CREATE TABLE `dto_license_application` (
   `email` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '电子邮箱',
   `phone` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '联系电话',
   `address` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '地址',
-  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态：0待处理，1处理中，2已通过，3已拒绝',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态：0待处理，1处理中，2已处理，3已拒绝',
   `dotime` datetime NOT NULL COMMENT '创建时间',
   `uptime` datetime NOT NULL COMMENT '更新时间',
   PRIMARY KEY (`id`),
   KEY `idx_license_status_dotime` (`status`,`dotime`),
   KEY `idx_license_userinfo_id` (`userinfo_id`),
+  KEY `idx_license_owner` (`userinfo_id`,`owner_verified`,`dotime`,`id`),
   KEY `idx_license_mac_address` (`mac_address`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='License申请记录';
 
