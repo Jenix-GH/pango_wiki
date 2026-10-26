@@ -1,6 +1,7 @@
 import { buildQueuedMessage } from './licenseQueuedMail.mjs'
 import { storeNightlyReport, sentResultRow } from './licenseNightlyReport.mjs'
 import { createHash, randomUUID } from 'node:crypto'
+import JSZip from 'jszip'
 import { applyMailTemplate, mailVariables, escapeMailHtml, mailTextToHtml } from './licenseMailTemplates.mjs'
 
 export const MAX_FILE_BYTES = 1024 * 1024
@@ -8,17 +9,20 @@ export const MAX_BATCH_BYTES = 10 * 1024 * 1024
 export const MAX_BATCH_FILES = 50
 export const MAX_UPLOAD_BODY = 15 * 1024 * 1024
 const ACTIVE = ['queued', 'conflict', 'unmatched', 'paused', 'failed', 'unknown', 'sending']
+const MAX_ARCHIVE_ENTRIES = 200
+const LICENSE_NAME_RE = /^new_pds_([a-f\d]{12})(_floating)?\.lic$/i
+const LICENSE_TOKEN_RE = /new_pds_[a-f\d]{12}(?:_floating)?\.lic/gi
 export const FILE_COLUMNS = 'id,batch_id,original_name,mac,sha256,byte_length,application_id,state,reason,uploaded_by,attempts,uploaded_at,updated_at'
 
 export function problem(message, statusCode = 400) {
   return Object.assign(new Error(message), { statusCode })
 }
 export function macFromFilename(name) {
-  return /^new_pds_([a-f\d]{12})(?:_floating)?\.lic$/i.exec(String(name))?.[1].toUpperCase() || null
+  return LICENSE_NAME_RE.exec(String(name))?.[1].toUpperCase() || null
 }
 export function typeFromFilename(name) {
-  const match = /^new_pds_[a-f\d]{12}(_floating)?\.lic$/i.exec(String(name))
-  return match ? (match[1] ? 'SERVER' : 'STANDALONE') : null
+  const match = LICENSE_NAME_RE.exec(String(name))
+  return match ? (match[2] ? 'SERVER' : 'STANDALONE') : null
 }
 export function normalizeMac(value) {
   const text = String(value || '').trim()
@@ -101,19 +105,97 @@ export function chinaTime(now = new Date()) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23' }).formatToParts(now).map(p => [p.type,p.value]))
   return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour), minute: Number(parts.minute) }
 }
-export function decodeUpload(body) {
-  if (!Array.isArray(body?.files) || body.files.length < 1 || body.files.length > MAX_BATCH_FILES) throw problem(`每批请选择 1–${MAX_BATCH_FILES} 个文件`)
+
+function canonicalLicenseName(name) {
+  const base = String(name || '').replace(/\\/g, '/').split('/').pop()
+  if (!base || base.length > 500 || /[\x00-\x1f\x7f]/.test(base)) throw problem('License 文件名无效')
+  const exact = LICENSE_NAME_RE.exec(base)
+  if (exact) return `new_pds_${exact[1].toLowerCase()}${exact[2] ? '_floating' : ''}.lic`
+  const tokens = [...base.matchAll(LICENSE_TOKEN_RE)].map(match => match[0])
+  const unique = new Set(tokens.map(token => token.toLowerCase()))
+  if (unique.size > 1) throw problem(`${base} 包含多个 License 标识，无法确定要匹配的 MAC`)
+  if (unique.size === 1) {
+    const match = LICENSE_NAME_RE.exec(tokens[0])
+    return `new_pds_${match[1].toLowerCase()}${match[2] ? '_floating' : ''}.lic`
+  }
+  throw problem(`${base} 未包含 new_pds_<12位十六进制MAC>.lic 或 new_pds_<12位十六进制MAC>_floating.lic 标识`)
+}
+
+function uploadedFileName(name) {
+  if (typeof name !== 'string' || !name || name.length > 200 || /[\\/\x00-\x1f\x7f]/.test(name) || !/\.(?:lic|zip)$/i.test(name)) {
+    throw problem('仅接受文件名不含路径的 .lic 或 .zip 文件')
+  }
+  return name
+}
+
+function decodedUploadContent(base64) {
+  if (typeof base64 !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
+    throw problem('文件编码无效')
+  }
+  return Buffer.from(base64, 'base64')
+}
+
+async function extractZipLicenses(archiveName, archive) {
+  let zip
+  try {
+    zip = await JSZip.loadAsync(archive, { checkCRC32: true })
+  } catch {
+    throw problem(`${archiveName}: ZIP 已损坏或不是有效压缩包`)
+  }
+  const entries = Object.values(zip.files)
+  if (entries.length > MAX_ARCHIVE_ENTRIES) throw problem(`${archiveName}: ZIP 内文件数量异常`)
+  const licenses = []
+  for (const entry of entries) {
+    if (entry.dir) continue
+    const normalized = String(entry.name || '').replace(/\\/g, '/')
+    const base = normalized.split('/').pop()
+    if (!base || normalized.startsWith('__MACOSX/') || base.startsWith('._') || !/\.lic$/i.test(base)) continue
+    const declaredSize = Number(entry?._data?.uncompressedSize)
+    if (Number.isFinite(declaredSize) && declaredSize > MAX_FILE_BYTES) throw problem(`${archiveName}: ${base} 解压后超过 1 MB`)
+    let content
+    try {
+      content = await entry.async('nodebuffer')
+    } catch {
+      throw problem(`${archiveName}: 无法读取 ZIP 中的 ${base}`)
+    }
+    if (!content.length || content.length > MAX_FILE_BYTES) throw problem(`${archiveName}: ${base} 为空或超过 1 MB`)
+    licenses.push({ name: base, content })
+    if (licenses.length > MAX_BATCH_FILES) throw problem(`${archiveName}: 解压后 License 文件不能超过 ${MAX_BATCH_FILES} 个`)
+  }
+  if (!licenses.length) throw problem(`${archiveName}: ZIP 中没有 .lic 文件`)
+  return licenses
+}
+
+async function decodeUploadFiles(body) {
+  if (!Array.isArray(body?.files) || body.files.length < 1 || body.files.length > MAX_BATCH_FILES) throw problem(`每批请选择 1–${MAX_BATCH_FILES} 个上传文件`)
+  const files = []
   let total = 0
-  return body.files.map(file => {
-    const name = file?.name
-    if (typeof name !== 'string' || !name || name.length > 200 || /[\\/\x00-\x1f\x7f]/.test(name) || !/\.lic$/i.test(name)) throw problem('仅接受文件名不含路径的 .lic 文件')
-    if (typeof file.base64 !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(file.base64)) throw problem('文件编码无效')
-    const content = Buffer.from(file.base64, 'base64')
-    if (!content.length || content.length > MAX_FILE_BYTES) throw problem('单个文件不能为空且不能超过 1 MB')
+  let archiveTotal = 0
+  const addLicense = (name, content) => {
+    const canonical = canonicalLicenseName(name)
+    if (!content.length || content.length > MAX_FILE_BYTES) throw problem('单个 License 文件不能为空且不能超过 1 MB')
     total += content.length
-    if (total > MAX_BATCH_BYTES) throw problem('每批文件总大小不能超过 10 MB')
-    return { name, content, mac: macFromFilename(name), sha256: createHash('sha256').update(content).digest('hex') }
-  })
+    if (total > MAX_BATCH_BYTES) throw problem('解压后的 License 总大小不能超过 10 MB')
+    files.push({ name: canonical, content, mac: macFromFilename(canonical), sha256: createHash('sha256').update(content).digest('hex') })
+    if (files.length > MAX_BATCH_FILES) throw problem(`每批最多 ${MAX_BATCH_FILES} 个 License 文件`)
+  }
+  for (const file of body.files) {
+    const name = uploadedFileName(file?.name)
+    const content = decodedUploadContent(file?.base64)
+    if (!content.length) throw problem('上传文件不能为空')
+    if (/\.zip$/i.test(name)) {
+      archiveTotal += content.length
+      if (content.length > MAX_BATCH_BYTES || archiveTotal > MAX_BATCH_BYTES) throw problem('每批 ZIP 文件总大小不能超过 10 MB')
+      for (const license of await extractZipLicenses(name, content)) addLicense(license.name, license.content)
+    } else {
+      addLicense(name, content)
+    }
+  }
+  return files
+}
+
+export function decodeUpload(body) {
+  return decodeUploadFiles(body)
 }
 
 // One database-scoped advisory lock serializes uploads, operator actions and scheduled jobs.
@@ -168,7 +250,7 @@ async function persistMatch(db, file, result, { advanceStatus = true } = {}) {
   await db.query('UPDATE dto_license_file SET application_id=?,application_snapshot=?,state=?,reason=?,updated_at=NOW(6) WHERE id=?', [result.application?.id || file.application_id || null,result.application ? snapshot(result.application) : file.application_snapshot || null,result.state,result.reason,file.id])
 }
 export async function uploadFiles(pool, body, actor) {
-  const files = decodeUpload(body)
+  const files = await decodeUpload(body)
   return withDeliveryLock(pool, async db => {
     await db.beginTransaction()
     try {
