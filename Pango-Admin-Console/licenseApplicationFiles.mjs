@@ -21,7 +21,7 @@ async function detail(db,id){
 export async function applicationFiles(pool,id){return detail(pool,id)}
 export async function uploadApplicationFile(pool,id,body,actor){
   if(body.confirm!==true||typeof body.note!=='string'||!body.note.trim()||body.note.length>500)throw problem('请确认已核对文件内容及当前申请，并填写核对说明')
-  const files=decodeUpload({files:[body.file]})
+  const files=await decodeUpload({files:[body.file]})
   const file=files[0]
   return withDeliveryLock(pool,async db=>{
     await db.beginTransaction()
