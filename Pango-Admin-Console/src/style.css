@@ -103,7 +103,7 @@ dialog { width: 440px; padding: 0; border: 0; border-radius: 12px; box-shadow: 0
 .license-filters input,.license-filters select,.license-filters button { padding:9px 12px; border:1px solid #ccd6e3; border-radius:7px; background:white; color:#334155; }
 .license-count { margin:0; font-size:13px; color:#667287; }
 .license-applications table { min-width:1350px; }
-.license-applications td:nth-child(-n+2) { white-space:nowrap; }
+.license-applications td:nth-child(-n+3) { white-space:nowrap; }
 .license-application-id { font-weight:600; font-variant-numeric:tabular-nums; }
 .application-badge { display:inline-block; padding:6px 9px; border-radius:6px; white-space:nowrap; }
 .application-status-0 { color:#755618; background:#fff3d7; }
@@ -191,3 +191,13 @@ select.application-badge { border:1px solid #d5dde7; font:inherit; min-width:92p
 .delivery-manual-application { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
 .delivery-manual-application label { display: grid; gap: 8px; }
 .delivery-manual-application input { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; }
+
+/* License application batch notification controls. */
+.license-batch-actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.license-batch-actions span { color:#536176; font-size:13px; }
+.license-batch-actions button { padding:9px 14px; border:1px solid #ccd6e3; border-radius:7px; cursor:pointer; }
+.license-batch-actions button:disabled { opacity:.5; cursor:not-allowed; }
+.license-applications table input[type="checkbox"] { width:16px; height:16px; accent-color:#ae006b; cursor:pointer; }
+.license-applications .license-contact-address { display:block; min-width:160px; max-width:240px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.license-batch-dialog { width:min(1100px,94vw); }
+.license-batch-dialog table { min-width:800px; }

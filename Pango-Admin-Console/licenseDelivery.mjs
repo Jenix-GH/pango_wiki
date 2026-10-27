@@ -445,7 +445,8 @@ async function dispatchDigest(db,sender,mail,batch,firstAttempt) {
     const [items]=await db.query('SELECT * FROM dto_license_digest_item WHERE mail_id=?',[mail.id])
     for(const item of items){
       const [[row]]=await db.query('SELECT * FROM dto_license_application WHERE id=? FOR UPDATE',[item.application_id])
-      if(!row || Number(row.status)!==0 || snapshot(row)!==item.application_snapshot){
+      if(!row || Number(row.status)!==0 || snapshot(row)!==item.application_snapshot ||
+        (message.applicationVersions && message.applicationVersions[String(row.id)]!==notificationVersion(row))){
         const result={state:'cancelled',detail:'汇总内申请已变化，本封未发送；仍待处理申请进入下次汇总'}
         await finishMail(db,mail,result);await db.commit();return {...result,count:items.length}
       }
@@ -486,6 +487,84 @@ export async function runDigest(pool,sender,{faeEmail,now=new Date(),templates={
       await db.commit()
     }catch(error){await db.rollback();throw error}
     return dispatchDigest(db,sender,{id:prepared.id,message_id:prepared.messageId},{payload:JSON.stringify(message)},true)
+  })
+}
+
+function notificationVersion(row) {
+  return createHash('sha256').update(JSON.stringify([snapshot(row),row.phone??'',row.address??'',row.official_submitted??null,row.dotime])).digest('hex')
+}
+function batchApplicationIds(value) {
+  if(!Array.isArray(value)||!value.length||value.length>100)throw problem('请选择 1–100 条待处理申请')
+  const ids=value.map(id=>{
+    if(typeof id!=='string'||! /^[1-9]\d{0,19}$/.test(id)||BigInt(id)>18446744073709551615n)throw problem('申请编号无效')
+    return id
+  })
+  if(new Set(ids).size!==ids.length)throw problem('申请编号不能重复')
+  return ids.sort((a,b)=>BigInt(a)<BigInt(b)?-1:1)
+}
+async function batchNotificationSelection(db,ids,faeEmail) {
+  if(!validEmail(faeEmail))throw problem('FAE 收件邮箱配置无效')
+  const marks=ids.map(()=>'?').join(',')
+  const [rows]=await db.query(`SELECT * FROM dto_license_application WHERE id IN (${marks}) ORDER BY id FOR UPDATE`,ids)
+  if(rows.length!==ids.length)throw problem('部分申请不存在，请刷新列表重新选择',409)
+  for(const row of rows){
+    if(Number(row.status)!==0)throw problem(`申请 #${row.id} 已不是待处理状态，请重新选择`,409)
+    if(!validEmail(row.email))throw problem(`申请 #${row.id} 的联系邮箱无效，请先核对`,409)
+  }
+  const [files]=await db.query(`SELECT application_id FROM dto_license_file WHERE application_id IN (${marks}) AND state IN ('queued','sending','accepted','unknown','paused')`,ids)
+  const [customer]=await db.query(`SELECT application_id FROM dto_license_mail WHERE application_id IN (${marks}) AND kind='customer' AND state IN ('accepted','unknown','sending')`,ids)
+  if(files.length||customer.length)throw problem(`申请 #${(files[0]||customer[0]).application_id} 已进入 License 发放流程，请先核对文件和邮件记录`,409)
+  const [previous]=await db.query(`SELECT m.id,m.state,m.attempts,i.application_id FROM dto_license_mail m
+    JOIN dto_license_digest_item i ON i.mail_id=m.id
+    WHERE i.application_id IN (${marks}) AND m.state IN ('accepted','sending','unknown','failed') ORDER BY m.id,i.application_id`,ids)
+  const blocked=previous.find(mail=>mail.state!=='failed')
+  if(blocked)throw problem(`申请 #${blocked.application_id} ${blocked.state==='accepted'?'已通知 FAE，不会重复发送':'正在发送或结果待核查，请先核查邮件记录'}`,409)
+  const failedIds=[...new Set(previous.map(mail=>mail.id))]
+  const version=createHash('sha256').update(JSON.stringify({faeEmail,rows:rows.map(row=>[String(row.id),notificationVersion(row)]),previous})).digest('hex')
+  return {rows,failedIds,version}
+}
+export async function previewBatchFae(pool,{applicationIds,faeEmail}) {
+  const ids=batchApplicationIds(applicationIds)
+  return withDeliveryLock(pool,async db=>{
+    await db.beginTransaction()
+    try{
+      const selected=await batchNotificationSelection(db,ids,faeEmail)
+      await db.commit()
+      return {records:selected.rows,faeEmail,version:selected.version,failedBatchCount:selected.failedIds.length}
+    }catch(error){await db.rollback();throw error}
+  })
+}
+export async function notifyBatchFae(pool,sender,{applicationIds,requestId,expectedVersion,expectedFaeEmail,confirm,faeEmail,templates={},logo=null,actor='admin',now=new Date()}) {
+  const ids=batchApplicationIds(applicationIds)
+  if(confirm!==true||! /^[a-f0-9-]{36}$/.test(requestId||'')||! /^[a-f0-9]{64}$/.test(expectedVersion||''))throw problem('请先核对批量名单并确认发送')
+  if(!validEmail(faeEmail)||expectedFaeEmail!==faeEmail)throw problem('FAE 邮箱已变化，请刷新核对',409)
+  return withDeliveryLock(pool,async db=>{
+    const key=`digest:manual-batch:${requestId}`
+    const [[existing]]=await db.query('SELECT * FROM dto_license_mail WHERE dedupe_key=?',[key])
+    if(existing){
+      const [members]=await db.query('SELECT application_id FROM dto_license_digest_item WHERE mail_id=? ORDER BY application_id',[existing.id])
+      if(existing.recipient!==faeEmail||JSON.stringify(members.map(item=>String(item.application_id)))!==JSON.stringify(ids))throw problem('此发送请求的名单或收件人已变化，请重新核对',409)
+      return {state:existing.state,detail:existing.detail||'本次请求已登记，请查看 FAE 汇总邮件记录',count:members.length,mailId:existing.id,replayed:true}
+    }
+    let prepared,message
+    await db.beginTransaction()
+    try{
+      const selected=await batchNotificationSelection(db,ids,faeEmail)
+      if(selected.version!==expectedVersion)throw problem('申请信息或邮件记录已变化，请重新预览确认；本次未发送',409)
+      const date=chinaTime(now).date
+      message=applyMailTemplate(digestMessage(selected.rows,[],date,faeEmail),'digest',templates,date,logo)
+      message.applicationVersions=Object.fromEntries(selected.rows.map(row=>[String(row.id),notificationVersion(row)]))
+      // Only definite failures may be superseded. Retain their payload/membership as evidence;
+      // unselected members stay pending and may join a later scheduled digest.
+      for(const id of selected.failedIds)await db.query("UPDATE dto_license_mail SET state='cancelled',detail=?,updated_at=NOW(6) WHERE id=? AND state='failed'",[`管理员重新选择申请批量通知，旧失败汇总停止重试；请求 ${requestId}`,id])
+      prepared=await prepareMail(db,{key,kind:'digest',message})
+      await db.query('INSERT INTO dto_license_digest_batch (mail_id,payload) VALUES (?,?)',[prepared.id,JSON.stringify(message)])
+      for(const row of selected.rows)await db.query('INSERT INTO dto_license_digest_item (mail_id,application_id,application_snapshot) VALUES (?,?,?)',[prepared.id,row.id,snapshot(row)])
+      await audit(db,null,actor,'batch-notify-fae',`邮件 ${prepared.id}，选中 ${ids.length} 条：${ids.join(',')}`.slice(0,500))
+      await db.commit()
+    }catch(error){await db.rollback();throw error}
+    const result=await dispatchDigest(db,sender,{id:prepared.id,message_id:prepared.messageId},{payload:JSON.stringify(message)},true)
+    return {...result,mailId:prepared.id}
   })
 }
 async function deliverLicenseFile(db,sender,id,{date,replyTo,faeEmail,templates={},logo=null,actor='nightly',expectedApplicationId,expectedEmail,expectedCc}) {

@@ -15,7 +15,7 @@ import { conversationFileName, groupConversationRecords, imageExtension, renderC
 import { mailSettingsView, saveMailSettings, applySavedMailSettings } from './licenseMailSettings.mjs'
 import { createWorkflowMailSender, assertMailConfiguration } from './licenseMail.mjs'
 import { sampleMail, publicMailPreview } from './licenseMailPreview.mjs'
-import { withDeliveryLock, validEmail, applicationWorkflow, runApplicationStep } from './licenseDelivery.mjs'
+import { withDeliveryLock, validEmail, applicationWorkflow, runApplicationStep, previewBatchFae, notifyBatchFae } from './licenseDelivery.mjs'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 const apiOnly = process.argv.includes('--api-only')
@@ -557,6 +557,15 @@ async function handleLicenseDelivery(request, response, path, params) {
     return json(response,200,{data:await promise})
   }
   if (!enabled) throw problem('License 自动发放尚未配置，请先执行数据库迁移并启用配置', 503)
+  if(request.method==='POST'&&['/license-delivery/applications/batch-notify-fae/preview','/license-delivery/applications/batch-notify-fae'].includes(path)){
+    const body=await readLicenseJson(request)
+    const effective=await applySavedMailSettings(config,configPath)
+    const options={applicationIds:body.applicationIds,requestId:body.requestId,expectedVersion:body.expectedVersion,expectedFaeEmail:body.expectedFaeEmail,confirm:body.confirm,faeEmail:effective.LICENSE_FAE_EMAIL,templates:effective.LICENSE_MAIL_TEMPLATES,logo:effective.LICENSE_MAIL_LOGO,actor:adminUser}
+    response.setHeader('Cache-Control','no-store')
+    if(path.endsWith('/preview'))return json(response,200,{data:await previewBatchFae(licensePool,options)})
+    assertMailConfiguration(effective,{requireFae:false})
+    return json(response,200,{data:await notifyBatchFae(licensePool,createWorkflowMailSender(effective),options)})
+  }
   const applicationFileMatch=/^\/license-delivery\/applications\/(\d+)\/files$/.exec(path)
   if(applicationFileMatch&&request.method==='GET')return json(response,200,{data:await applicationFiles(licensePool,applicationFileMatch[1])})
   if(applicationFileMatch&&request.method==='POST')return json(response,200,{data:await uploadApplicationFile(licensePool,applicationFileMatch[1],await readLicenseJson(request,2*1024*1024),adminUser)})

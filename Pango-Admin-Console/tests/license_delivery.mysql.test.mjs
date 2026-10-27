@@ -7,7 +7,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import mysql from 'mysql2/promise'
 import {readFile} from 'node:fs/promises'
-import {runApplicationStep,applicationWorkflow} from '../licenseDelivery.mjs'
+import {randomUUID} from 'node:crypto'
+import {previewBatchFae,notifyBatchFae,runApplicationStep,applicationWorkflow} from '../licenseDelivery.mjs'
 import {createWorkflowMailSender} from '../licenseMail.mjs'
 import {uploadFiles,setMailCc,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,cancelRejection,restoreRejection,resolveWorkflowMail,listApplications,listFiles,listCustomerMail,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
 const night={faeEmail:'fae@example.com',replyTo:'fae@example.com',now:new Date('2026-09-23T12:00:00Z')}
@@ -536,6 +537,93 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
    }
    const [batches]=await pool.query('SELECT payload FROM dto_license_digest_batch')
    assert.equal(batches.length,2);assert.ok(batches.every(b=>JSON.parse(b.payload).text.includes('是否已在官网提交')));assert.ok(batches.every(b=>JSON.parse(b.payload).html.includes('<table ')))
+  })
+  const batchPreview=(ids)=>previewBatchFae(pool,{applicationIds:ids,faeEmail:'fae@example.com'})
+  const batchOptions=async ids=>({applicationIds:ids,requestId:randomUUID(),expectedVersion:(await batchPreview(ids)).version,expectedFaeEmail:'fae@example.com',confirm:true,...night,actor:'tester'})
+  await t.test('batch preview is read-only; selected requests form one complete table mail and morning skips them',async()=>{
+   await reset();sent=[];for(let i=1;i<=3;i++)await application(i)
+   await pool.query("UPDATE dto_license_application SET address='深圳市测试路 8 号',phone='12345678901',official_submitted=1,email_type='PERSONAL',contact_person='王工' WHERE id=1")
+   const view=await batchPreview(['2','1'])
+   assert.deepEqual(view.records.map(row=>String(row.id)),['1','2']);assert.equal(view.records[0].address,'深圳市测试路 8 号')
+   assert.equal(Number((await pool.query('SELECT COUNT(*) n FROM dto_license_mail'))[0][0].n),0)
+   const options=await batchOptions(['2','1'])
+   const result=await notifyBatchFae(pool,sender,options)
+   assert.equal(result.state,'accepted');assert.equal(result.count,2);assert.equal(sent.length,1)
+   assert.equal(sent[0].mailKind,'digest');assert.equal(sent[0].to,'fae@example.com');assert.ok(sent[0].html.includes('<table '));assert.ok(sent[0].text.includes('深圳市测试路 8 号'));assert.ok(sent[0].text.includes('是否已在官网提交：是'))
+   assert.ok(!sent[0].text.includes('#3 |'));assert.ok(Buffer.from(sent[0].attachments[0].base64,'base64').toString().includes('深圳市测试路 8 号'))
+   assert.deepEqual((await pool.query('SELECT status FROM dto_license_application ORDER BY id'))[0].map(row=>row.status),[1,1,0])
+   assert.equal((await notifyBatchFae(pool,sender,options)).replayed,true);assert.equal(sent.length,1)
+   await pool.query('UPDATE dto_license_application SET status=0 WHERE id IN (1,2)')
+   await assert.rejects(batchPreview(['1']),/已通知 FAE/)
+   await runDigest(pool,sender,morning);assert.equal(sent.length,2);assert.ok(sent[1].text.includes('#3 |'));assert.ok(!sent[1].text.includes('#1 |'))
+  })
+  await t.test('batch failure keeps status pending; repeated HTTP request never sends twice and morning retries shared payload',async()=>{
+   await reset();sent=[];await application();await application(2)
+   const options=await batchOptions(['1','2'])
+   const failure=async message=>{sent.push(message);return {state:'failed',detail:'TimeoutError'}}
+   assert.equal((await notifyBatchFae(pool,failure,options)).state,'failed')
+   assert.equal((await notifyBatchFae(pool,failure,options)).replayed,true);assert.equal(sent.length,1)
+   assert.ok((await pool.query('SELECT status FROM dto_license_application'))[0].every(row=>row.status===0))
+   await application(3)
+   await runDigest(pool,sender,morning);assert.equal(sent.length,2);assert.equal(sent[0].messageId,sent[1].messageId)
+   assert.deepEqual((await pool.query('SELECT status FROM dto_license_application ORDER BY id'))[0].map(row=>row.status),[1,1,0])
+  })
+  await t.test('batch unknown and sending results block new attempts and preserve pending state',async()=>{
+   for(const state of ['unknown','sending']){
+    await reset();sent=[];await application();const options=await batchOptions(['1'])
+    await notifyBatchFae(pool,async()=>({state:'unknown'}),options)
+    await pool.query('UPDATE dto_license_mail SET state=?',[state])
+    await assert.rejects(batchPreview(['1']),/正在发送或结果待核查/)
+    await assert.rejects(notifyBatchFae(pool,sender,{...options,requestId:randomUUID()}),/正在发送或结果待核查/)
+    assert.equal(sent.length,0);assert.equal((await pool.query('SELECT status FROM dto_license_application'))[0][0].status,0)
+   }
+  })
+  await t.test('batch validates all selections, configuration, confirmation and stale contact details before any sending',async()=>{
+   await reset();sent=[];await application();await application(2)
+   for(const ids of [[],['1','1'],['0'],['1 OR 1=1'],[1],['18446744073709551616'],Array(101).fill('1')])await assert.rejects(batchPreview(ids))
+   await assert.rejects(batchPreview(['1','999']),/不存在/)
+   let options=await batchOptions(['1','2'])
+   await assert.rejects(notifyBatchFae(pool,sender,{...options,confirm:false}),/确认/)
+   await assert.rejects(notifyBatchFae(pool,sender,{...options,expectedFaeEmail:'changed@example.com'}),/FAE 邮箱/)
+   await pool.query("UPDATE dto_license_application SET address='new address' WHERE id=2")
+   await assert.rejects(notifyBatchFae(pool,sender,options),/信息或邮件记录已变化/)
+   options=await batchOptions(['1','2']);await pool.query('UPDATE dto_license_application SET status=1 WHERE id=2')
+   await assert.rejects(notifyBatchFae(pool,sender,options),/不是待处理/)
+   assert.equal(sent.length,0);assert.equal(Number((await pool.query('SELECT COUNT(*) n FROM dto_license_mail'))[0][0].n),0)
+  })
+  await t.test('batch excludes active file and delivered workflows and rechecks them after preview',async()=>{
+   await reset();sent=[];await application();const options=await batchOptions(['1'])
+   await upload();await pool.query('UPDATE dto_license_application SET status=0 WHERE id=1')
+   await assert.rejects(batchPreview(['1']),/已进入 License/)
+   await assert.rejects(notifyBatchFae(pool,sender,options),/已进入 License/)
+   assert.equal(sent.length,0)
+  })
+  await t.test('explicit batch confirmation supersedes only failed old digests and sends selected subset only',async()=>{
+   await reset();sent=[];for(let i=1;i<=3;i++)await application(i)
+   await runDigest(pool,async()=>({state:'failed'}),morning)
+   await pool.query('UPDATE dto_license_mail SET attempts=3')
+   const [[old]]=await pool.query('SELECT id FROM dto_license_mail')
+   assert.equal((await batchPreview(['1','2'])).failedBatchCount,1)
+   const options=await batchOptions(['1','2']);await notifyBatchFae(pool,sender,options)
+   assert.equal(sent.length,1);assert.ok(!sent[0].text.includes('#3 |'))
+   assert.equal((await pool.query('SELECT state FROM dto_license_mail WHERE id=?',[old.id]))[0][0].state,'cancelled')
+   assert.equal(Number((await pool.query('SELECT COUNT(*) n FROM dto_license_digest_item WHERE mail_id=?',[old.id]))[0][0].n),3)
+   await runDigest(pool,sender,{...morning,now:new Date('2026-09-24T01:00:00Z')})
+   assert.equal(sent.length,2);assert.ok(sent[1].text.includes('#3 |'));assert.ok(!sent[1].text.includes('#1 |'))
+  })
+  await t.test('batch sender and scheduled jobs share the workflow lock, and request IDs cannot change membership',async()=>{
+   await reset();sent=[];await application();await application(2)
+   const options=await batchOptions(['1'])
+   await withDeliveryLock(pool,async()=>await assert.rejects(notifyBatchFae(pool,sender,options),e=>e.statusCode===409))
+   await notifyBatchFae(pool,sender,options)
+   await assert.rejects(notifyBatchFae(pool,sender,{...options,applicationIds:['2']}),/名单或收件人已变化/)
+   assert.equal(sent.length,1)
+  })
+  await t.test('changed address cancels saved batch on retry instead of mailing stale contact details',async()=>{
+   await reset();sent=[];await application()
+   await notifyBatchFae(pool,async()=>({state:'failed'}),await batchOptions(['1']))
+   await pool.query("UPDATE dto_license_application SET address='changed address' WHERE id=1")
+   assert.equal((await runDigest(pool,sender,morning)).state,'cancelled');assert.equal(sent.length,0)
   })
   await t.test('immediate FAE sends only selected application and daily digest skips it even after status reset',async()=>{
    await reset();sent=[];await application();await application(2,'other@example.com','AA-BB-CC-DD-EE-FF')
