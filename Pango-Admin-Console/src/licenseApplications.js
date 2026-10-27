@@ -9,6 +9,7 @@ const time=value=>value?String(value).replace('T',' ').slice(0,19):'—'
 function button(text,action,className=''){const item=el('button',text,className);item.type='button';item.addEventListener('click',action);return item}
 function addRow(body,values){const tr=el('tr');for(const value of values){const td=el('td');td.append(value instanceof Node?value:el('span',value??'—'));tr.append(td)}body.append(tr)}
 function dialog(title){const d=el('dialog','','delivery-dialog');const header=el('div','','delivery-dialog-header');header.append(el('h2',title),button('关闭',()=>d.close()));const body=el('div','','delivery-dialog-body');d.append(header,body);document.body.append(d);d.addEventListener('close',()=>d.remove());d.showModal();return {d,body}}
+function batchRequestId(){return crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,char=>{const value=crypto.getRandomValues(new Uint8Array(1))[0]&15;return (char==='x'?value:(value&3)|8).toString(16)})}
 
 export async function renderLicenseApplications(content,request,openDelivery){
   const root=el('section','','license-applications');content.replaceChildren(root)
@@ -22,16 +23,82 @@ export async function renderLicenseApplications(content,request,openDelivery){
   const start=dateInput('提交开始日期',view.startDate),end=dateInput('提交结束日期',view.endDate)
   const message=el('p','','delivery-message');message.setAttribute('role','status')
   const count=el('p','','license-count');const panel=el('div','','panel table-panel')
-  let loading=false
+  let loading=false,batchBusy=false,workflowEnabled=false
+  const selected=new Map()
+  let pageCheckboxes=[],selectPage
+  const batchBar=el('div','','license-batch-actions'),selectedCount=el('span')
+  const batchButton=button('批量立即通知 FAE',notifySelected,'export-button')
+  const clearSelected=button('清空勾选',()=>{selected.clear();syncSelection()})
+  batchBar.append(selectedCount,batchButton,clearSelected)
   const query=button('查询',()=>apply())
   const clear=button('重置',()=>{status.value='';start.input.value='';end.input.value='';apply()})
-  filters.append(start.wrap,end.wrap,status,query,clear);root.append(filters,message,count,panel)
+  filters.append(start.wrap,end.wrap,status,query,clear);root.append(filters,batchBar,message,count,panel)
+  syncSelection()
   function apply(){
     if(start.input.value&&end.input.value&&start.input.value>end.input.value){message.textContent='开始日期不能晚于结束日期';return}
+    selected.clear();syncSelection()
     Object.assign(view,{page:1,status:status.value,startDate:start.input.value,endDate:end.input.value});load().catch(report)
   }
   status.addEventListener('change',apply)
   function report(error){if(!error.authentication)message.textContent=error.message||String(error)}
+  function syncSelection(){
+    selectedCount.textContent=`已勾选 ${selected.size} 条待处理申请（最多 100 条，可跨页）`
+    batchButton.disabled=loading||batchBusy||!workflowEnabled||selected.size===0
+    clearSelected.disabled=loading||batchBusy||selected.size===0
+    for(const {input,row} of pageCheckboxes){input.checked=selected.has(String(row.id));input.disabled=loading||batchBusy||!workflowEnabled||Number(row.status)!==0}
+    if(selectPage){
+      const eligible=pageCheckboxes.filter(({row})=>Number(row.status)===0)
+      const checked=eligible.filter(({row})=>selected.has(String(row.id))).length
+      selectPage.checked=eligible.length>0&&checked===eligible.length
+      selectPage.indeterminate=checked>0&&checked<eligible.length
+      selectPage.disabled=loading||batchBusy||!workflowEnabled||eligible.length===0
+    }
+  }
+  async function notifySelected(){
+    if(batchBusy||!selected.size)return
+    batchBusy=true;syncSelection()
+    try{
+      const applicationIds=[...selected.keys()]
+      const preview=await request('/license-delivery/applications/batch-notify-fae/preview',{method:'POST',body:JSON.stringify({applicationIds})})
+      if(!root.isConnected)return
+      const payload={applicationIds,requestId:batchRequestId(),expectedVersion:preview.version,expectedFaeEmail:preview.faeEmail,confirm:true}
+      const {d,body}=dialog(`批量通知 FAE · ${preview.records.length} 条申请`)
+      d.classList.add('license-batch-dialog')
+      body.append(el('p',`FAE 收件邮箱：${preview.faeEmail}`),el('p','选中的申请将合成一封表格邮件，包含完整申请信息及 CSV 附件。邮件服务器接受后转为“处理中”，后续定时汇总不再重复通知。'))
+      if(preview.failedBatchCount)body.append(el('p',`选中申请关联 ${preview.failedBatchCount} 封明确失败的旧汇总。确认后旧汇总停止重试并保留记录；本次只发送勾选项，未勾选的申请仍保持待处理。`,'delivery-warning'))
+      const table=el('table'),head=el('thead'),tr=el('tr'),tbody=el('tbody'),wrap=el('div','','table-wrap')
+      for(const label of ['申请编号','申请人 / 公司','联系邮箱','MAC 地址','联系地址'])tr.append(el('th',label))
+      head.append(tr);table.append(head,tbody);wrap.append(table);body.append(wrap)
+      for(const row of preview.records)addRow(tbody,[`#${row.id}`,`${row.applicant_name}\n${row.company_name}`,row.email,row.mac_address,row.address||'未填写'])
+      const feedback=el('p','','delivery-message');feedback.setAttribute('role','status')
+      const submit=button('确认合并发送',send,'export-button');body.append(feedback,submit)
+      let sending=false,waiting
+      d.addEventListener('cancel',event=>{if(sending)event.preventDefault()})
+      d.addEventListener('close',()=>{batchBusy=false;syncSelection()},{once:true})
+      async function send(){
+        if(sending)return
+        sending=true;submit.disabled=true;d.querySelector('.delivery-dialog-header button').disabled=true
+        feedback.textContent='正在合并发送，请等待实际结果，勿重复操作。'
+        waiting=setTimeout(()=>{feedback.textContent='仍在等待邮件服务器响应，结果尚未确认。请勿另建发送请求。'},20000)
+        try{
+          const result=await request('/license-delivery/applications/batch-notify-fae',{method:'POST',body:JSON.stringify(payload)})
+          clearTimeout(waiting)
+          const text=result.state==='accepted'?`${result.count} 条申请已合成一封邮件，邮件服务器已接受，申请已转为“处理中”。`:`批量通知结果：${mailLabels[result.state]||result.state}。${result.detail||'请查看最近 FAE 汇总邮件。'}`
+          feedback.textContent=text;message.textContent=text
+          for(const id of applicationIds)selected.delete(id)
+          submit.hidden=true
+          await load()
+        }catch(error){
+          clearTimeout(waiting)
+          feedback.textContent=`${error.message||'请求失败'}。若连接中断，请先查看最近 FAE 汇总邮件；重复提交此按钮只核对同一请求，不会重新发一封。`
+          submit.textContent='重试本次请求';submit.disabled=false
+        }finally{
+          clearTimeout(waiting);sending=false;d.querySelector('.delivery-dialog-header button').disabled=false
+        }
+      }
+    }catch(error){batchBusy=false;syncSelection();report(error)}
+    finally{if(!root.isConnected)batchBusy=false}
+  }
   async function reject(row){
     const {d,body}=dialog(`拒绝申请 #${row.id}`)
     body.append(el('p',`${row.applicant_name} · ${row.company_name} · ${row.mac_address}`),el('p',`说明邮件将发送至：${row.email}`),el('p','拒绝理由会原文发送给客户。提交后停止此申请的 License 发放，说明邮件进入每晚 20:00 队列。','delivery-warning'))
@@ -86,15 +153,35 @@ export async function renderLicenseApplications(content,request,openDelivery){
     }catch(error){body.replaceChildren(el('p',error.message))}
   }
   async function load(){
-    if(loading)return;loading=true;filters.querySelectorAll('input,select,button').forEach(item=>item.disabled=true)
+    if(loading)return;loading=true;syncSelection();filters.querySelectorAll('input,select,button').forEach(item=>item.disabled=true)
     try{
       const data=await request(`/licenses?${new URLSearchParams({page:String(view.page),status:view.status,startDate:view.startDate,endDate:view.endDate})}`)
       if(!root.isConnected)return
+      workflowEnabled=data.workflowEnabled;pageCheckboxes=[];selectPage=null
+      for(const row of data.records)if(Number(row.status)!==0)selected.delete(String(row.id))
       mode.hidden=Boolean(data.workflowEnabled&&data.sendingEnabled)
-      mode.textContent=data.workflowEnabled?'当前为准备模式：定时发送未启用；状态和拒绝理由会保存，明确确认后可单条立即通知 FAE。':'工作流尚未配置：可查询申请，暂不能设置状态或安排拒绝通知。'
+      mode.textContent=data.workflowEnabled?'当前为准备模式：定时发送未启用；状态和拒绝理由会保存，明确确认后可单条或批量立即通知 FAE。':'工作流尚未配置：可查询申请，暂不能设置状态或安排拒绝通知。'
       count.textContent=`共 ${data.total} 条申请 · 按提交时间筛选${view.startDate||view.endDate?`：${view.startDate||'不限'} 至 ${view.endDate||'不限'}（含结束当天）`:''}`
-      const table=el('table'),head=el('thead'),hr=el('tr');['申请编号','提交时间','申请人 / 公司','系统 / 版本','类型 / 年限','MAC 地址','联系方式','邮箱类型 / 对接人','官网已提交','申请状态','文件 / 邮件','拒绝理由','操作'].forEach(h=>hr.append(el('th',h)));head.append(hr);const tbody=el('tbody');table.append(head,tbody)
+      const table=el('table'),head=el('thead'),hr=el('tr');
+      selectPage=document.createElement('input');selectPage.type='checkbox';selectPage.setAttribute('aria-label','勾选本页待处理申请')
+      selectPage.addEventListener('change',()=>{
+        const eligible=pageCheckboxes.filter(({row})=>Number(row.status)===0)
+        if(selectPage.checked){
+          const additions=eligible.filter(({row})=>!selected.has(String(row.id)))
+          if(selected.size+additions.length>100){message.textContent='每批最多勾选 100 条，请减少选择';syncSelection();return}
+          for(const {row} of eligible)selected.set(String(row.id),row)
+        }else for(const {row} of eligible)selected.delete(String(row.id))
+        syncSelection()
+      })
+      const selectionHead=el('th');selectionHead.append(selectPage);hr.append(selectionHead);
+      ['申请编号','提交时间','申请人 / 公司','系统 / 版本','类型 / 年限','MAC 地址','联系方式','联系地址','邮箱类型 / 对接人','官网已提交','申请状态','文件 / 邮件','拒绝理由','操作'].forEach(h=>hr.append(el('th',h)));head.append(hr);const tbody=el('tbody');table.append(head,tbody)
       for(const row of data.records){
+        const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.setAttribute('aria-label',`勾选申请 #${row.id}`)
+        checkbox.addEventListener('change',()=>{
+          if(checkbox.checked){if(selected.size>=100){message.textContent='每批最多勾选 100 条';syncSelection();return}selected.set(String(row.id),row)}
+          else selected.delete(String(row.id))
+          syncSelection()
+        });pageCheckboxes.push({input:checkbox,row})
         const state=document.createElement('select')
         state.className=`application-badge application-status-${row.status}`
         state.setAttribute('aria-label',`设置申请 #${row.id} 状态`)
@@ -121,12 +208,13 @@ export async function renderLicenseApplications(content,request,openDelivery){
         }
         const delivery=Number(row.status)===3?(row.rejection_mail_state?`拒绝邮件：${mailLabels[row.rejection_mail_state]||row.rejection_mail_state}`:'历史记录：未保存理由及邮件'):deliveryLabels[row.delivery_state]||'未上传 / 未关联文件'
         const applicationId=el('span',`#${row.id}`,'license-application-id');applicationId.title='与邮件中的申请编号一致'
-        addRow(tbody,[applicationId,time(row.dotime),`${row.applicant_name}\n${row.company_name}`,`${row.operating_system} / ${row.software_version}`,`${row.license_type} / ${row.duration_years}年${row.license_type==='SERVER'?`\n最大支持人数：${row.max_users??'未填写'}`:''}`,row.mac_address,`${row.email||''}\n${row.phone||''}`,`${row.email_type==='PERSONAL'?'个人邮箱':row.email_type==='ORGANIZATION'?'公司或学校邮箱':'未填写'}\n${row.contact_person||'未填写'}`,row.official_submitted==null?'未记录':Number(row.official_submitted)===1?'是':'否',state,delivery,row.rejection_reason?(Number(row.status)===3?row.rejection_reason:`历史拒绝：${row.rejection_reason}`):'—',operation])
+        const address=el('span',row.address||'未填写','license-contact-address')
+        addRow(tbody,[checkbox,applicationId,time(row.dotime),`${row.applicant_name}\n${row.company_name}`,`${row.operating_system} / ${row.software_version}`,`${row.license_type} / ${row.duration_years}年${row.license_type==='SERVER'?`\n最大支持人数：${row.max_users??'未填写'}`:''}`,row.mac_address,`${row.email||''}\n${row.phone||''}`,address,`${row.email_type==='PERSONAL'?'个人邮箱':row.email_type==='ORGANIZATION'?'公司或学校邮箱':'未填写'}\n${row.contact_person||'未填写'}`,row.official_submitted==null?'未记录':Number(row.official_submitted)===1?'是':'否',state,delivery,row.rejection_reason?(Number(row.status)===3?row.rejection_reason:`历史拒绝：${row.rejection_reason}`):'—',operation])
       }
-      if(!data.records.length){const row=el('tr'),cell=el('td','该时段及状态下暂无申请','empty');cell.colSpan=13;row.append(cell);tbody.append(row)}
+      if(!data.records.length){const row=el('tr'),cell=el('td','该时段及状态下暂无申请','empty');cell.colSpan=15;row.append(cell);tbody.append(row)}
       const wrap=el('div','','table-wrap');wrap.append(table);const pager=el('div','','pager');const pages=Math.max(1,Math.ceil(data.total/30))
       const previous=button('上一页',()=>{view.page--;load().catch(report)}),next=button('下一页',()=>{view.page++;load().catch(report)});previous.disabled=view.page<=1;next.disabled=view.page>=pages;pager.append(el('span',`${view.page} / ${pages}`),previous,next);panel.replaceChildren(wrap,pager)
-    }finally{loading=false;filters.querySelectorAll('input,select,button').forEach(item=>item.disabled=false)}
+    }finally{loading=false;filters.querySelectorAll('input,select,button').forEach(item=>item.disabled=false);syncSelection()}
   }
   await load().catch(report)
 }
