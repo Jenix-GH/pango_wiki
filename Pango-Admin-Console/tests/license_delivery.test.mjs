@@ -1,4 +1,5 @@
 import test from 'node:test'
+import JSZip from 'jszip'
 import {applyMailTemplate} from '../licenseMailTemplates.mjs'
 import assert from 'node:assert/strict'
 import {macFromFilename,typeFromFilename,normalizeCc,normalizeMac,validEmail,decodeUpload,chinaTime,customerMessage,digestMessage,snapshot,matchFile,dateConditions,rejectionMessage} from '../licenseDelivery.mjs'
@@ -11,10 +12,36 @@ test('filename matching is anchored, hexadecimal and case insensitive',()=>{
   assert.equal(normalizeMac('1A:2B:3C:4D:5F:60'),'1A2B3C4D5F60')
   assert.equal(normalizeMac('nonsense1A2B3C4D5F60'),null)
 })
-test('uploads enforce count, decoded size, names, nonempty files and base64',()=>{
+test('uploads enforce count, decoded size, names, nonempty files and base64',async()=>{
   const f={name:'new_pds_1a2b3c4d5f60.lic',base64:Buffer.from('license').toString('base64')}
-  assert.equal(decodeUpload({files:[f]})[0].content.toString(),'license')
-  for(const files of [[],Array(51).fill(f),[{...f,name:'../a.lic'}],[{...f,base64:'!bad!'}],[{...f,base64:''}],[{...f,name:'x.exe'}],[{...f,base64:Buffer.alloc(1048577).toString('base64')}],Array(11).fill({...f,base64:Buffer.alloc(1048576).toString('base64')})])assert.throws(()=>decodeUpload({files}))
+  assert.equal((await decodeUpload({files:[f]}))[0].content.toString(),'license')
+  for(const files of [[],Array(51).fill(f),[{...f,name:'../a.lic'}],[{...f,base64:'!bad!'}],[{...f,base64:''}],[{...f,name:'x.exe'}],[{...f,base64:Buffer.alloc(1048577).toString('base64')}],Array(11).fill({...f,base64:Buffer.alloc(1048576).toString('base64')})])await assert.rejects(decodeUpload({files}))
+})
+test('zip uploads expand prefixed license names and ignore unrelated files',async()=>{
+  const zip=new JSZip()
+  zip.file('客户资料/西安宏泰时频-F4A80DA47D72-2026-10-26-new_pds_F4A80DA47D72.lic','standalone-license')
+  zip.file('客户资料/new_pds_112233445566_floating.lic','server-license')
+  zip.file('说明.txt','ignored')
+  const archive=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'})
+  const files=await decodeUpload({files:[{name:'license_20261026100112653053.zip',base64:archive.toString('base64')}]})
+  assert.deepEqual(files.map(file=>[file.name,file.mac,file.content.toString()]),[
+    ['new_pds_f4a80da47d72.lic','F4A80DA47D72','standalone-license'],
+    ['new_pds_112233445566_floating.lic','112233445566','server-license'],
+  ])
+
+  const directBase64=Buffer.from('direct-license').toString('base64')
+  const direct=await decodeUpload({files:[{name:'客户名称-2026-10-26-new_pds_AABBCCDDEEFF.lic',base64:directBase64}]})
+  assert.equal(direct[0].name,'new_pds_aabbccddeeff.lic')
+})
+test('zip uploads reject unrelated, oversized and invalid archive contents',async()=>{
+  const noLicense=new JSZip();noLicense.file('说明.txt','ignored')
+  const unrelated=new JSZip();unrelated.file('客户资料/license.lic','not-a-license')
+  const oversized=new JSZip();oversized.file('new_pds_AABBCCDDEEFF.lic',Buffer.alloc(1048577))
+  for(const zip of [noLicense,unrelated,oversized]){
+    const archive=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'})
+    await assert.rejects(decodeUpload({files:[{name:'licenses.zip',base64:archive.toString('base64')}]}))
+  }
+  await assert.rejects(decodeUpload({files:[{name:'licenses.zip',base64:Buffer.from('not-a-zip').toString('base64')}]}))
 })
 test('single recipient validation rejects header injection and lists',()=>{
   assert.equal(validEmail('customer+license@example.com'),true)

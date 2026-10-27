@@ -26,12 +26,12 @@ export async function renderLicenseDelivery(content,request){
   if(!cfg.enabled){root.append(node('div','自动发放尚未配置。请先执行数据库迁移，再启用 LICENSE_DELIVERY_ENABLED。','panel'));return}
   if(!cfg.sendingEnabled)root.append(node('div','当前为准备模式：可以上传和核对文件，自动发信尚未启用。','delivery-warning'))
   const uploadPanel=node('section','','panel delivery-upload')
-  uploadPanel.append(node('h2','批量上传 License'),node('p','单机版：new_pds_<12位MAC>.lic；服务器版：new_pds_<12位MAC>_floating.lic。按 MAC 和授权类型匹配。上传即加入处理队列，20:00 后上传的文件进入下一晚。请先核对文件内授权信息。已取消的相同内容文件再次上传，会复用原记录并重新匹配。'))
-  const fileLabel=node('label','选择文件（每批最多 50 个，单个 1 MB，总计 10 MB）');const input=document.createElement('input');input.type='file';input.multiple=true;input.accept='.lic';input.id='licenseFiles';fileLabel.htmlFor=input.id;uploadPanel.append(fileLabel,input)
+  uploadPanel.append(node('h2','批量上传 License'),node('p','支持直接上传 .lic 或 ZIP 批量包。ZIP 内文件名可带公司名、日期等前后缀，只要包含 new_pds_<12位MAC>.lic 或 new_pds_<12位MAC>_floating.lic，系统会自动提取并规范化。按 MAC 和授权类型匹配。上传即加入处理队列，20:00 后上传的文件进入下一晚。请先核对文件内授权信息。已取消的相同内容文件再次上传，会复用原记录并重新匹配。'))
+  const fileLabel=node('label','选择 .lic 或 .zip（每批最多 50 个上传文件；单个 .lic ≤1 MB，ZIP ≤10 MB，解压后 License 总计 ≤10 MB）');const input=document.createElement('input');input.type='file';input.multiple=true;input.accept='.lic,.zip';input.id='licenseFiles';fileLabel.htmlFor=input.id;uploadPanel.append(fileLabel,input)
   const upload=button('上传并匹配',async()=>{
     const files=Array.from(input.files||[])
     if(!files.length){message.textContent='请先选择 License 文件';return}
-    if(files.length>50||files.some(f=>f.size>1024*1024||!f.size)||files.reduce((n,f)=>n+f.size,0)>10*1024*1024){message.textContent='请检查文件数量、大小，文件不能为空';return}
+    if(files.length>50||files.some(f=>!f.size||f.size>(/\.zip$/i.test(f.name)?10*1024*1024:1024*1024))||files.reduce((n,f)=>n+f.size,0)>10*1024*1024){message.textContent='请检查上传文件数量、大小，文件不能为空';return}
     upload.disabled=true;input.disabled=true;message.textContent='正在上传并匹配…'
     try{
       const result=await request('/license-delivery/upload',{method:'POST',body:JSON.stringify({files:await Promise.all(files.map(encodeFile))})})
