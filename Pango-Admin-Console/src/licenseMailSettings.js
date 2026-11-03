@@ -99,7 +99,7 @@ export async function renderLicenseMailSettings(parent,request){
   for(const variable of view.variables)variables.append(button(`{{${variable}}}`,()=>{text.focus();text.setRangeText(`{{${variable}}}`,text.selectionStart,text.selectionEnd,'end');drafts[kind.value].text=text.value}))
   const templateActions=el('div','','mail-actions')
   templateActions.append(button('保存邮件内容',()=>action(async()=>{view=await request('/license-delivery/mail-settings',{method:'POST',body:JSON.stringify({revision:view.revision,templates:drafts})});feedback.textContent='邮件内容已保存。后续新生成的邮件使用新内容；已生成的 FAE 汇总重试保留原内容。'})),button('恢复此类默认内容',()=>{drafts[kind.value]=structuredClone(view.defaults[kind.value]);showTemplate();feedback.textContent='已恢复默认草稿，点击“保存邮件内容”后生效。'}))
-  editor.append(kindLabel,subject.wrap,textLabel,variables,el('p','附件与收件人由申请决定，不随正文修改。拒绝说明需保留 {{拒绝原因}}，FAE 汇总需保留 {{原始正文}}，申请信息会自动显示为表格。','mail-hint'),templateActions)
+  editor.append(kindLabel,subject.wrap,textLabel,variables,el('p','客户邮件的 {{日期}} 为申请日期，FAE 汇总的 {{日期}} 为汇总日期。附件与收件人由申请决定，不随正文修改。拒绝说明需保留 {{拒绝原因}}，FAE 汇总需保留 {{原始正文}}，申请信息会自动显示为表格。','mail-hint'),templateActions)
   inner.append(editor);showTemplate()
   const tester=el('section','','mail-tester');tester.append(el('h3','预览与测试'))
   const recipient=field('测试收件邮箱','email','','只向这个邮箱发送当前选中的一封测试邮件，不修改申请状态。');recipient.input.placeholder='填写你自己的测试邮箱'

@@ -9,7 +9,7 @@ export const TEMPLATE_DEFAULTS = {
 export const TEMPLATE_VARIABLES = ['申请编号','申请人','公司或学校','软件版本','授权类型','年限','MAC地址','拒绝原因','日期','原始正文']
 const rowKeys = { '申请编号':'id','申请人':'applicant_name','公司或学校':'company_name','软件版本':'software_version','授权类型':'license_type','年限':'duration_years','MAC地址':'mac_address' }
 export function mailVariables(row={}, reason='') {
-  return { ...Object.fromEntries(Object.entries(rowKeys).map(([label,key])=>[label,String(row[key]??'')])), '拒绝原因':reason }
+  return { ...Object.fromEntries(Object.entries(rowKeys).map(([label,key])=>[label,String(row[key]??'')])), '拒绝原因':reason, '日期':String(row.dotime??'').match(/^\d{4}-\d{2}-\d{2}/)?.[0]||'未记录' }
 }
 export function validateTemplates(templates) {
   if (!templates || typeof templates!=='object' || Array.isArray(templates)) throw new Error('邮件模板格式错误')
@@ -32,7 +32,7 @@ export function mailTextToHtml(value) { return escapeMailHtml(value).replace(/\r
 export function applyMailTemplate(message,kind,templates={},date='',logo=null) {
   if(!templates[kind])return withMailLogo(message,logo,mailTextToHtml(message.text))
   const template=validateTemplates({[kind]:templates[kind]})[kind]
-  const values={...message.variables,'原始正文':message.text,'日期':date}
+  const values={...message.variables,'原始正文':message.text,'日期':['customer','rejection'].includes(kind)?(message.variables?.['日期']||'未记录'):date}
   const render=(text,subject=false)=>text.replace(/{{(.*?)}}/g,(_,key)=>subject?String(values[key]??'').replace(/[\r\n]+/g,' '):String(values[key]??''))
   const subject=render(template.subject,true)
   if(subject.length>300)throw new Error('替换变量后的邮件标题过长')

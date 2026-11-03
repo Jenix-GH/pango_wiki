@@ -67,6 +67,29 @@ def build_message(cfg, payload):
     return msg
 
 
+def recipient_failure(to, cc, refused, *, data_sent=True):
+    """Only RCPT responses classify addresses; DATA/AUTH failures prove nothing about them."""
+    responses = {str(addr).casefold(): reply for addr, reply in refused.items()}
+    missing = [addr for addr in [to, *cc] if addr.casefold() not in responses]
+    details = []
+    for addr in [to, *cc]:
+        if addr.casefold() not in responses:
+            continue
+        code, reason = responses[addr.casefold()]
+        reason = reason.decode('ascii', errors='replace') if isinstance(reason, bytes) else str(reason)
+        enhanced = re.match(r'^\s*([245]\.\d{1,3}\.\d{1,3})(?:\s|$)', reason)
+        status = enhanced.group(1) if enhanced else ''
+        note = '（目标邮箱不存在或无效）' if str(code).startswith('5') and status == '5.1.1' else ''
+        # Only log known envelope addresses and protocol codes, never arbitrary server text.
+        role = '主收件人' if addr == to else '抄送'
+        details.append(f'{role} {addr}：SMTP {code} {status}'.rstrip() + note)
+    if not details:
+        return {'state': 'unknown' if data_sent else 'failed', 'detail': '收件人响应与发送名单不一致，请按 Message-ID 核查'}
+    if missing and data_sent:
+        return {'state': 'unknown', 'detail': '部分收件地址被拒收：' + '；'.join(details) + '；其他地址可能已收到，不自动重发'}
+    return {'state': 'failed', 'detail': '收件地址被拒收：' + '；'.join(details)}
+
+
 def dispatch(cfg, payload, opener=mail_client.open_authenticated_smtp):
     try:
         to, cc = recipients(payload)
@@ -77,12 +100,11 @@ def dispatch(cfg, payload, opener=mail_client.open_authenticated_smtp):
     try:
         refused = server.send_message(msg, from_addr=cfg.address, to_addrs=[to, *cc])
         if refused:
-            refused_addresses = {address.casefold() for address in refused}
-            if any(address.casefold() not in refused_addresses for address in [to, *cc]):
-                return {'state': 'unknown', 'detail': '部分收件人被拒绝，其他收件人可能已收信；请核查主收件人及抄送人，不会自动重发'}
-            return {'state': 'failed', 'detail': '所有收件人被邮件服务拒绝'}
+            return recipient_failure(to, cc, refused)
         return {'state': 'accepted', 'detail': '邮件服务已接受'}
-    except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused, smtplib.SMTPDataError) as error:
+    except smtplib.SMTPRecipientsRefused as error:
+        return recipient_failure(to, cc, error.recipients, data_sent=False)
+    except (smtplib.SMTPSenderRefused, smtplib.SMTPDataError) as error:
         return {'state': 'failed', 'detail': f'邮件服务明确拒绝：{type(error).__name__}'}
     except Exception as error:
         return {'state': 'unknown', 'detail': f'发送结果不明，请核查 Message-ID：{type(error).__name__}'}

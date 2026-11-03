@@ -1,3 +1,4 @@
+import { mailResultLabel } from '../licenseMailResult.mjs'
 import { showQueuedMail } from './licenseQueuedMail.js'
 import { ccEditor, recipientHistory } from './licenseCc.js'
 
@@ -8,18 +9,38 @@ const time=value=>value?String(value).replace('T',' ').slice(0,19):'—'
 function button(text,action,className=''){const item=el('button',text,className);item.type='button';item.addEventListener('click',action);return item}
 function dialog(title){const d=el('dialog','','delivery-dialog');const header=el('div','','delivery-dialog-header');header.append(el('h2',title),button('关闭',()=>d.close()));const body=el('div','','delivery-dialog-body');d.append(header,body);document.body.append(d);d.addEventListener('close',()=>d.remove());d.showModal();return {d,body}}
 
-export async function showRejection(row,request,{refresh=async()=>{},report=()=>{}}={}){
+export async function showRejection(row,request,{refresh=async()=>{},report=()=>{},allowSendNow=false}={}){
     const {d,body}=dialog(`拒绝记录 · 申请 #${row.id}`);body.append(el('p','读取中…'))
     try{
       const data=await request(`/license-delivery/rejections/${row.id}`);if(!d.isConnected)return;body.replaceChildren()
       const record=data.record
-      body.append(el('h3','拒绝理由'),el('p',record.reason,'rejection-reason'),el('p',`操作人：${record.requested_by} · ${time(record.created_at)}`),el('p',`收件人：${record.recipient}`),el('p',`邮件状态：${mailLabels[record.state]||record.state}`),el('p',record.detail))
+      body.append(el('h3','拒绝理由'),el('p',record.reason,'rejection-reason'),el('p',`操作人：${record.requested_by} · ${time(record.created_at)}`),el('p',`收件人：${record.recipient}`),el('p',`邮件状态：${mailResultLabel(record.state,record.detail,mailLabels)}`),el('p',record.detail))
       body.append(ccEditor(record.cc,['queued','failed','paused'].includes(record.state),async cc=>{
         await request(`/license-delivery/rejections/${row.id}/cc`,{method:'POST',body:JSON.stringify({cc,expectedUpdatedAt:record.updated_at})})
-        report(`申请 #${row.id} 的拒绝通知抄送设置已保存。`);d.close();await refresh();await showRejection(row,request,{refresh,report})
+        report(`申请 #${row.id} 的拒绝通知抄送设置已保存。`);d.close();await refresh();await showRejection(row,request,{refresh,report,allowSendNow})
       }),recipientHistory(data.mails))
+      if(allowSendNow&&['queued','failed'].includes(record.state)&&Number(record.attempts)<3){
+        const feedback=el('p','','delivery-message');feedback.setAttribute('role','status')
+        const send=button('立即发送拒绝通知',async()=>{
+          const controls=Array.from(body.querySelectorAll('button:not(:disabled)'))
+          controls.forEach(item=>item.disabled=true)
+          let submitted=false
+          try{
+            feedback.textContent='正在核对这封拒绝通知…'
+            const preview=await request(`/license-delivery/rejections/${row.id}/mail-content`)
+            if(!d.isConnected)return
+            if(preview.stale)throw new Error('已保存的草稿与申请不一致，请先重新核对并保存')
+            if(!window.confirm(`立即发送这封拒绝通知？\n\n申请 #${row.id}\n发件人：${preview.from}\n收件人：${preview.to}\n抄送：${preview.cc.join('、')||'无'}\n标题：${preview.subject}\n拒绝理由：${preview.rejectionReason}\n\n仅发送这条通知，成功后夜间不再重复发送。`)){feedback.textContent='已取消，未发送。';return}
+            submitted=true;feedback.textContent='正在发送，请等待实际结果。'
+            const result=await request(`/license-delivery/rejections/${row.id}/send-now`,{method:'POST',body:JSON.stringify({confirm:true,confirmedApplicationId:String(row.id),expectedVersion:preview.version,expectedFrom:preview.from,expectedUpdatedAt:record.updated_at})})
+            report(`申请 #${row.id} · ${mailLabels[result.state]||result.state}：${result.detail||''}`);d.close();await refresh()
+          }catch(error){if(!error.authentication)feedback.textContent=(error.message||'请求失败')+(submitted?'；如连接中断，请先核对邮件记录再操作。':'')}
+          finally{controls.forEach(item=>item.disabled=false)}
+        },'export-button')
+        body.append(send,feedback)
+      }
       if(['queued','failed','paused'].includes(record.state))body.append(button('邮件预览 / 编辑',()=>showQueuedMail('rejection',row.id,request)))
-      for(const mail of data.mails)body.append(el('p',`${Number(mail.current_cycle)===1?'本次拒绝邮件':'历史拒绝邮件'} · Message-ID：${mail.message_id}\n${time(mail.updated_at)} · ${mailLabels[mail.state]||mail.state}\n${mail.detail}`,'rejection-reason'))
+      for(const mail of data.mails)body.append(el('p',`${Number(mail.current_cycle)===1?'本次拒绝邮件':'历史拒绝邮件'} · Message-ID：${mail.message_id}\n${time(mail.updated_at)} · ${mailResultLabel(mail.state,mail.detail,mailLabels)}\n${mail.detail}`,'rejection-reason'))
       if(['queued','failed','paused'].includes(record.state)){
         const error=el('p','','delivery-message');error.setAttribute('role','alert')
         const cancel=button('屏蔽此拒绝通知',async()=>{

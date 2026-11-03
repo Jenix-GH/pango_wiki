@@ -78,6 +78,33 @@ class TransportTests(unittest.TestCase):
                     pass
             self.assertEqual(send_mail.dispatch(self.cfg,self.payload,lambda *a,**k:SMTP())['state'],state)
 
+    def test_refused_address_is_distinct_from_policy_auth_and_transient_failures(self):
+        def deliver(error):
+            class SMTP:
+                def send_message(self, *args, **kwargs):
+                    raise error
+                def quit(self):
+                    pass
+            return send_mail.dispatch(self.cfg, self.payload, lambda *a, **k: SMTP())
+        for code, response, invalid in [(550, b'5.1.1 unknown mailbox', True),
+                                        (550, b'5.7.1 policy', False), (450, b'4.2.0 busy', False)]:
+            result = deliver(smtplib.SMTPRecipientsRefused({'customer@example.com':(code,response)}))
+            self.assertEqual(result['state'], 'failed')
+            self.assertTrue(result['detail'].startswith('收件地址被拒收：'))
+            self.assertIn('主收件人 customer@example.com', result['detail'])
+            self.assertEqual('邮箱不存在或无效' in result['detail'], invalid)
+        for error in [smtplib.SMTPSenderRefused(550,b'5.1.1', 'sender@example.com'), smtplib.SMTPDataError(550,b'5.1.1')]:
+            self.assertFalse(deliver(error)['detail'].startswith('收件地址被拒收：'))
+        # An RCPT-stage disconnect before all addresses were tried never reached DATA.
+        self.payload['cc'] = ['cc@example.com']
+        stopped = deliver(smtplib.SMTPRecipientsRefused({'customer@example.com':(421,b'4.3.2 busy')}))
+        self.assertEqual(stopped['state'], 'failed')
+        self.assertNotIn('其他地址可能已收到', stopped['detail'])
+        partial = send_mail.recipient_failure('customer@example.com', ['cc@example.com'], {'CC@example.com':(550,b'5.1.1 unknown')})
+        self.assertEqual(partial['state'], 'unknown')
+        self.assertIn('抄送 cc@example.com', partial['detail'])
+        self.assertNotIn('主收件人', partial['detail'])
+
     def test_header_injection_never_connects(self):
         def unexpected(*a,**k):
             self.fail('must not open SMTP')
