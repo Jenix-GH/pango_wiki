@@ -73,3 +73,9 @@
 
 .license-application-page .license-options input { accent-color: var(--bg-primary); }
 .license-email-type .license-field-help { margin: 12px 0 0; }
+
+.member-license-mail { margin-top:16px; padding-top:12px; border-top:1px solid #e1e6ed; display:grid; gap:4px; overflow-wrap:anywhere; }
+.member-license-mail small,.member-license-mail span { color:#63748b; font-size:13px; }
+.member-license-mail strong { color:#273b55; font-size:14px; }
+.member-license-mail strong[data-state="sent"] { color:#24684c; }
+.member-license-mail strong[data-state="failed"],.member-license-mail strong[data-state="refused"] { color:#993643; }

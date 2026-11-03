@@ -123,15 +123,6 @@ export const api = {
 
   getMyLicenses: (page = 1) => get<MyLicensePage>(`${ENDPOINTS.licenseApplicationsMine}?page=${page}`),
 
-  downloadLicense: async (id: number): Promise<Blob> => {
-    const res = await fetch(ENDPOINTS.licenseApplicationDownload(id), { headers: getHeaders() })
-    if (!res.ok || !res.headers.get('content-type')?.includes('application/octet-stream')) {
-      const body = await res.json().catch(() => null)
-      throw Object.assign(new Error(body?.message || '下载失败，请刷新后重试'), { status: res.status })
-    }
-    return res.blob()
-  },
-
   trackEvent: (data: { eventName: string; pagePath: string; clientType: 'WEB' | 'MINIPROGRAM'; sessionId?: string; documentId?: string }) =>
     post(ENDPOINTS.analyticsTrack, data),
 

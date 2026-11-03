@@ -272,8 +272,7 @@ export interface MyLicenseApplication {
   officialSubmitted: boolean | null
   status: number
   rejectionReason: string | null
-  canDownload: boolean
-  filename: string | null
+  mail?: { state: string; label: string; note: string }
 }
 export interface MyLicensePage {
   records: MyLicenseApplication[]

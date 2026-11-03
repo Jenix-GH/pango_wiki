@@ -27,7 +27,6 @@ export const ENDPOINTS = {
   feedbackSubmit: `${DB_HOST}/feedback/submit`,
   licenseApplicationSubmit: `${DB_HOST}/license/application/submit`,
   licenseApplicationsMine: `${DB_HOST}/license/application/mine`,
-  licenseApplicationDownload: (id: number) => `${DB_HOST}/license/application/${id}/download`,
   analyticsTrack: `${DB_HOST}/analytics/track`,
   authSendSms: `${DB_HOST}/auth/sms/send`,
   authRegister: `${DB_HOST}/auth/register`,
