@@ -55,6 +55,12 @@ class LicenseApplicationControllerTest {
         mvc.perform(post("/license/application/submit").header("Authorization","Bearer member").contentType("application/json").content(body.replace("{", "{\"maxUsers\":12,"))).andExpect(jsonPath("$.code").value(2000));
         ArgumentCaptor<DtoLicenseApplication> saved = ArgumentCaptor.forClass(DtoLicenseApplication.class);verify(applications).submit(saved.capture());assertNull(saved.getValue().getMaxUsers());
     }
+    @Test void legacyDownloadIsGoneEvenForSignedInMembers() throws Exception {
+        when(portal.requireMember("Bearer member")).thenReturn(42L);
+        for (int id : new int[]{1,99999}) mvc.perform(get("/license/application/"+id+"/download").header("Authorization","Bearer member"))
+                .andExpect(status().isGone()).andExpect(jsonPath("$.code").value(410));
+        verifyNoInteractions(applications);
+    }
     @Test void allEndpointsRequireLogin() throws Exception {
         when(portal.requireMember(null)).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED,"请先登录后继续"));
         mvc.perform(post("/license/application/submit").contentType("application/json").content(body)).andExpect(status().isUnauthorized());

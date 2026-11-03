@@ -36,9 +36,11 @@ public class ControllerLicenseApplication {
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<byte[]> download(@RequestHeader(value = "Authorization", required = false) String authorization,
+    public ResponseEntity<R> download(@RequestHeader(value = "Authorization", required = false) String authorization,
                                             @PathVariable long id) {
-        return portal.download(portal.requireMember(authorization), id);
+        portal.requireMember(authorization);
+        return ResponseEntity.status(410).header("Cache-Control", "no-store, private")
+                .body(R.error(410, "个人中心下载已关闭，请通过申请邮箱查收 License。", null));
     }
 
     @PostMapping("/submit")

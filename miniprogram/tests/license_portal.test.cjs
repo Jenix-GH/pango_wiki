@@ -8,6 +8,7 @@ const ts = require('../../Pango-Wiki-Frontend/node_modules/typescript')
 
 function page(name, stored = {}) {
   const calls = { requests: [], navigation: [], files: [], shares: [] }
+  const timers = new Map(); let timerId=0
   let definition
   const storage = new Map(Object.entries(stored))
   const wx = {
@@ -22,14 +23,14 @@ function page(name, stored = {}) {
   }
   const source = fs.readFileSync(path.join(__dirname, '../miniprogram/pages',name,`${name}.ts`),'utf8')
   const compiled = ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText
-  vm.runInNewContext(compiled,{exports:{},wx,console,getApp:()=>({globalData:{baseHost:'https://test.invalid'}}),Page:value=>{definition=value}})
+  vm.runInNewContext(compiled,{exports:{},wx,console,setTimeout:fn=>{timers.set(++timerId,fn);return timerId},clearTimeout:id=>timers.delete(id),getApp:()=>({globalData:{baseHost:'https://test.invalid'}}),Page:value=>{definition=value}})
   const instance = {...definition,data:structuredClone(definition.data),setData(update) {
     for(const [key,value] of Object.entries(update)) {
       if(key.includes('.')) { const [parent,child]=key.split('.'); this.data[parent][child]=value }
       else this.data[key]=value
     }
   }}
-  return { instance, calls, storage }
+  return { instance, calls, storage, timers }
 }
 const member = {userInfo:{id:42,nickName:'测试',userType:'MEMBER'},pangoAccessToken:'test-only'}
 
@@ -60,16 +61,16 @@ test('personal center handles no records, four states and rejection reason',()=>
   assert.equal(p.data.records.map(r=>r.statusLabel).join(','),'待处理,处理中,已处理,已拒绝')
   assert.equal(p.data.records[3].rejectionReason,'缺少信息'); assert.equal(p.data.records[0].dateLabel,'2026-09-24 09:00:00')
 })
-test('download rejects JSON error bodies and only shares after explicit user action',()=>{
-  const {instance:p,calls}=page('my-licenses',member)
-  p.onShow(); p.data.records=[{id:1,canDownload:true,filename:'new_pds_AABBCCDDEEFF.lic'}]
-  p.download({currentTarget:{dataset:{id:1}}});const bad=calls.requests.pop()
-  bad.success({statusCode:200,header:{'Content-Type':'application/json'},data:new ArrayBuffer(20)});bad.complete()
-  assert.equal(calls.files.length,0)
-  p.download({currentTarget:{dataset:{id:1}}});const good=calls.requests.pop()
-  good.success({statusCode:200,header:{'Content-Type':'application/octet-stream'},data:new ArrayBuffer(20)});good.complete()
-  assert.equal(calls.files.length,1);assert.equal(calls.shares.length,0)
-  p.saveFile();assert.equal(calls.shares[0].fileName,'new_pds_AABBCCDDEEFF.lic')
+test('mail progress refreshes without file access and stops refreshing on hide',()=>{
+  const {instance:p,calls,timers}=page('my-licenses',member);p.onShow()
+  const reply=state=>({statusCode:200,data:{code:2000,data:{total:1,pageSize:20,records:[{id:1,submittedAt:'2026-10-27T09:00:00+08:00',status:2,mail:{state,label:state,note:'测试'}}]}}})
+  const first=calls.requests.pop();first.success(reply('queued'));first.complete()
+  assert.equal(p.data.records[0].mail.state,'queued');assert.equal(timers.size,1)
+  Array.from(timers.values())[0]();const poll=calls.requests.pop()
+  poll.success(reply('sent'));poll.complete()
+  assert.equal(p.data.records[0].statusLabel,'已处理');assert.equal(p.data.records[0].mail.state,'sent')
+  assert.equal(p.download,undefined);assert.equal(p.saveFile,undefined);assert.equal(calls.files.length,0)
+  p.onHide();assert.equal(timers.size,0);p.onShow();const stale=calls.requests.pop();p.onUnload();stale.success(reply('failed'));stale.complete();assert.equal(timers.size,0)
 })
 
 test('returning from License login refreshes the existing personal-center menu, even for equal nicknames',()=>{
@@ -121,8 +122,9 @@ test('personal email requires contact; server capacity is numeric and discarded 
  calls.requests[0].complete();p.selectLicenseType({currentTarget:{dataset:{type:'STANDALONE'}}});assert.equal(p.data.form.maxUsers,'')
  p.selectEmailType({detail:{value:'ORGANIZATION'}});p.data.form.contactPerson='';p.submitApplication();assert.equal(calls.requests[1].data.maxUsers,null)
 })
-test('floating file can be downloaded through the existing authenticated member flow',()=>{
+test('registered member keeps server license details with email delivery only',()=>{
  const {instance:p,calls}=page('my-licenses',member);p.onShow()
- const req=calls.requests.pop();req.success({statusCode:200,data:{code:2000,data:{total:1,pageSize:20,records:[{id:1,submittedAt:'2026-10-14T09:00:00+08:00',status:2,licenseType:'SERVER',emailType:'PERSONAL',contactPerson:'王工',maxUsers:12,filename:'new_pds_c85309cb494b_floating.lic',canDownload:true}]}}});req.complete()
- p.download({currentTarget:{dataset:{id:1}}});assert.equal(calls.requests[0].header.Authorization,'Bearer test-only');assert.ok(calls.requests[0].url.endsWith('/license/application/1/download'))
+ const req=calls.requests.pop();assert.equal(req.header.Authorization,'Bearer test-only');assert.ok(req.url.includes('/mine?'))
+ req.success({statusCode:200,data:{code:2000,data:{total:1,pageSize:20,records:[{id:1,submittedAt:'2026-10-14T09:00:00+08:00',status:2,licenseType:'SERVER',emailType:'PERSONAL',contactPerson:'王工',maxUsers:12,mail:{state:'sent',label:'License 已发送至邮箱',note:'or***@example.org'}}]}}});req.complete()
+ assert.equal(p.data.records[0].maxUsers,12);assert.equal(p.data.records[0].mail.label,'License 已发送至邮箱');p.onUnload()
 })
