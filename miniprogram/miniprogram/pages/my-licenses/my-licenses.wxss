@@ -14,3 +14,9 @@ button { font-size:26rpx; background:white; color:#8c166d; margin-top:22rpx; }
 .error { white-space:pre-wrap; padding:18rpx; margin:18rpx 0; font-size:26rpx; line-height:1.7; border-radius:10rpx; }
 .detail { font-size:26rpx; line-height:1.8; margin-top:12rpx; }
 .empty { text-align:center; color:#62748b; padding:60rpx 0; }
+
+.mail-status { margin-top:24rpx; padding-top:18rpx; border-top:1rpx solid #e1e6ed; }
+.mail-label,.mail-note { color:#63748b; font-size:25rpx; line-height:1.7; }
+.mail-title { color:#273b55; font-weight:600; font-size:28rpx; margin:6rpx 0; }
+.mail-sent { color:#24684c; }
+.mail-refused,.mail-failed { color:#993643; }
