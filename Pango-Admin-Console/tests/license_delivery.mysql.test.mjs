@@ -10,7 +10,7 @@ import {readFile} from 'node:fs/promises'
 import {randomUUID} from 'node:crypto'
 import {previewBatchFae,notifyBatchFae,runApplicationStep,applicationWorkflow} from '../licenseDelivery.mjs'
 import {createWorkflowMailSender} from '../licenseMail.mjs'
-import {uploadFiles,setMailCc,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,cancelRejection,restoreRejection,resolveWorkflowMail,listApplications,listFiles,listCustomerMail,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
+import {sendRejectionNow,uploadFiles,setMailCc,fileAction,fileDetail,runNightly,runDigest,withDeliveryLock,rejectApplication,rejectionDetail,retryRejection,cancelRejection,restoreRejection,resolveWorkflowMail,listApplications,listFiles,listCustomerMail,setApplicationStatus,applicationStatusHistory} from '../licenseDelivery.mjs'
 const night={faeEmail:'fae@example.com',replyTo:'fae@example.com',now:new Date('2026-09-23T12:00:00Z')}
 const morning={...night,now:new Date('2026-09-23T01:00:00Z')}
 const input=(content='license one',name='new_pds_1A2B3C4D5F60.lic')=>({name,base64:Buffer.from(content).toString('base64')})
@@ -55,6 +55,68 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
     const view=await preview(kind,id,null,options)
     return preview(kind,id,{expectedVersion:view.version,subject:view.subject,text:view.text,...changes},options)
   }
+  const rejectionOptions={...night,faeEmail:'fae@example.com',actor:'manual-test',templates:{rejection:{subject:'申请 {{日期}}',text:'申请时间：{{日期}}\n{{拒绝原因}}'}}}
+  const confirmRejection=async(id='1')=>{
+    const {version}=await preview('rejection',id,null,{templates:rejectionOptions.templates})
+    return {confirm:true,confirmedApplicationId:id,expectedVersion:version,expectedFrom:'fae@example.com',expectedUpdatedAt:(await rejectionDetail(pool,id)).record.updated_at}
+  }
+  await t.test('customer License preview and nightly delivery use application date, not the send date',async()=>{
+    await reset();sent=[];await application()
+    await pool.query("UPDATE dto_license_application SET dotime='2026-08-10 23:59:59'")
+    const file=(await upload()).records[0],templates={customer:{subject:'申请 {{日期}}',text:'申请时间：{{日期}}'}}
+    const before=await preview('file',file.id,null,{templates})
+    await runNightly(pool,sender,{...night,templates})
+    const delivered=sent.find(m=>m.mailKind==='customer')
+    assert.equal(before.subject,'申请 2026-08-10');assert.equal(before.text,'申请时间：2026-08-10')
+    assert.equal(delivered.text,before.text);assert.equal(delivered.subject,before.subject)
+  })
+  await t.test('immediate rejection sends only the confirmed notification; nightly skips it and sends the other one',async()=>{
+    await reset();sent=[];await application();await application(2,'other@example.com')
+    await pool.query("UPDATE dto_license_application SET dotime='2026-08-10 23:59:59'")
+    for(const id of [1,2])await rejectApplication(pool,id,'资料不完整','tester')
+    await pool.query("UPDATE dto_license_rejection SET created_at='2026-09-23 19:00:00'")
+    const first=await rejectionDetail(pool,1)
+    await setMailCc(pool,'rejection','1',{cc:'cc@example.com',expectedUpdatedAt:first.record.updated_at},'tester')
+    const options=await confirmRejection()
+    const result=await sendRejectionNow(pool,sender,'1',options,rejectionOptions)
+    assert.equal(result.state,'accepted');assert.equal(sent.length,1)
+    assert.equal(sent[0].mailKind,'rejection');assert.deepEqual(sent[0].cc,['cc@example.com'])
+    assert.equal(sent[0].subject,'申请 2026-08-10');assert.match(sent[0].text,/申请时间：2026-08-10/)
+    assert.equal((await sendRejectionNow(pool,sender,'1',options,rejectionOptions)).state,'skipped')
+    await runNightly(pool,sender,{...night,templates:rejectionOptions.templates})
+    assert.deepEqual(sent.filter(m=>m.mailKind==='rejection').map(m=>m.to),['customer@example.com','other@example.com'])
+    assert.ok((await pool.query('SELECT status FROM dto_license_application'))[0].every(r=>r.status===3))
+  })
+  await t.test('immediate rejection blocks stale drafts and CC, cancelled/paused/ambiguous and exhausted notifications',async()=>{
+    await reset();sent=[];await application();await rejectApplication(pool,1,'原因','tester')
+    let options=await confirmRejection()
+    await assert.rejects(sendRejectionNow(pool,sender,'1',{...options,confirm:false},rejectionOptions),/确认/)
+    await assert.rejects(sendRejectionNow(pool,sender,'1',{...options,expectedFrom:'another@example.com'},rejectionOptions),/发件邮箱/)
+    await savePreview('rejection',1,{subject:'新的标题'})
+    await assert.rejects(sendRejectionNow(pool,sender,'1',options,rejectionOptions),/重新核对/)
+    options=await confirmRejection()
+    await setMailCc(pool,'rejection','1',{cc:'changed@example.com',expectedUpdatedAt:options.expectedUpdatedAt},'tester')
+    await assert.rejects(sendRejectionNow(pool,sender,'1',options,rejectionOptions),/变化/)
+    for(const state of ['cancelled','paused','unknown','sending']){
+      await pool.query('UPDATE dto_license_rejection SET state=? WHERE application_id=1',[state])
+      await assert.rejects(sendRejectionNow(pool,sender,'1',options,rejectionOptions),/重试上限/)
+    }
+    await pool.query("UPDATE dto_license_rejection SET state='failed',attempts=3")
+    await assert.rejects(sendRejectionNow(pool,sender,'1',options,rejectionOptions),/重试上限/)
+    assert.equal(sent.length,0)
+  })
+  await t.test('customer queue distinguishes recipient refusal from general failure without changing retry state',async()=>{
+    await reset();sent=[];await application();const file=(await upload()).records[0];await application(2,'other@example.com');await application(3,'third@example.com')
+    await pool.query("UPDATE dto_license_file SET state='failed',reason='邮件服务明确拒绝：SMTPRecipientsRefused' WHERE id=?",[file.id])
+    for(const id of [2,3])await rejectApplication(pool,id,'原因','tester')
+    await sendRejectionNow(pool,async()=>({state:'failed',detail:'收件地址被拒收：主收件人 other@example.com：SMTP 550 5.1.1'}),'2',await confirmRejection('2'),rejectionOptions)
+    await sendRejectionNow(pool,async()=>({state:'failed',detail:'发信准备或连接失败：TimeoutError'}),'3',await confirmRejection('3'),rejectionOptions)
+    const refused=await listCustomerMail(pool,new URLSearchParams({state:'recipient_refused'}))
+    assert.deepEqual(refused.records.map(r=>String(r.application_id)).sort(),['1','2'])
+    assert.ok(refused.records.every(r=>r.state==='failed'))
+    const failed=await listCustomerMail(pool,new URLSearchParams({state:'failed'}))
+    assert.deepEqual(failed.records.map(r=>String(r.application_id)),['3'])
+  })
   await t.test('queued title length matches the existing 200 character mail column',async()=>{
     await reset();sent=[];await application();const file=(await upload()).records[0]
     await assert.rejects(savePreview('file',file.id,{subject:'长'.repeat(201)}),/200/)

@@ -1,4 +1,5 @@
-import { buildQueuedMessage } from './licenseQueuedMail.mjs'
+import { refusalPrefix, legacyRefusalDetails } from './licenseMailResult.mjs'
+import { buildQueuedMessage, verifyRejectionVersion } from './licenseQueuedMail.mjs'
 import { storeNightlyReport, sentResultRow } from './licenseNightlyReport.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 import JSZip from 'jszip'
@@ -777,56 +778,73 @@ export async function rejectApplication(pool,id,reason,actor,expectedStatus){
     }catch(error){await db.rollback();throw error}
   })
 }
-async function dispatchRejections(db,sender,{cutoff,replyTo,faeEmail,templates,date,logo}){
-  const [requests]=await db.query("SELECT * FROM dto_license_rejection WHERE created_at<=? AND state IN ('queued','failed') AND attempts<3 ORDER BY created_at,application_id LIMIT 500",[cutoff])
+async function dispatchRejections(db,sender,options){
+  const [requests]=await db.query("SELECT * FROM dto_license_rejection WHERE created_at<=? AND state IN ('queued','failed') AND attempts<3 ORDER BY created_at,application_id LIMIT 500",[options.cutoff])
   const results=[]
-  for(const rejected of requests){
-    const id=rejected.application_id
-    const [[row]]=await db.query('SELECT * FROM dto_license_application WHERE id=?',[id])
-    if(!row||Number(row.status)!==3||snapshot(row)!==rejected.application_snapshot||!validEmail(row.email)){
-      await db.query("UPDATE dto_license_rejection SET state='paused',detail='申请状态或联系信息已变化，或邮箱无效；请核对后重试',updated_at=NOW(6) WHERE application_id=?",[id])
-      results.push({applicationId:id,kind:'rejection',state:'paused'});continue
-    }
-    let cc
-    try{cc=await ccForMessage(db,'rejection',id,row)}catch(error){
-      if(!error.statusCode)throw error
-      await db.query("UPDATE dto_license_rejection SET state='paused',detail=?,updated_at=NOW(6) WHERE application_id=?",[error.message,id])
-      results.push({applicationId:id,kind:'rejection',state:'paused'});continue
-    }
-    let message
-    try{({message}=await buildQueuedMessage(db,'rejection',rejected,row,{replyTo,from:faeEmail,cc,templates,date,logo}))}
-    catch(error){
-      if(!error.statusCode)throw error
-      await db.query("UPDATE dto_license_rejection SET state='paused',detail=?,updated_at=NOW(6) WHERE application_id=?",[error.message,id])
-      results.push({applicationId:id,kind:'rejection',state:'paused',detail:error.message});continue
-    }
-    let mail
-    await db.beginTransaction()
-    try{
-      mail=await prepareMail(db,{key:`rejection:${id}`,kind:'rejection',applicationId:id,message})
-      if(!mail){await db.rollback();results.push({applicationId:id,kind:'rejection',state:'skipped',detail:'已有发送记录或已达重试上限，请核查'});continue}
-      await db.query("UPDATE dto_license_rejection SET state='sending',attempts=attempts+1,detail='正在发送拒绝说明',updated_at=NOW(6) WHERE application_id=?",[id])
-      await db.commit()
-    }catch(error){await db.rollback();throw error}
-    await db.beginTransaction()
-    try{
-      const [[current]]=await db.query('SELECT * FROM dto_license_application WHERE id=? FOR UPDATE',[id])
-      const result=!current||Number(current.status)!==3||snapshot(current)!==rejected.application_snapshot
-        ?{state:'failed',detail:'申请信息已改变，本次未发信'}
-        :await safeSend(sender,{...message,messageId:mail.messageId,mailKind:'rejection'})
-      await finishMail(db,mail,result)
-      await db.query('UPDATE dto_license_rejection SET state=?,detail=?,updated_at=NOW(6) WHERE application_id=?',[result.state,result.detail,id])
-      await audit(db,null,'nightly',`rejection-${result.state}`,`申请 #${id}，收件人 ${message.to}，Message-ID ${mail.messageId}`)
-      await db.commit();results.push({applicationId:id,kind:'rejection',state:result.state,reportRow:sentResultRow('rejection',row,message,rejected.reason,result)})
-    }catch(error){await db.rollback();throw error}
-  }
+  for(const rejected of requests)results.push(await dispatchOneRejection(db,sender,rejected,options))
   return results
+}
+async function dispatchOneRejection(db,sender,rejected,{replyTo,faeEmail,templates,date,logo,actor='nightly'}){
+  const id=rejected.application_id
+  const [[row]]=await db.query('SELECT * FROM dto_license_application WHERE id=?',[id])
+  if(!row||Number(row.status)!==3||snapshot(row)!==rejected.application_snapshot||!validEmail(row.email)){
+    await db.query("UPDATE dto_license_rejection SET state='paused',detail='申请状态或联系信息已变化，或邮箱无效；请核对后重试',updated_at=NOW(6) WHERE application_id=?",[id])
+    return {applicationId:id,kind:'rejection',state:'paused'}
+  }
+  let cc
+  try{cc=await ccForMessage(db,'rejection',id,row)}catch(error){
+    if(!error.statusCode)throw error
+    await db.query("UPDATE dto_license_rejection SET state='paused',detail=?,updated_at=NOW(6) WHERE application_id=?",[error.message,id])
+    return {applicationId:id,kind:'rejection',state:'paused'}
+  }
+  let message
+  try{({message}=await buildQueuedMessage(db,'rejection',rejected,row,{replyTo,from:faeEmail,cc,templates,date,logo}))}
+  catch(error){
+    if(!error.statusCode)throw error
+    await db.query("UPDATE dto_license_rejection SET state='paused',detail=?,updated_at=NOW(6) WHERE application_id=?",[error.message,id])
+    return {applicationId:id,kind:'rejection',state:'paused',detail:error.message}
+  }
+  let mail
+  await db.beginTransaction()
+  try{
+    mail=await prepareMail(db,{key:`rejection:${id}`,kind:'rejection',applicationId:id,message})
+    if(!mail){await db.rollback();return {applicationId:id,kind:'rejection',state:'skipped',detail:'已有发送记录或已达重试上限，请核查'}}
+    await db.query("UPDATE dto_license_rejection SET state='sending',attempts=attempts+1,detail='正在发送拒绝说明',updated_at=NOW(6) WHERE application_id=?",[id])
+    await db.commit()
+  }catch(error){await db.rollback();throw error}
+  await db.beginTransaction()
+  try{
+    const [[current]]=await db.query('SELECT * FROM dto_license_application WHERE id=? FOR UPDATE',[id])
+    const result=!current||Number(current.status)!==3||snapshot(current)!==rejected.application_snapshot
+      ?{state:'failed',detail:'申请信息已改变，本次未发信'}
+      :await safeSend(sender,{...message,messageId:mail.messageId,mailKind:'rejection'})
+    await finishMail(db,mail,result)
+    await db.query('UPDATE dto_license_rejection SET state=?,detail=?,updated_at=NOW(6) WHERE application_id=?',[result.state,result.detail,id])
+    await audit(db,null,actor,`rejection-${result.state}`,`申请 #${id}，收件人 ${message.to}，Message-ID ${mail.messageId}`)
+    await db.commit();return {applicationId:id,kind:'rejection',state:result.state,reportRow:sentResultRow('rejection',row,message,rejected.reason,result)}
+  }catch(error){await db.rollback();throw error}
+}
+
+export async function sendRejectionNow(pool,sender,id,body,{faeEmail,replyTo,templates={},logo=null,actor='admin'}) {
+  id=validApplicationId(id)
+  if(body.confirm!==true||body.confirmedApplicationId!==id||typeof body.expectedVersion!=='string'||!body.expectedVersion||typeof body.expectedUpdatedAt!=='string')throw problem('请核对选中的拒绝通知并确认发送')
+  if(!validEmail(faeEmail)||body.expectedFrom!==faeEmail)throw problem('FAE 发件邮箱已变化，请刷新后确认',409)
+  return withDeliveryLock(pool,async db=>{
+    const [[record]]=await db.query('SELECT * FROM dto_license_rejection WHERE application_id=?',[id])
+    if(!record)throw problem('拒绝通知不存在',404)
+    if(record.state==='accepted')return {applicationId:id,state:'skipped',detail:'拒绝通知已经发出，不会重复发送'}
+    if(!['queued','failed'].includes(record.state)||Number(record.attempts)>=3)throw problem('仅待发送或未达重试上限的明确失败通知可以立即发送，请先核查邮件状态',409)
+    if(record.updated_at!==body.expectedUpdatedAt)throw problem('拒绝记录已变化，请重新打开详情',409)
+    const options={faeEmail,from:faeEmail,replyTo,templates,logo,actor,date:chinaTime().date}
+    await verifyRejectionVersion(db,id,options,body.expectedVersion)
+    return dispatchOneRejection(db,sender,record,options)
+  })
 }
 export async function listCustomerMail(pool,params){
   let page=Math.max(1,Math.min(100000,Number.parseInt(params.get('page'),10)||1))
   const kind=params.get('kind')||'',state=params.get('state')||'',view=params.get('view')||'all'
   if(kind&&!['file','rejection'].includes(kind))throw problem('邮件类型不正确')
-  if(state&&!['queued','conflict','unmatched','duplicate','paused','sending','accepted','failed','unknown','cancelled'].includes(state))throw problem('邮件状态不正确')
+  if(state&&!['recipient_refused','queued','conflict','unmatched','duplicate','paused','sending','accepted','failed','unknown','cancelled'].includes(state))throw problem('邮件状态不正确')
   if(!['all','waiting'].includes(view))throw problem('邮件查看范围不正确')
   // One ordered relation keeps filtering, totals and pagination consistent across both types.
   // Only project display fields: file bytes and application snapshots stay in detail APIs.
@@ -847,7 +865,10 @@ export async function listCustomerMail(pool,params){
   const dates=dateConditions(params,'q.queued_at'),where=['1=1',...dates.conditions],args=[...dates.args]
   if(view==='waiting')where.push("q.state IN ('queued','failed') AND q.attempts<3")
   if(kind){where.push('q.kind=?');args.push(kind)}
-  if(state){where.push('q.state=?');args.push(state)}
+  const failureDetail="(CASE WHEN q.kind='file' THEN q.reason ELSE q.detail END)"
+  const displayState=`CASE WHEN q.state='failed' AND (${failureDetail} LIKE ? OR ${failureDetail} IN (?,?)) THEN 'recipient_refused' ELSE q.state END`
+  const refusalArgs=[refusalPrefix+'%',...legacyRefusalDetails]
+  if(state){where.push(`(${displayState})=?`);args.push(...refusalArgs,state)}
   const query=(params.get('query')||'').trim().slice(0,200)
   if(query){
     where.push("(CAST(q.application_id AS CHAR)=? OR q.applicant_name LIKE ? OR q.company_name LIKE ? OR q.recipient LIKE ? OR q.original_name LIKE ? OR REPLACE(REPLACE(q.mac,':',''),'-','') LIKE ?)")
@@ -857,10 +878,10 @@ export async function listCustomerMail(pool,params){
   const [[count]]=await pool.query(`SELECT COUNT(*) total ${from}`,args)
   page=Math.min(page,Math.max(1,Math.ceil(Number(count.total)/30)))
   const [records]=await pool.query(`SELECT q.* ${from} ORDER BY q.queued_at DESC,q.kind ASC,q.application_id DESC,q.id DESC LIMIT 30 OFFSET ?`,[...args,(page-1)*30])
-  const [summary]=await pool.query(`SELECT q.state,COUNT(*) count ${from} GROUP BY q.state`,args)
+  const [summary]=await pool.query(`SELECT ${displayState} AS label,COUNT(*) count ${from} GROUP BY label`,[...refusalArgs,...args])
   await attachCc(pool,'file',records.filter(row=>row.kind==='file'))
   await attachCc(pool,'rejection',records.filter(row=>row.kind==='rejection'))
-  return {records,total:count.total,page,pageSize:30,summary}
+  return {records,total:count.total,page,pageSize:30,summary:summary.map(({label,count})=>({state:label,count}))}
 }
 export async function rejectionDetail(pool,id){
   const [[record]]=await pool.query('SELECT * FROM dto_license_rejection WHERE application_id=?',[id])

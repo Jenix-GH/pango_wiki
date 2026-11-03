@@ -54,6 +54,11 @@ async function context(db,kind,id,options) {
   const version=hash({binding:built.binding,revision:built.draft?.revision||'',updatedAt:record.updated_at,state:record.state,current:built.current})
   return {...built,record,row,version}
 }
+// Caller holds the delivery lock, so the verified draft/recipient binding remains valid for dispatch.
+export async function verifyRejectionVersion(db,id,options,expectedVersion) {
+  const ctx=await context(db,'rejection',id,options)
+  if(ctx.version!==expectedVersion||ctx.stale)throw problem('拒绝通知、收件人或草稿已变化，请重新核对并确认',409)
+}
 function present(ctx,options) {
   return {...publicMessage(ctx.message),applicationId:String(ctx.row.id),state:ctx.record.state,from:options.from||options.replyTo||'尚未设置 FAE 邮箱',
     version:ctx.version,saved:Boolean(ctx.draft),stale:ctx.stale,updatedAt:ctx.draft?.updated_at||null,
