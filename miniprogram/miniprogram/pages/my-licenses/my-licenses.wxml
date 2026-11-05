@@ -13,7 +13,7 @@
       <view class="detail">授权信息：{{item.operatingSystem}} / {{item.licenseType}} / {{item.durationYears}}年</view>
       <view class="detail">官网已提交：{{item.officialLabel}}</view>
       <view class="detail">邮箱类型：{{item.emailType === 'PERSONAL' ? '个人邮箱' : item.emailType === 'ORGANIZATION' ? '公司或学校邮箱' : '未填写'}}</view>
-      <view class="detail">FAE 或渠道负责人：{{item.contactPerson || '未填写'}}</view>
+      <view class="detail">FAE负责人或渠道商：{{item.contactPerson || '未填写'}}</view>
       <view wx:if="{{item.licenseType === 'SERVER'}}" class="detail">最大支持人数：{{item.maxUsers || '未填写'}}</view>
       <view wx:if="{{item.status === 3}}" class="error">拒绝理由：{{item.rejectionReason || '暂无记录，请联系对接人员'}}</view>
       <view class="mail-status"><view class="mail-label">邮件状态</view><view class="mail-title mail-{{item.mail.state}}">{{item.mail.label || '暂无邮件发送记录'}}</view><view class="mail-note">{{item.mail.note || '当前没有可核实的客户邮件发送记录。'}}</view></view>

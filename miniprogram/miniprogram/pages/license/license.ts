@@ -175,7 +175,7 @@ Page({
       return
     }
     if (form.emailType === 'PERSONAL' && !form.contactPerson.trim()) {
-      this.setData({ error: '请填写 FAE 或渠道负责人姓名', success: '' }); return
+      this.setData({ error: '请填写 FAE负责人或渠道商姓名', success: '' }); return
     }
     if (form.licenseType === 'SERVER' && (!/^[1-9]\d*$/.test(form.maxUsers) || Number(form.maxUsers) > 2147483647)) {
       this.setData({ error: '最大支持人数必须为有效正整数', success: '' }); return

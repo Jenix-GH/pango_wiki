@@ -73,7 +73,7 @@ export default function LicenseApplicationPage() {
       return
     }
     if (form.emailType === 'PERSONAL' && !form.contactPerson.trim()) {
-      setError('请填写 FAE 或渠道负责人姓名')
+      setError('请填写 FAE负责人或渠道商姓名')
       return
     }
     if (form.licenseType === 'SERVER' && (!Number.isInteger(form.maxUsers) || !form.maxUsers || form.maxUsers < 1 || form.maxUsers > 2147483647)) {
@@ -159,10 +159,10 @@ export default function LicenseApplicationPage() {
                     <label><input type="radio" name="emailType" value="ORGANIZATION" checked={form.emailType === 'ORGANIZATION'} onChange={() => update('emailType', 'ORGANIZATION')} />公司或学校邮箱</label>
                     <label><input type="radio" name="emailType" value="PERSONAL" checked={form.emailType === 'PERSONAL'} onChange={() => update('emailType', 'PERSONAL')} />个人邮箱</label>
                   </div>
-                  <p className="license-field-help">建议优先使用公司或学校邮箱申请，以便更快完成审核。</p>
+                  <p className="license-field-help">使用个人邮箱申请时，须提供 FAE负责人或渠道商信息，否则将无法通过审核。建议优先使用公司或学校邮箱申请。</p>
                 </div>
                 <label className="full-row"><span>联系邮箱 <span className="license-required">*</span></span><input required type="email" maxLength={200} value={form.email} onChange={(event) => update('email', event.target.value)} placeholder={form.emailType === 'PERSONAL' ? '请输入接收 License 的邮箱地址' : '请输入公司或学校邮箱地址'} /></label>
-                <label className="full-row"><span>FAE 或渠道负责人{form.emailType === 'PERSONAL' ? <span className="license-required"> *</span> : '（选填）'}</span><input required={form.emailType === 'PERSONAL'} maxLength={100} value={form.contactPerson} onChange={event => update('contactPerson', event.target.value)} placeholder="请输入对接人姓名" /></label>
+                <label className="full-row"><span>FAE负责人或渠道商{form.emailType === 'PERSONAL' ? <span className="license-required"> *</span> : '（选填）'}</span><input required={form.emailType === 'PERSONAL'} maxLength={100} value={form.contactPerson} onChange={event => update('contactPerson', event.target.value)} placeholder="请输入对接人姓名" /></label>
               </div>
             </fieldset>
             {error ? <div className="license-message error" role="alert">{error}</div> : null}

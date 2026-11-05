@@ -68,10 +68,10 @@
             <label><radio color="#a10c79" value="ORGANIZATION" checked="{{form.emailType === 'ORGANIZATION'}}" /><text>公司或学校邮箱</text></label>
             <label><radio color="#a10c79" value="PERSONAL" checked="{{form.emailType === 'PERSONAL'}}" /><text>个人邮箱</text></label>
           </radio-group>
-          <text class="field-help">建议优先使用公司或学校邮箱申请，以便更快完成审核。</text>
+          <text class="field-help">使用个人邮箱申请时，须提供 FAE负责人或渠道商信息，否则将无法通过审核。建议优先使用公司或学校邮箱申请。</text>
         </view>
         <label class="field"><text class="field-label">联系邮箱 <text class="required">*</text></text><input value="{{form.email}}" data-field="email" bindinput="inputField" maxlength="200" placeholder="请输入接收 License 的邮箱地址" /></label>
-        <label class="field"><text class="field-label">FAE 或渠道负责人<text wx:if="{{form.emailType === 'PERSONAL'}}" class="required"> *</text><text wx:else>（选填）</text></text><input value="{{form.contactPerson}}" data-field="contactPerson" bindinput="inputField" maxlength="100" placeholder="请输入对接人姓名" /></label>
+        <label class="field"><text class="field-label">FAE负责人或渠道商<text wx:if="{{form.emailType === 'PERSONAL'}}" class="required"> *</text><text wx:else>（选填）</text></text><input value="{{form.contactPerson}}" data-field="contactPerson" bindinput="inputField" maxlength="100" placeholder="请输入对接人姓名" /></label>
       </view>
 
       <view wx:if="{{error}}" class="form-message error">{{error}}</view>
