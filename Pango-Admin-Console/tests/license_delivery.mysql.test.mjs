@@ -1,5 +1,5 @@
 import { applicationFiles, uploadApplicationFile } from '../licenseApplicationFiles.mjs'
-import { queuedMailPreview } from '../licenseQueuedMail.mjs'
+import { queuedMailPreview, updateRejectionReason } from '../licenseQueuedMail.mjs'
 import { mailPreviewHtml } from '../licenseMailLogo.mjs'
 import { listNightlyReports, nightlyReportDetail } from '../licenseNightlyReport.mjs'
 // Destructive only in a dedicated, explicitly opted-in local test database.
@@ -60,6 +60,75 @@ test('MySQL delivery integration',{skip:process.env.LICENSE_MYSQL_TEST!=='1'},as
     const {version}=await preview('rejection',id,null,{templates:rejectionOptions.templates})
     return {confirm:true,confirmedApplicationId:id,expectedVersion:version,expectedFrom:'fae@example.com',expectedUpdatedAt:(await rejectionDetail(pool,id)).record.updated_at}
   }
+  const editReason=async(reason,id='1',extra={})=>updateRejectionReason(pool,id,{reason,expectedUpdatedAt:(await rejectionDetail(pool,id)).record.updated_at,...extra},previewOptions,'reason-editor')
+  await t.test('rejection reason edit updates immediate send and invalidates old confirmation',async()=>{
+    await reset();sent=[];await application();await rejectApplication(pool,'1','旧理由','tester')
+    const old=await confirmRejection(),before=(await rejectionDetail(pool,'1')).record
+    await editReason('新理由：请补充公司信息')
+    const after=(await rejectionDetail(pool,'1')).record
+    assert.equal(after.reason,'新理由：请补充公司信息');assert.equal(after.created_at,before.created_at)
+    assert.equal(after.state,'queued');assert.equal(after.attempts,before.attempts)
+    assert.equal((await listApplications(pool,new URLSearchParams())).records[0].rejection_reason,after.reason)
+    await assert.rejects(sendRejectionNow(pool,sender,'1',old,rejectionOptions),/变化|核对/)
+    await sendRejectionNow(pool,sender,'1',await confirmRejection(),rejectionOptions)
+    assert.equal(customerCount(),1);assert.ok(sent[0].text.includes(after.reason));assert.ok(!sent[0].text.includes('旧理由'))
+    await assert.rejects(editReason('已发送后的修改'),/不能修改/)
+    const [[history]]=await pool.query("SELECT * FROM dto_license_status_change WHERE actor='reason-editor'")
+    assert.equal(JSON.parse(history.rejection_snapshot).reason,'旧理由')
+  })
+  await t.test('rejection reason edit preserves custom draft CC and nightly sends the new reason once',async()=>{
+    await reset();sent=[];await application();await rejectApplication(pool,'1','旧理由','tester')
+    await setCc('rejection','1','cc@example.com')
+    const logo={mimeType:'image/png',base64:'iVBORw0KGgo=',width:160}
+    const saved=await savePreview('rejection','1',{subject:'人工标题',text:'保留的开头\n旧理由\n保留的结尾'},{logo})
+    await editReason('新理由 <核对>\n第二行')
+    const current=await preview('rejection','1')
+    assert.equal(current.stale,false);assert.equal(current.saved,true)
+    assert.equal(current.subject,'人工标题')
+    assert.equal(current.text,'保留的开头\n新理由 <核对>\n第二行\n保留的结尾')
+    assert.ok(current.html.includes('&lt;核对&gt;'));assert.deepEqual(current.cc,['cc@example.com'])
+    assert.ok(current.html.includes('data:image/png;base64,'+logo.base64));assert.ok(current.html.includes('width="160"'))
+    await assert.rejects(preview('rejection','1',{expectedVersion:saved.version,subject:saved.subject,text:saved.text}),/变化/)
+    await runNightly(pool,sender,{...night,now:new Date('2030-01-01T12:00:00Z')})
+    assert.equal(customerCount(),1);assert.equal(sent.find(m=>m.mailKind==='rejection').text,current.text)
+    await runNightly(pool,sender,{...night,now:new Date('2030-01-01T12:00:00Z')})
+    assert.equal(customerCount(),1)
+  })
+  await t.test('rejection reason edit preserves unsent queue states and rejects stale or invalid edits',async()=>{
+    await reset();sent=[];await application();await rejectApplication(pool,'1','原理由','tester')
+    for(const state of ['queued','failed','paused','cancelled']){
+      await pool.query('UPDATE dto_license_rejection SET state=?,attempts=2 WHERE application_id=1',[state])
+      await editReason('新理由 '+state)
+      const record=(await rejectionDetail(pool,'1')).record
+      assert.equal(record.state,state);assert.equal(record.attempts,2)
+    }
+    for(const state of ['sending','unknown','accepted']){
+      await pool.query('UPDATE dto_license_rejection SET state=? WHERE application_id=1',[state])
+      await assert.rejects(editReason('不应修改'),/不能修改/)
+    }
+    await pool.query("UPDATE dto_license_rejection SET state='queued' WHERE application_id=1")
+    await assert.rejects(editReason('新理由','1',{expectedUpdatedAt:'old'}),/变化/)
+    for(const reason of ['', ' ', 'x'.repeat(2001), 'x\0'])await assert.rejects(editReason(reason),/拒绝理由/)
+    await withDeliveryLock(pool,async()=>assert.rejects(editReason('并发编辑'),/正在处理/))
+    assert.equal(customerCount(),0)
+  })
+  await t.test('rejection reason edit respects mail ledger guards and preserves stale draft binding',async()=>{
+    await reset();sent=[];await application();await rejectApplication(pool,'1','原理由','tester')
+    await savePreview('rejection','1')
+    await pool.query("UPDATE dto_license_application SET company_name='变化的公司' WHERE id=1")
+    await editReason('新的理由')
+    assert.equal((await preview('rejection','1')).stale,true)
+    await pool.query("UPDATE dto_license_application SET company_name='测试公司' WHERE id=1")
+    // The prior stale draft is still invalid after a reason edit, until explicitly approved again.
+    assert.equal((await preview('rejection','1')).stale,true)
+    await savePreview('rejection','1')
+    await sendRejectionNow(pool,sender,'1',await confirmRejection(),rejectionOptions)
+    await pool.query("UPDATE dto_license_rejection SET state='queued' WHERE application_id=1")
+    for(const state of ['accepted','unknown','sending']){
+      await pool.query("UPDATE dto_license_mail SET state=? WHERE dedupe_key='rejection:1'",[state])
+      await assert.rejects(editReason('应禁止'),/不能修改/)
+    }
+  })
   await t.test('customer License preview and nightly delivery use application date, not the send date',async()=>{
     await reset();sent=[];await application()
     await pool.query("UPDATE dto_license_application SET dotime='2026-08-10 23:59:59'")

@@ -1,5 +1,5 @@
 import { applicationFiles, uploadApplicationFile } from './licenseApplicationFiles.mjs'
-import { queuedMailPreview } from './licenseQueuedMail.mjs'
+import { queuedMailPreview, updateRejectionReason } from './licenseQueuedMail.mjs'
 import { listNightlyReports, nightlyReportDetail } from './licenseNightlyReport.mjs'
 import { mailPreviewHtml } from './licenseMailLogo.mjs'
 import http from 'node:http'
@@ -602,8 +602,13 @@ async function handleLicenseDelivery(request, response, path, params) {
   if(ccMatch&&request.method==='POST')return json(response,200,{data:await setMailCc(licensePool,ccMatch[1]==='files'?'file':'rejection',ccMatch[2],await readLicenseJson(request),adminUser)})
   const historyMatch=/^\/license-delivery\/applications\/(\d+)\/history$/.exec(path)
   if(historyMatch&&request.method==='GET')return json(response,200,{data:await applicationStatusHistory(licensePool,historyMatch[1])})
-  const rejectionMatch=/^\/license-delivery\/rejections\/(\d+)(\/retry|\/cancel|\/restore|\/send-now)?$/.exec(path)
+  const rejectionMatch=/^\/license-delivery\/rejections\/(\d+)(\/retry|\/cancel|\/restore|\/send-now|\/reason)?$/.exec(path)
   if(rejectionMatch&&request.method==='GET'&&!rejectionMatch[2])return json(response,200,{data:await rejectionDetail(licensePool,rejectionMatch[1])})
+  if(rejectionMatch&&request.method==='POST'&&rejectionMatch[2]==='/reason'){
+    const effective=await applySavedMailSettings(config,configPath)
+    const options={from:effective.LICENSE_FAE_EMAIL,replyTo:effective.LICENSE_REPLY_TO||effective.LICENSE_FAE_EMAIL}
+    return json(response,200,{data:await updateRejectionReason(licensePool,rejectionMatch[1],await readLicenseJson(request),options,adminUser)})
+  }
   if(rejectionMatch&&request.method==='POST'&&rejectionMatch[2]==='/send-now'){
     const body=await readLicenseJson(request)
     const effective=await applySavedMailSettings(config,configPath)

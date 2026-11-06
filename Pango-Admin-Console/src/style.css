@@ -112,6 +112,7 @@ dialog { width: 440px; padding: 0; border: 0; border-radius: 12px; box-shadow: 0
 .application-status-3 { color:#ae3434; background:#ffecec; }
 .license-reject-button { border:1px solid #dfacac; background:#fff7f7; color:#ad3434; padding:6px 9px; border-radius:6px; white-space:nowrap; }
 .license-reject-form { display:grid; gap:14px; }
+.license-reject-form[hidden] { display:none; }
 .license-reject-form label { display:grid; gap:8px; }
 .license-reject-form textarea,.delivery-dialog-body > textarea { width:100%; padding:12px; border:1px solid #ccd6e3; border-radius:7px; font:inherit; resize:vertical; }
 .rejection-reason { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.8; }

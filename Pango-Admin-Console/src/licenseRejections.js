@@ -15,6 +15,33 @@ export async function showRejection(row,request,{refresh=async()=>{},report=()=>
       const data=await request(`/license-delivery/rejections/${row.id}`);if(!d.isConnected)return;body.replaceChildren()
       const record=data.record
       body.append(el('h3','拒绝理由'),el('p',record.reason,'rejection-reason'),el('p',`操作人：${record.requested_by} · ${time(record.created_at)}`),el('p',`收件人：${record.recipient}`),el('p',`邮件状态：${mailResultLabel(record.state,record.detail,mailLabels)}`),el('p',record.detail))
+      if(['queued','failed','paused','cancelled'].includes(record.state)){
+        const editor=el('form','','license-reject-form');editor.hidden=true
+        const label=el('label','修改拒绝理由'),reason=el('textarea')
+        reason.value=record.reason;reason.required=true;reason.maxLength=2000;reason.rows=5;reason.setAttribute('aria-label','修改拒绝理由');label.append(reason)
+        const feedback=el('p','','delivery-message');feedback.setAttribute('role','alert')
+        const actions=el('div','','delivery-action-buttons'),save=el('button','保存拒绝理由','export-button');save.type='submit'
+        const edit=button('修改拒绝理由',()=>{
+          reason.value=record.reason;feedback.textContent='';editor.hidden=false;edit.hidden=true
+          body.querySelectorAll('button').forEach(item=>{if(!editor.contains(item))item.disabled=true})
+          reason.focus()
+        })
+        actions.append(save,button('取消编辑',()=>{
+          editor.hidden=true;edit.hidden=false;body.querySelectorAll('button').forEach(item=>item.disabled=false)
+        }))
+        editor.append(label,el('p','保存后同步更新本封邮件中的拒绝理由，并保留其他自定义内容及当前队列状态。','license-mail-help'),actions,feedback)
+        editor.addEventListener('submit',async event=>{
+          event.preventDefault();if(!reason.value.trim()){feedback.textContent='请填写拒绝理由';return}
+          editor.querySelectorAll('button').forEach(item=>item.disabled=true)
+          try{
+            await request(`/license-delivery/rejections/${row.id}/reason`,{method:'POST',body:JSON.stringify({reason:reason.value,expectedUpdatedAt:record.updated_at})})
+            report(`申请 #${row.id} 的拒绝理由已保存，邮件正文已同步更新。`)
+            d.close();await refresh();await showRejection(row,request,{refresh,report,allowSendNow})
+          }catch(error){if(!error.authentication)feedback.textContent=error.message}
+          finally{editor.querySelectorAll('button').forEach(item=>item.disabled=false)}
+        })
+        body.append(edit,editor)
+      }
       body.append(ccEditor(record.cc,['queued','failed','paused'].includes(record.state),async cc=>{
         await request(`/license-delivery/rejections/${row.id}/cc`,{method:'POST',body:JSON.stringify({cc,expectedUpdatedAt:record.updated_at})})
         report(`申请 #${row.id} 的拒绝通知抄送设置已保存。`);d.close();await refresh();await showRejection(row,request,{refresh,report,allowSendNow})

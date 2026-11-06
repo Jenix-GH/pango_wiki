@@ -95,3 +95,52 @@ export async function queuedMailPreview(pool,kind,id,options,body=null,actor='ad
     } catch(error){await db.rollback();throw error}
   })
 }
+
+// Use the same lock as dispatch so edits cannot race a manual or nightly send.
+export async function updateRejectionReason(pool,id,body,options,actor='admin') {
+  if(!/^[1-9]\d*$/.test(String(id)))throw problem('申请编号无效')
+  if(typeof body.reason!=='string'||!body.reason.trim()||body.reason.trim().length>2000||/\x00/.test(body.reason))throw problem('请填写 1–2000 字的拒绝理由')
+  if(typeof body.expectedUpdatedAt!=='string'||!body.expectedUpdatedAt)throw problem('请刷新并核对当前拒绝记录')
+  const reason=body.reason.trim().replace(/\r\n?/g,'\n')
+  return withDeliveryLock(pool,async db=>{
+    await db.beginTransaction()
+    try {
+      const [[row]]=await db.query('SELECT * FROM dto_license_application WHERE id=? FOR UPDATE',[id])
+      const [[record]]=await db.query('SELECT * FROM dto_license_rejection WHERE application_id=? FOR UPDATE',[id])
+      if(!row||!record)throw problem('拒绝通知不存在',404)
+      if(Number(row.status)!==3)throw problem('申请已不处于已拒绝状态，请刷新核对',409)
+      if(!['queued','failed','paused','cancelled'].includes(record.state))throw problem('邮件已发送、正在发送或结果待核查，不能修改拒绝理由',409)
+      if(String(record.updated_at)!==body.expectedUpdatedAt)throw problem('拒绝记录已变化，请重新打开详情后修改',409)
+      const [[mail]]=await db.query('SELECT state FROM dto_license_mail WHERE dedupe_key=? FOR UPDATE',[`rejection:${id}`])
+      if(mail&&!['failed','cancelled'].includes(mail.state))throw problem('当前拒绝邮件已有发送或待核查记录，不能修改拒绝理由',409)
+      if(record.reason===reason){await db.commit();return {applicationId:String(id),state:record.state}}
+      const [[draft]]=await db.query("SELECT * FROM dto_license_mail_draft WHERE target_kind='rejection' AND target_id=?",[String(id)])
+      if(draft){
+        const [[setting]]=await db.query("SELECT * FROM dto_license_cc WHERE target_kind='rejection' AND target_id=?",[String(id)])
+        const cc=setting?normalizeCc(JSON.parse(setting.cc_json),row.email):[]
+        const message=rejectionMessage(row,record.reason,options.replyTo,cc)
+        const oldBinding=bindingFor('rejection',record,row,message,options.from)
+        const original=JSON.parse(draft.content_json)
+        if(!original.text.includes(record.reason))throw problem('已保存邮件未包含完整旧拒绝理由，请先核对邮件正文',409)
+        const subject=original.subject.split(record.reason).join(reason)
+        const text=original.text.split(record.reason).join(reason)
+        if(text.length>12000)throw problem('修改后邮件正文超过 12000 字，请先精简邮件正文')
+        const image=original.inlineImages?.[0]
+        const width=/width="(\d+)"/.exec(original.html||'')?.[1]
+        const logo=image?{...image,width:Number(width||180)}:null
+        const content=renderQueuedContent(subject,text,logo)
+        // Keep an already-stale draft stale; a reason edit must not approve other changed fields.
+        const binding=draft.binding_hash===oldBinding
+          ?bindingFor('rejection',{...record,reason},row,message,options.from):draft.binding_hash
+        await db.query("UPDATE dto_license_mail_draft SET binding_hash=?,revision=?,content_json=?,updated_by=?,updated_at=NOW(6) WHERE target_kind='rejection' AND target_id=?",
+          [binding,randomUUID(),JSON.stringify(contentOf(content)),actor,String(id)])
+      }
+      await db.query('UPDATE dto_license_rejection SET reason=?,updated_at=NOW(6) WHERE application_id=?',[reason,id])
+      await db.query(`INSERT INTO dto_license_status_change (application_id,previous_status,next_status,actor,note,rejection_snapshot) VALUES (?,3,3,?,?,?)`,
+        [id,actor,('修改拒绝理由：'+reason).slice(0,500),JSON.stringify(record)])
+      await db.query('INSERT INTO dto_license_delivery_audit (file_id,actor,action,note) VALUES (NULL,?,?,?)',
+        [actor,'edit-rejection-reason',`申请 #${id}，修改拒绝理由${draft?'并同步本封邮件草稿':''}；队列状态保留，未发送邮件`])
+      await db.commit();return {applicationId:String(id),state:record.state}
+    }catch(error){await db.rollback();throw error}
+  })
+}
