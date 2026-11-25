@@ -85,7 +85,25 @@ Page({
   },
 
   onLoad() {
+    wx.showShareMenu({ menus: ['shareAppMessage', 'shareTimeline'] })
     this.setData({ form: initialForm(readStoredUser()) })
+  },
+
+  onShareAppMessage() {
+    return {
+      title: '紫光同创 · License 申请',
+      path: '/pages/license/license',
+      // 使用固定图片，避免默认截图包含申请人的表单信息。
+      imageUrl: '/images/pango-logo.png',
+    }
+  },
+
+  onShareTimeline() {
+    return {
+      title: '紫光同创 · License 申请',
+      query: '',
+      imageUrl: '/images/pango-logo.png',
+    }
   },
 
   onShow() {

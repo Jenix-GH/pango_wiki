@@ -12,6 +12,7 @@ function page(name, stored = {}) {
   let definition
   const storage = new Map(Object.entries(stored))
   const wx = {
+    showShareMenu() {},
     getStorageSync: key => storage.get(key),
     setStorageSync: (key,value) => storage.set(key,value),
     navigateTo: options => calls.navigation.push(options.url),

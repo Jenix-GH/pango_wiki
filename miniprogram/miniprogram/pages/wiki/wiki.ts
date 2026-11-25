@@ -214,7 +214,19 @@ Page({
   },
 
   onLoad() {
+    wx.showShareMenu({ menus: ['shareAppMessage', 'shareTimeline'] })
     this.loadCatalog(false)
+  },
+
+  onShareAppMessage() {
+    return {
+      title: '紫光同创 · 器件技术文档中心',
+      path: '/pages/wiki/wiki',
+    }
+  },
+
+  onShareTimeline() {
+    return { title: '紫光同创 · 器件技术文档中心', query: '' }
   },
 
   openChat() {
@@ -383,7 +395,8 @@ Page({
       return
     }
     app.globalData._refViewerUrl = `${webHost}/docs/reader?client=miniprogram&entry=${Date.now()}&url=${encodeURIComponent(viewerUrl)}`
-    wx.navigateTo({ url: '/pages/reference-viewer/reference-viewer' })
+    const title = [document.display_name || document.title || document.code, document.version].filter(Boolean).join(' ')
+    wx.navigateTo({ url: `/pages/reference-viewer/reference-viewer?title=${encodeURIComponent(title)}` })
   },
 
   findDocument(key: string): WikiDocument | null {
